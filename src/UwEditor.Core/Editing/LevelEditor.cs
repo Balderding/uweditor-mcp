@@ -38,6 +38,7 @@ namespace UwEditor.Core.Editing
             var m = s.LoadLevel(level);
             data = (byte[])m.Block.Data.Clone();
             tex = m.TextureBytes;
+            ReadOk = !m.Present || m.CheckOk;
             // UW1 keeps the running animations (EFFECT.C animlist, 64 × 6 bytes) in block level + 8; UW2 inside the level block
             int ab = s.Profile.OverlayBlock(level);
             if (ab >= 0 && s.LevArk.Has(ab))
@@ -57,6 +58,26 @@ namespace UwEditor.Core.Editing
             Session = s; Level = level;
             this.data = data;
             this.tex = tex;
+            bool ok;
+            new LevelBlock(data, s.Kind).Check(out ok);
+            ReadOk = ok || !new LevelBlock(data, s.Kind).MagicOk;
+        }
+
+        /// <summary>Whether the level passed the game's object-list check when it was read (or was an
+        /// empty slot). Saving refuses a level that passed then and fails now: the editor broke it.</summary>
+        public bool ReadOk { get; private set; }
+
+        /// <summary>
+        /// Adding, deleting and moving objects walk and relink the object lists: on lists that fail
+        /// the game's check (loops, an object in two lists, free stacks that disagree) they would damage
+        /// the level further, so they are refused until Level ▸ Fixes repairs it. The model already
+        /// holds the check, so this costs nothing more.
+        /// </summary>
+        void ListsMustPass()
+        {
+            var m = Model;
+            if (m.Present && !m.CheckOk)
+                throw new InvalidOperationException("Level " + Level + "'s object lists fail the game's check (" + m.CheckReport + "). Level ▸ Fixes repairs them; until then objects cannot be added, moved or deleted there.");
         }
 
         /// <summary>The animation list's block (MAX_ANIMS 64 entries of 6 bytes: object link word, frames left, x, y).</summary>
@@ -531,6 +552,7 @@ namespace UwEditor.Core.Editing
         /// </summary>
         public int AddObject(ObjectSpec spec, int x, int y, int container = -1)
         {
+            ListsMustPass();
             if (container < 0 && Model.Tiles[x, y].IsSolid) throw new InvalidOperationException("(" + x + ", " + y + ") is solid rock: objects go on open tiles.");
             if (container >= 0 && IsQuant(container)) throw new InvalidOperationException("#" + container + " is not a container: its link is a quantity or special value.");
             int result = -1;
@@ -589,6 +611,7 @@ namespace UwEditor.Core.Editing
         /// <summary>Deletes an object and everything inside it, back to the free stacks.</summary>
         public void DeleteObject(int index)
         {
+            ListsMustPass();
             var o = Model.Objects[index];
             if (o.Free || (o.TileX < 0 && o.Parent < 0)) throw new InvalidOperationException("#" + index + " is not in the level.");
             Change("Delete #" + index + " " + o.Name, () =>
@@ -617,6 +640,7 @@ namespace UwEditor.Core.Editing
         /// </summary>
         public void MoveObject(int index, int x, int y, int? fineX = null, int? fineY = null, bool onFloor = false)
         {
+            ListsMustPass();
             var o = Model.Objects[index];
             if (!o.OnTile) throw new InvalidOperationException("Only objects lying on a tile can be moved to another (this one is inside #" + o.Parent + ").");
             if (Model.Tiles[x, y].IsSolid) throw new InvalidOperationException("(" + x + ", " + y + ") is solid rock.");
@@ -677,6 +701,7 @@ namespace UwEditor.Core.Editing
         /// <summary>Puts an object (from a tile or another container) inside a container, a creature's inventory, or a trigger's chain (at the head of its list): one undoable change.</summary>
         public void PutInside(int index, int container)
         {
+            ListsMustPass();
             if (!CanPutInside(index, container)) throw new InvalidOperationException(Model.Objects[container].Name + " cannot hold " + Model.Objects[index].Name + ".");
             var o = Model.Objects[index];
             Change("Put #" + index + " " + o.Name + " in #" + container, () =>
@@ -717,13 +742,17 @@ namespace UwEditor.Core.Editing
             return clip;
         }
 
-        ClipNode Node(int i, int depth)
+        ClipNode Node(int i, int depth, HashSet<int> seen = null)
         {
+            // each object once: on damaged lists (a loop, an object in two lists) the walk would
+            // otherwise grow by the power of its depth
+            seen = seen ?? new HashSet<int>();
+            seen.Add(i);
             int size = i < LevelBlock.Mobiles ? LevelBlock.MobileSize : LevelBlock.StaticSize;
             var n = new ClipNode { Mobile = i < LevelBlock.Mobiles, Record = new byte[size] };
             Array.Copy(data, LevelBlock.ObjectOffset(i), n.Record, 0, size);
             if (!IsQuant(i) && depth < 64)
-                for (int c = LinkOf(i), guard = 0; c > 0 && guard++ < 1100; c = NextOf(c)) n.Children.Add(Node(c, depth + 1));
+                for (int c = LinkOf(i), guard = 0; c > 0 && c < LevelBlock.Objects && guard++ < 1100 && !seen.Contains(c); c = NextOf(c)) n.Children.Add(Node(c, depth + 1, seen));
             return n;
         }
 
@@ -738,6 +767,7 @@ namespace UwEditor.Core.Editing
             if (clip == null || clip.Roots.Count == 0) throw new InvalidOperationException("Nothing to paste: copy objects first.");
             if (clip.Kind != Session.Kind) throw new InvalidOperationException("These objects come from the other game.");
             if (container >= 0 && IsQuant(container)) throw new InvalidOperationException("#" + container + " is not a container.");
+            ListsMustPass();
             int mob = clip.Count(true), sta = clip.Count(false), freeM = B.MobileTop + 1, freeS = B.StaticTop + 1;
             if (mob > freeM || sta > freeS) throw new InvalidOperationException(string.Format("Not enough free objects: the clip needs {0} mobile and {1} static, the level has {2} and {3}.", mob, sta, freeM, freeS));
             var made = new List<int>();
@@ -781,6 +811,7 @@ namespace UwEditor.Core.Editing
         /// <summary>Moves an object to a tile from wherever it is: another tile (as MoveObject), or out of a container, a creature or a trigger's chain (onto the floor).</summary>
         public void MoveObjectAnywhere(int index, int x, int y, int? fineX = null, int? fineY = null)
         {
+            ListsMustPass();
             var o = Model.Objects[index];
             if (o.OnTile) { MoveObject(index, x, y, fineX, fineY); return; }
             if (o.Parent < 0) throw new InvalidOperationException("#" + index + " is not in the level.");
@@ -1036,6 +1067,14 @@ namespace UwEditor.Core.Editing
         {
             var levels = DirtyLevels.ToList();
             if (levels.Count == 0) return levels;
+            // never write a level the editor broke: it passed the game's check when read and fails it now
+            foreach (var e in editors.Values.Where(x => x.Dirty && x.ReadOk))
+            {
+                bool ok;
+                string why = e.Check(out ok);
+                if (!ok && new LevelBlock(e.Data, Session.Kind).MagicOk)
+                    throw new InvalidOperationException("Level " + e.Level + " was not saved: its object lists now fail the game's check (" + why + "). Undo the last changes there, or run Level ▸ Fixes. Nothing was written.");
+            }
             var bytes = ToBytes();
             Conversations.SafeFile.Write(Session.LevArkPath, bytes);
             Session.ReplaceLevArk(bytes);
