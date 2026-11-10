@@ -58,6 +58,13 @@ editor (Run and Test).
 When you open a saved game, the editor checks it for problems that crash or upset the game.
 The status line names them, and **File ▸ Check and repair the saved game…** repairs them.
 
+**Damaged files.** A game file that is cut short or holds numbers that point outside it (a
+bad download, a save written halfway, a file from elsewhere) is refused with a message that
+names it, such as "LEV.ARK is damaged: block 7 runs past the end of the file". Put back the
+file (its `.BKP` or `.ORIG` copy, or the game's own) and open the game again. A level whose
+object free lists are damaged can still be looked at, but adding and deleting objects there
+is refused until **Level ▸ Fixes** rebuilds the lists.
+
 **Unsaved work.** Opening another game or closing the editor asks first when anything is
 unsaved: levels and their maps, the player, strings and conversations, global variables,
 pictures and zones. **Save** in that prompt writes all of them; Ctrl+S (Save the levels)

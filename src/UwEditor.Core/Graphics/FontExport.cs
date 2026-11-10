@@ -184,6 +184,16 @@ namespace UwEditor.Core.Graphics
         /// </summary>
         public static UwFont Import(string text, AccentTable accents, UwFont shape = null, List<string> warnings = null)
         {
+            // a damaged or foreign file: a missing field, a word where a number belongs, a number too large
+            try { return ImportBdf(text, accents, shape, warnings); }
+            catch (Exception e) when (e is IndexOutOfRangeException || e is FormatException || e is OverflowException || e is ArgumentOutOfRangeException)
+            {
+                throw new InvalidDataException("This BDF file cannot be read: a line lacks a field or has a word where a number belongs (" + e.Message + ").", e);
+            }
+        }
+
+        static UwFont ImportBdf(string text, AccentTable accents, UwFont shape, List<string> warnings)
+        {
             accents = accents ?? new AccentTable();
             warnings = warnings ?? new List<string>();
             var lines = text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
@@ -191,7 +201,13 @@ namespace UwEditor.Core.Graphics
             int bbW = 0, bbH = 0, bbX = 0, bbY = 0;
             int i = 0;
             string[] T(string s) { return s.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries); }
-            int N(string s) { return int.Parse(s, NumberStyles.Integer, CultureInfo.InvariantCulture); }
+            int N(string s)
+            {
+                int v;
+                if (!int.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out v))
+                    throw new InvalidDataException("Line " + (i + 1) + " of the BDF file has \"" + s + "\" where a number belongs.");
+                return v;
+            }
             if (lines.Length == 0 || !lines[0].StartsWith("STARTFONT")) throw new InvalidDataException("Not a BDF file (it starts with STARTFONT).");
             var glyphs = new List<(string Name, int Enc, int Enc2, int Dw, int W, int H, int X, int Y, uint[] Rows, byte[] Extra)>();
             for (; i < lines.Length; i++)

@@ -20,8 +20,14 @@ namespace UwEditor.Core
             if (path == null) return g;
             using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
             {
-                var nodes = StringsPak.ReadHuffmanNodes(fs);
-                var list = StringsPak.ReadStringBlocks(fs, nodes.Item2);
+                Tuple<HuffmanNode[], long> nodes;
+                Tuple<List<StringBlock>, Dictionary<int, int>> list;
+                try
+                {
+                    nodes = StringsPak.ReadHuffmanNodes(fs);
+                    list = StringsPak.ReadStringBlocks(fs, nodes.Item2);
+                }
+                catch (GameFileException e) { throw e.For(path); }
                 foreach (var b in list.Item1)
                 {
                     try { g.blocks[b.BlockNumber] = StringsPak.ReadStrings(fs, b, nodes.Item1).ToArray(); }

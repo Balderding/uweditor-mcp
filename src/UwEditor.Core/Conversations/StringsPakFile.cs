@@ -27,7 +27,9 @@ namespace UwEditor.Core.Conversations
 
         public static StringsPakFile Load(string path)
         {
-            var f = FromBytes(File.ReadAllBytes(path));
+            StringsPakFile f;
+            try { f = FromBytes(File.ReadAllBytes(path)); }
+            catch (GameFileException e) { throw e.For(path); }
             f.Path = path;
             return f;
         }

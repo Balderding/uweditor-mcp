@@ -56,6 +56,19 @@ namespace UltimateEditor.Games
 		public int StaticTop { get { return S16(StaticTopAt); } }
 		public int ActiveCount { get { return W16(ActiveCountAt); } }
 		public int MobileFree(int k) { return W16(MobFreeAt + 2 * k); }
+		/// <summary>Room on the free stacks: 254 mobile entries (0x7300-0x74FB), 768 static (0x74FC-0x7AFB).</summary>
+		public const int MobileFreeSlots = 254, StaticFreeSlots = 768;
+		/// <summary>Whether a free-stack entry names an object of its kind (mobiles 2-255: 0 is none and 1 the player; statics 256-1023).</summary>
+		public static bool FreeEntryOk(bool mobile, int i) { return mobile ? i >= 2 && i < Mobiles : i >= Mobiles && i < Objects; }
+		/// <summary>Null when the free stacks' tops and entries are in range, else what is wrong (Level ▸ Fixes rebuilds them).</summary>
+		public string FreeListProblem()
+		{
+			if (MobileTop < -1 || MobileTop >= MobileFreeSlots) return "the mobile free list's top is " + MobileTop;
+			if (StaticTop < -1 || StaticTop >= StaticFreeSlots) return "the static free list's top is " + StaticTop;
+			for (int k = 0; k <= MobileTop; k++) if (!FreeEntryOk(true, MobileFree(k))) return "mobile free entry " + k + " is " + MobileFree(k);
+			for (int k = 0; k <= StaticTop; k++) if (!FreeEntryOk(false, StaticFree(k))) return "static free entry " + k + " is " + StaticFree(k);
+			return null;
+		}
 		public int StaticFree(int k) { return W16(StaticFreeAt + 2 * k); }
 		public int Active(int k) { return Data[ActiveAt + k]; }
 
@@ -164,8 +177,9 @@ namespace UltimateEditor.Games
 		/// <summary>Zeroes every free object record, as UW2's Map_Save does through ObjCrunch before saving.</summary>
 		public void CrunchFreeRecords()
 		{
-			for (int k = 0; k <= MobileTop && k < 254; k++) Array.Clear(Data, ObjectOffset(MobileFree(k)), MobileSize);
-			for (int k = 0; k <= StaticTop && k < 768; k++) Array.Clear(Data, ObjectOffset(StaticFree(k)), StaticSize);
+			// an entry out of range is skipped: clearing it would wipe another object (or run off the block)
+			for (int k = 0; k <= MobileTop && k < MobileFreeSlots; k++) if (FreeEntryOk(true, MobileFree(k))) Array.Clear(Data, ObjectOffset(MobileFree(k)), MobileSize);
+			for (int k = 0; k <= StaticTop && k < StaticFreeSlots; k++) if (FreeEntryOk(false, StaticFree(k))) Array.Clear(Data, ObjectOffset(StaticFree(k)), StaticSize);
 		}
 	}
 }

@@ -60,16 +60,21 @@ namespace UltimateEditor.Games
 		{
 			if (IsEmpty(o, i)) return null;
 			int at = o[i];
+			// a damaged or cut file: the picture's header and data must lie inside it
+			if (at < 0 || at + 3 > file.Length) throw new FormatException("picture " + i + " starts outside the file (at " + at + " of " + file.Length + " bytes)");
 			var p = new Picture { Type = file[at], Width = file[at + 1], Height = file[at + 2] };
 			int n = p.Width * p.Height;
 			p.Pixels = new int[n];
 			if (p.Type == 4)
 			{
+				if ((long)at + 5 + n > file.Length) throw new FormatException("picture " + i + " runs past the end of the file");
 				for (int k = 0; k < n; k++) p.Pixels[k] = file[at + 5 + k];
 				return p;
 			}
+			if (at + 6 > file.Length) throw new FormatException("picture " + i + " runs past the end of the file");
 			p.Aux = file[at + 3];
 			int nibbles = file[at + 4] | file[at + 5] << 8;
+			if ((long)at + 6 + (nibbles + 1) / 2 > file.Length) throw new FormatException("picture " + i + " runs past the end of the file (" + nibbles + " nibbles)");
 			var nib = new int[nibbles];
 			for (int k = 0; k < nibbles; k++)
 			{

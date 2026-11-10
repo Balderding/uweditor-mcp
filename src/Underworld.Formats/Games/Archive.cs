@@ -34,7 +34,18 @@ namespace UltimateEditor.Games
 			return kind == GameKind.UW2 ? (Archive)new Uw2Archive(data) : new Uw1Archive(data);
 		}
 
-		public static Archive Load(string path, GameKind kind) { return Open(File.ReadAllBytes(path), kind); }
+		public static Archive Load(string path, GameKind kind)
+		{
+			try { return Open(File.ReadAllBytes(path), kind); }
+			catch (GameFileException e) { throw e.For(path); }
+		}
+
+		/// <summary>The header's table must fit the file, and every block's offset lie inside it.</summary>
+		protected static void CheckTable(byte[] data, int headerLength, int count, int entriesPerBlock)
+		{
+			if (data == null || data.Length < headerLength) throw new GameFileException("the archive is too short for its header (" + (data == null ? 0 : data.Length) + " bytes)", 0);
+			GameFileException.CheckRange(0, headerLength + 4L * entriesPerBlock * count, data.Length, "the table of " + count + " blocks");
+		}
 
 		protected static uint U32(byte[] b, int o) { return (uint)(b[o] | b[o + 1] << 8 | b[o + 2] << 16 | b[o + 3] << 24); }
 		protected static void PutU32(byte[] b, int o, uint v) { b[o] = (byte)v; b[o + 1] = (byte)(v >> 8); b[o + 2] = (byte)(v >> 16); b[o + 3] = (byte)(v >> 24); }
@@ -49,7 +60,14 @@ namespace UltimateEditor.Games
 	/// </summary>
 	public sealed class Uw1Archive : Archive
 	{
-		public Uw1Archive(byte[] data) { file = (byte[])data.Clone(); }
+		public Uw1Archive(byte[] data)
+		{
+			CheckTable(data, 2, data != null && data.Length >= 2 ? U16(data, 0) : 0, 1);
+			file = (byte[])data.Clone();
+			// an offset may equal the length: an empty block written last (see AliasOf)
+			for (int b = 0; b < Count; b++)
+				if (Offset(b) > (uint)file.Length) throw new GameFileException("block " + b + " starts at 0x" + Offset(b).ToString("X") + ", past the end of the file (" + file.Length + " bytes)", 2 + 4 * b);
+		}
 
 		public override int Count { get { return U16(file, 0); } }
 		public uint Offset(int b) { return U32(file, 2 + 4 * b); }
@@ -159,7 +177,13 @@ namespace UltimateEditor.Games
 	/// </summary>
 	public sealed class Uw2Archive : Archive
 	{
-		public Uw2Archive(byte[] data) { file = (byte[])data.Clone(); }
+		public Uw2Archive(byte[] data)
+		{
+			CheckTable(data, 6, data != null && data.Length >= 2 ? U16(data, 0) : 0, 4);
+			file = (byte[])data.Clone();
+			for (int b = 0; b < Count; b++)
+				if (Offset(b) != 0) GameFileException.CheckRange(Offset(b), StoredLength(b), file.Length, "block " + b);
+		}
 
 		public override int Count { get { return U16(file, 0); } }
 		int OffPos(int b) { return 6 + 4 * b; }
@@ -178,6 +202,7 @@ namespace UltimateEditor.Games
 		public byte[] ReadStored(int b)
 		{
 			if (!Has(b)) return null;
+			GameFileException.CheckRange(Offset(b), StoredLength(b), file.Length, "block " + b);
 			var d = new byte[StoredLength(b)];
 			Array.Copy(file, Offset(b), d, 0, d.Length);
 			return d;

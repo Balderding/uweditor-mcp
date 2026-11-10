@@ -48,8 +48,8 @@ namespace UltimateEditor.Games
 		/// <param name="filePath">ALLPALS.DAT (DataReader passes DATA's, resolved)</param>
 		public static List<int[]> ReadAuxPalettes(string filePath)
 		{
-			FileStream fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
-
+			using (FileStream fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read))
+			{
 			List<int[]> auxpals = new List<int[]>();
 			// 32 palettes: the game reads 0x200 bytes (reference gfx/LOADGR.C:428; the file is 513
 			// bytes in both games). UW2's objects use palette 31.
@@ -63,8 +63,8 @@ namespace UltimateEditor.Games
 				}
 				auxpals.Add(auxpal);
 			}
-			fs.Close();
 			return auxpals;
+			}
 		}
 		public static int ReadPaletteMapping(Stream fs, int r, int g, int b)
 		{
@@ -74,7 +74,8 @@ namespace UltimateEditor.Games
 		/// <param name="filePath">the picture file (DataReader resolves the name in DATA)</param>
 		public static int[] ReadGraphicOffsets(string filePath, ref int count, ref int first)
 		{
-			FileStream fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+			using (FileStream fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read))
+			{
 			int start = fs.ReadByte();
 			int size = 0;
 			if (start == 2)
@@ -83,8 +84,10 @@ namespace UltimateEditor.Games
 			int c_a = fs.ReadByte();
 			int c_b = fs.ReadByte();
 
+			if (start < 0 || c_b < 0) throw new UltimateEditor.Games.GameFileException("the picture file is too short for its header", 0, filePath);
 			count = c_a + c_b * 256;
-		
+			UltimateEditor.Games.GameFileException.CheckRange(start + 2, 4L * count, fs.Length, "the offsets of " + count + " pictures");
+
 			int[] offsets = new int[count];
 			first = start + 2;
 			for (int i = 0; i < count; i++)
@@ -98,8 +101,8 @@ namespace UltimateEditor.Games
 				int offset = a + (b * 256) + (c * 256 * 256) + (d * 256 * 256 * 256);
 				offsets[i] = offset;
 			}
-			fs.Close();
 			return offsets;
+			}
 		}
 		public static int[] Read4BitGraphic(Stream fs, long offset, int startingOffset, int index, AdditionalTextureInfo ati)
 		{

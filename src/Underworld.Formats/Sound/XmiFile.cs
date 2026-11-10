@@ -74,15 +74,19 @@ namespace UltimateEditor.Sound
 		{
 			if (d == null || d.Length < 12) throw new FormatException("Too short for an XMI file.");
 			var f = new XmiFile();
-			int p = ReadChunks(d, 0, d.Length, f.Chunks);
+			int p = ReadChunks(d, 0, d.Length, f.Chunks, 0);
 			f.Trailer = new byte[d.Length - p];
 			Array.Copy(d, p, f.Trailer, 0, f.Trailer.Length);
 			if (f.Sequences.Count == 0) throw new FormatException("No FORM XMID in the file.");
 			return f;
 		}
 
+		/// <summary>Groups nested deeper than this are kept as raw bytes: real files nest 3 deep
+		/// (FORM XDIR / CAT XMID / FORM XMID), and an unbounded depth could overflow the stack.</summary>
+		const int MaxDepth = 32;
+
 		/// <summary>Reads chunks from p to end; returns where it stopped (at the first chunk that does not fit).</summary>
-		static int ReadChunks(byte[] d, int p, int end, List<XmiChunk> into)
+		static int ReadChunks(byte[] d, int p, int end, List<XmiChunk> into, int depth)
 		{
 			while (p + 8 <= end)
 			{
@@ -93,9 +97,9 @@ namespace UltimateEditor.Sound
 				var c = new XmiChunk { Id = id };
 				if (c.IsGroup)
 				{
-					if (len < 4) break;
+					if (len < 4 || depth >= MaxDepth) break;
 					c.Type = Encoding.ASCII.GetString(d, p + 8, 4);
-					int inner = ReadChunks(d, p + 12, (int)(p + 8 + len), c.Children);
+					int inner = ReadChunks(d, p + 12, (int)(p + 8 + len), c.Children, depth + 1);
 					if (inner != p + 8 + len)
 					{
 						// bytes inside the group that are not whole chunks: keep them as a raw child

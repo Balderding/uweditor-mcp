@@ -147,6 +147,7 @@ namespace UwEditor.Core.Graphics
                         if (RawPanel(i, out rw, out rh))
                         {
                             var raw = new int[rw * rh];
+                            if (offsets[i] < 0 || (long)offsets[i] + raw.Length > file.Length) return null;   // a panel cut short
                             for (int k = 0; k < raw.Length; k++) raw[k] = file[offsets[i] + k];
                             return Recolour(new IndexedImage(rw, rh, raw, null) { Type = 4 }, pals, palette);
                         }

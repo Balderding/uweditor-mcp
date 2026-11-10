@@ -363,9 +363,18 @@ namespace UwEditor.Core.Editing
             });
         }
 
+        /// <summary>Refuses to take or give back an object while the free lists are damaged: a bad entry would
+        /// hand out an object in use (or one outside the list), and the level would break further.</summary>
+        void CheckFreeLists(LevelBlock b)
+        {
+            string why = b.FreeListProblem();
+            if (why != null) throw new InvalidOperationException("Level " + Level + "'s object free lists are damaged (" + why + "). Level ▸ Fixes rebuilds them.");
+        }
+
         int Alloc(bool mobile)
         {
             var b = B;
+            CheckFreeLists(b);
             if (mobile)
             {
                 int top = b.MobileTop;
@@ -386,8 +395,11 @@ namespace UwEditor.Core.Editing
 
         void FreeIndex(int i)
         {
-            RemoveAnimation(i);
             var b = B;
+            CheckFreeLists(b);
+            if ((i < LevelBlock.Mobiles ? b.MobileTop + 1 >= LevelBlock.MobileFreeSlots : b.StaticTop + 1 >= LevelBlock.StaticFreeSlots) || !LevelBlock.FreeEntryOk(i < LevelBlock.Mobiles, i))
+                throw new InvalidOperationException("Level " + Level + "'s free list has no room for #" + i + " (it is full, or the object is not one the list holds). Level ▸ Fixes rebuilds it.");
+            RemoveAnimation(i);
             int size = i < LevelBlock.Mobiles ? LevelBlock.MobileSize : LevelBlock.StaticSize;
             Array.Clear(data, LevelBlock.ObjectOffset(i), size);
             if (i < LevelBlock.Mobiles)

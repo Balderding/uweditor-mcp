@@ -23,7 +23,10 @@ namespace UltimateEditor.Games
 			int a = fs.ReadByte();
 			int b = fs.ReadByte();
 
+			if (b < 0) throw new GameFileException("the file is too short for its Huffman tree (" + fs.Length + " bytes)", 0);
 			int nodeCount = a + b * 256;
+			if (nodeCount == 0) throw new GameFileException("the Huffman tree has no nodes", 0);
+			GameFileException.CheckRange(2, 4L * nodeCount, fs.Length, "the Huffman tree of " + nodeCount + " nodes");
 
 			HuffmanNode[] nodes = new HuffmanNode[nodeCount];
 			//Debug.Log("Node count  " + nodeCount);
@@ -35,6 +38,9 @@ namespace UltimateEditor.Games
 				int right = fs.ReadByte();
 				nodes[i] = new HuffmanNode(_char, i, parent, left, right);
 				//Debug.LogFormat("Node {0} : {1}", i, nodes[i]);
+				// 255 means none; anything else must be a node of the tree
+				if ((parent != 255 && parent >= nodeCount) || (left != 255 && left >= nodeCount) || (right != 255 && right >= nodeCount))
+					throw new GameFileException("Huffman node " + i + " names a node outside the tree (parent " + parent + ", children " + left + " and " + right + " of " + nodeCount + ")", 2 + 4 * i);
 			}
 			Tuple<HuffmanNode[], long> pair = new Tuple<HuffmanNode[], long>(nodes, fs.Position);
 			return pair;
@@ -46,7 +52,9 @@ namespace UltimateEditor.Games
 			int a = fs.ReadByte();
 			int b = fs.ReadByte();
 
+			if (b < 0) throw new GameFileException("the file ends before its block table", startOffset);
 			int blockCount = a + b * 256;
+			GameFileException.CheckRange(startOffset + 2, 6L * blockCount, fs.Length, "the table of " + blockCount + " string blocks");
 			List<StringBlock> blocks = new List<StringBlock>();
 			Dictionary<int, int> blockDict = new Dictionary<int, int>();
 
@@ -69,11 +77,13 @@ namespace UltimateEditor.Games
 			}
 			for (int i = 0; i < blockCount; i++)
 			{
+				GameFileException.CheckRange(blocks[i].Offset, 2, fs.Length, "string block " + blocks[i].BlockNumber);
 				fs.Position = blocks[i].Offset;
 				int blk2_a = fs.ReadByte();
 				int blk2_b = fs.ReadByte();
 
 				blocks[i].StringCount = blk2_a + blk2_b * 256;
+				GameFileException.CheckRange(blocks[i].Offset + 2, 2L * blocks[i].StringCount, fs.Length, "the string offsets of block " + blocks[i].BlockNumber);
 				blocks[i].Offsets = new List<int>();
 				for (int j = 0; j < blocks[i].StringCount; j++)
 				{
@@ -96,7 +106,9 @@ namespace UltimateEditor.Games
 			block.Strings = new List<string>();
 			for (int i = 0; i < block.StringCount; i++)
 			{
-				fs.Position = block.Offset + 2 + (2 * block.StringCount) + block.Offsets[i];
+				long at = block.Offset + 2 + (2 * block.StringCount) + block.Offsets[i];
+				if (at >= fs.Length) throw new GameFileException("string " + i + " of block " + block.BlockNumber + " starts past the end of the file", at);
+				fs.Position = at;
 				string curString = "";
 				char curChar = default(char);
 
@@ -142,6 +154,7 @@ namespace UltimateEditor.Games
 				if (bit == 0)
 				{
 					raw = fs.ReadByte();
+					if (raw < 0) throw new GameFileException("a string runs past the end of the file", fs.Position);
 					bit = 8;
 				}
 				//Debug.LogFormat("curNode : {0}, raw : {1}({3}), bit : {2}, fs.Position (after) : {4}", curNode, raw, bit, ToHex(raw), ToHex(fs.Position));
@@ -277,9 +290,13 @@ namespace UltimateEditor.Games
 				}
 				int current = node.Current;
 				int nextParent = node.Parent;
+				int steps = 0;
 
 				do
 				{
+					// a path from a leaf to the root visits each node at most once: more means a loop
+					if (nextParent < 0 || nextParent >= nodes.Length || ++steps > nodes.Length)
+						throw new GameFileException("the Huffman tree loops or names a node outside it (from the leaf of '" + c + "')");
 					node = nodes[nextParent];
 					nextParent = node.Parent;
 
