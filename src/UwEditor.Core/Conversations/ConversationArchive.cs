@@ -140,18 +140,100 @@ namespace UwEditor.Core.Conversations
         public static void Write(string path, byte[] bytes)
         {
             if (File.Exists(path) && !File.Exists(path + OriginalSuffix)) File.Copy(path, path + OriginalSuffix);
+            Replace(path, bytes, BackupOf(path));
+        }
+
+        /// <summary>
+        /// Writes a file of the editor's own (zones, names, a zip) the same safe way, without the
+        /// .ORIG and .BKP copies: a crash, a full disk or a locked file leaves the old file whole.
+        /// </summary>
+        public static void WriteAtomic(string path, byte[] bytes) { Replace(path, bytes, null); }
+
+        public static void WriteAtomic(string path, string text) { WriteAtomic(path, new System.Text.UTF8Encoding(false).GetBytes(text)); }
+
+        /// <summary>
+        /// The temporary file a write goes through: NAME.EXT.pid.tmp beside the file, so two editors
+        /// writing the same folder never share one. SweepTemporaryFiles removes those a crash left.
+        /// </summary>
+        public static string TempOf(string path)
+        {
             string dir = System.IO.Path.GetDirectoryName(System.IO.Path.GetFullPath(path));
-            string tmp = System.IO.Path.Combine(dir, System.IO.Path.GetFileName(path) + ".tmp");
-            File.WriteAllBytes(tmp, bytes);
-            if (File.Exists(path))
+            return System.IO.Path.Combine(dir, System.IO.Path.GetFileName(path) + "." + Environment.ProcessId + TempSuffix);
+        }
+
+        public const string TempSuffix = ".tmp";
+
+        /// <summary>Called as the temporary file is written, with how many bytes are down so far
+        /// (tests make it throw, as a full disk would). Null in the editor.</summary>
+        internal static Action<string, long> Writing;
+
+        static void Replace(string path, byte[] bytes, string bkp)
+        {
+            string tmp = TempOf(path);
+            try
             {
-                // NAME.EXT.BKP: CS000.N01 and CS000.N02, or OBJECTS.DAT and OBJECTS.GR, keep backups of their own
-                string bkp = BackupOf(path);
-                try { File.Replace(tmp, path, bkp, true); }       // a rename: the game file is never half written
-                catch (PlatformNotSupportedException) { File.Copy(path, bkp, true); File.Move(tmp, path, true); }
-                catch (IOException) { File.Copy(path, bkp, true); File.Move(tmp, path, true); }
+                using (var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None))
+                {
+                    for (int at = 0; at < bytes.Length; at += 0x10000)
+                    {
+                        Writing?.Invoke(tmp, at);
+                        fs.Write(bytes, at, Math.Min(0x10000, bytes.Length - at));
+                    }
+                    Writing?.Invoke(tmp, bytes.Length);
+                    fs.Flush(true);
+                }
+                if (File.Exists(path))
+                {
+                    // NAME.EXT.BKP: CS000.N01 and CS000.N02, or OBJECTS.DAT and OBJECTS.GR, keep backups of their own
+                    try { File.Replace(tmp, path, bkp, true); }       // a rename: the file is never half written
+                    catch (Exception e) when (e is PlatformNotSupportedException || e is IOException)
+                    {
+                        // a file system without Replace (some network shares): the old file kept first, then the move
+                        if (bkp != null) File.Copy(path, bkp, true);
+                        File.Move(tmp, path, true);
+                    }
+                }
+                else File.Move(tmp, path);
             }
-            else File.Move(tmp, path);
+            finally
+            {
+                // a write that failed leaves no temporary file behind
+                try { if (File.Exists(tmp)) File.Delete(tmp); } catch (Exception) { }
+            }
+        }
+
+        /// <summary>
+        /// Deletes the temporary files a write left in a folder when the editor that made it died:
+        /// NAME.EXT.pid.tmp of a process no longer running, and the NAME.EXT.tmp of versions before
+        /// the pid was in the name (only beside a file NAME.EXT). Returns how many it removed.
+        /// </summary>
+        public static int SweepTemporaryFiles(string folder)
+        {
+            if (folder == null || !Directory.Exists(folder)) return 0;
+            int removed = 0;
+            foreach (var f in Directory.GetFiles(folder, "*" + TempSuffix))
+            {
+                string name = System.IO.Path.GetFileName(f);
+                string stem = name.Substring(0, name.Length - TempSuffix.Length);
+                int dot = stem.LastIndexOf('.');
+                int pid;
+                bool ours;
+                if (dot > 0 && int.TryParse(stem.Substring(dot + 1), out pid) && File.Exists(System.IO.Path.Combine(folder, stem.Substring(0, dot))))
+                    ours = pid != Environment.ProcessId && !Running(pid);
+                else
+                    ours = File.Exists(System.IO.Path.Combine(folder, stem)) && File.GetLastWriteTimeUtc(f) < DateTime.UtcNow.AddMinutes(-1);
+                if (!ours) continue;
+                try { File.Delete(f); removed++; } catch (Exception) { }
+            }
+            return removed;
+        }
+
+        static bool Running(int pid)
+        {
+            // found is running (HasExited throws for another user's process)
+            try { using (System.Diagnostics.Process.GetProcessById(pid)) return true; }
+            catch (ArgumentException) { return false; }
+            catch (Exception) { return true; }
         }
     }
 }

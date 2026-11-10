@@ -59,7 +59,7 @@ namespace UwEditor.Core.Mods
         public static List<string> WriteZip(FolderChanges changes, string zipPath, string gameName)
         {
             if (changes.Changed.Count == 0) throw new InvalidOperationException("No changed files to put in the .zip: save your edits first.");
-            string tmp = zipPath + ".tmp";
+            string tmp = Conversations.SafeFile.TempOf(zipPath);
             var written = new List<string>();
             using (var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write))
             using (var zip = new System.IO.Compression.ZipArchive(fs, System.IO.Compression.ZipArchiveMode.Create))

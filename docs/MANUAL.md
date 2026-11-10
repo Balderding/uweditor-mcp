@@ -4,6 +4,10 @@ The editor opens Ultima Underworld I and II, shows their levels in 3D, and edits
 conversations, strings, keys, the player, graphics and the executables' start square. Its
 changes can be packed into mods. Nothing it overwrites is lost: it keeps the previous file as
 `NAME.EXT.BKP` and, the first time it writes a file, the untouched original as `NAME.EXT.ORIG`.
+Each file is written to `NAME.EXT.<number>.tmp` first and then put in place, so a crash, a full
+disk or a file held open by the game leaves the old file whole; the message names the file
+and the reason. A temporary file left by an editor that stopped while saving is deleted the
+next time the game is opened.
 
 Press **F1** or use **Help ▸ Manual** to open this manual. **Help ▸ Controls** lists the keys.
 **Help ▸ About** shows the editor's version and the commit it was built from.

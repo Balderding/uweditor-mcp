@@ -323,7 +323,6 @@ namespace UltimateEditor.Games
 			return md;
 		}
 		/// <param name="filePath">COMOBJ.DAT</param>
-		public static void SaveCommonData(ObjectData objDat, string filePath) { File.WriteAllBytes(filePath, BuildCommonData(objDat)); }
 
 		/// <summary>COMOBJ.DAT's bytes (the editor writes them through its own file writer).</summary>
 		public static byte[] BuildCommonData(ObjectData objDat)
@@ -359,7 +358,6 @@ namespace UltimateEditor.Games
 			return fs.ToArray();
 		}
 		/// <param name="filePath">OBJECTS.DAT</param>
-		public static void SaveObjectData(ObjectData objDat, string filePath) { File.WriteAllBytes(filePath, BuildObjectData(objDat)); }
 
 		/// <summary>OBJECTS.DAT's bytes (the editor writes them through its own file writer).</summary>
 		public static byte[] BuildObjectData(ObjectData objDat)
@@ -530,13 +528,6 @@ namespace UltimateEditor.Games
 				b[at + 2 * i + 1] = (byte)objDat.MonsterData[i].AuxPalette;
 			}
 			return new KeyValuePair<string, byte[]>(path, b);
-		}
-
-		/// <summary>Writes BuildMonsterSpriteFile's result in place (no backup).</summary>
-		public static void SaveMonsterSpriteInfo(ObjectData objDat, GameKind kind, string gameFolder)
-		{
-			var f = BuildMonsterSpriteFile(objDat, kind, gameFolder);
-			if (f.HasValue) File.WriteAllBytes(f.Value.Key, f.Value.Value);
 		}
 	}
 }

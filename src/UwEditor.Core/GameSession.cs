@@ -143,6 +143,9 @@ namespace UwEditor.Core
             s.GameFolder = Path.GetDirectoryName(data);
             s.Kind = GameProfile.Detect(data);
             s.Profile = GameProfile.For(s.Kind);
+            // temporary files an editor that died while saving left behind
+            Conversations.SafeFile.SweepTemporaryFiles(data);
+            if (save != null) Conversations.SafeFile.SweepTemporaryFiles(save);
             s.LevArkPath = GameProfile.Find(save ?? data, "LEV.ARK");
             s.LevArk = Archive.Load(s.LevArkPath, s.Kind);
             s.Strings = GameStrings.Load(data);

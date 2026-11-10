@@ -706,9 +706,7 @@ namespace UwEditor.Core.Conversations
         {
             if (UserPath == null) return;
             Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(UserPath)));
-            string tmp = UserPath + ".tmp";
-            File.WriteAllText(tmp, User.ToJson());
-            File.Move(tmp, UserPath, true);
+            SafeFile.WriteAtomic(UserPath, User.ToJson());
         }
 
         /// <summary>

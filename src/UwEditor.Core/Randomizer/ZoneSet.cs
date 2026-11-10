@@ -376,7 +376,8 @@ namespace UwEditor.Core.Randomizer
 
         public static ZoneSet Load(string path, int levels) { return FromJson(File.ReadAllText(path, Encoding.UTF8), levels); }
 
-        public void Save(string path) { File.WriteAllText(path, ToJson(), new UTF8Encoding(false)); }
+        /// <summary>Writes the zones through a temporary file: a crash or a full disk leaves the old file whole.</summary>
+        public void Save(string path) { Conversations.SafeFile.WriteAtomic(path, ToJson()); }
 
         static string S(JsonNode n, string k) { var v = n?[k]; return v == null ? "" : v.GetValueKind() == JsonValueKind.String ? (string)v : v.ToJsonString(); }
         static int I(JsonNode n, string k, int d) { var v = n?[k]; if (v == null) return d; try { return (int)v; } catch (Exception) { int r; return int.TryParse(v.ToString(), out r) ? r : d; } }

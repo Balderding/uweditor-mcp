@@ -94,7 +94,7 @@ public static class Env
         byte[] blk = ar.Read(level - 1);
         blk[at] ^= xor;
         ar.Write(level - 1, blk);
-        ar.Save(lev);
+        File.WriteAllBytes(lev, ar.ToBytes());
     }
 
     /// <summary>Changes a string, with the editor's own STRINGS.PAK writer.</summary>

@@ -23,7 +23,6 @@ namespace UltimateEditor.Games
 		public abstract void Delete(int block);
 
 		public byte[] ToArray() { return (byte[])file.Clone(); }
-		public void Save(string path) { File.WriteAllBytes(path, file); }
 
 		/// <summary>The whole file as it is in memory (a copy).</summary>
 		public byte[] ToBytes() { return (byte[])file.Clone(); }

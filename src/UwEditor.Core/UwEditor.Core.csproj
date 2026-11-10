@@ -6,6 +6,7 @@
   </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="UwEditor.Core.Tests" />
+    <InternalsVisibleTo Include="Robustness.Tests" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../Underworld.Formats/Underworld.Formats.csproj" />

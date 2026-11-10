@@ -106,7 +106,7 @@ namespace UwEditor.Core.Editing
             if (from.Number == to.Number) throw new InvalidOperationException("A slot cannot be copied onto itself.");
             if (!Directory.Exists(from.Folder)) throw new DirectoryNotFoundException(from.Name + " does not exist.");
             string target = to.Folder.TrimEnd('/', '\\');
-            string tmp = target + ".tmp";
+            string tmp = target + "." + Environment.ProcessId + ".tmp";
             if (Directory.Exists(tmp)) DeleteFolder(tmp);
             Directory.CreateDirectory(tmp);
             try
