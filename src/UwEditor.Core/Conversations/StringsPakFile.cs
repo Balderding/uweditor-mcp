@@ -78,6 +78,9 @@ namespace UwEditor.Core.Conversations
             if (cache.TryGetValue(block, out e)) return new List<string>(e);
             byte[] b;
             if (!raw.TryGetValue(block, out b)) return new List<string>();
+            // a block runs to the next one's offset: in a damaged file that can be shorter than its own table
+            if (b.Length < 2) throw new GameFileException("string block " + block + " is " + b.Length + " bytes long", -1, Path);
+            GameFileException.CheckRange(2, 2L * (b[0] | b[1] << 8), b.Length, "the string table of block " + block);
             using (var ms = new MemoryStream(b))
             {
                 int count = b[0] | b[1] << 8;

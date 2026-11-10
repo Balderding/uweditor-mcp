@@ -408,10 +408,16 @@ namespace UwEditor.Core.Conversations
             Action<int, string, PseudoKind> emit = (a, t, k) =>
             {
                 int m = t.IndexOf('\u0001');
-                if (m < 0) { lines.Add(new PseudoLine { Address = a, Indent = 1, Text = t, Kind = k }); return; }
+                // a menu's marker is \u0001 number \u0001; a string holding code 1 of its own (a damaged
+                // conversation reading another block's strings) is not one: the line is shown as it is
+                int e2 = m < 0 ? -1 : t.IndexOf('\u0001', m + 1), menu;
+                if (e2 < 0 || !int.TryParse(t.Substring(m + 1, e2 - m - 1), out menu) || menu < 0 || menu >= c.Menus.Count)
+                {
+                    lines.Add(new PseudoLine { Address = a, Indent = 1, Text = t, Kind = k });
+                    return;
+                }
                 // a menu: the statement, then a line a choice, numbered as the menu returns them
-                int e2 = t.IndexOf('\u0001', m + 1);
-                var choices = c.Menus[int.Parse(t.Substring(m + 1, e2 - m - 1))];
+                var choices = c.Menus[menu];
                 lines.Add(new PseudoLine { Address = a, Indent = 1, Text = t.Substring(0, m) + "…" + t.Substring(e2 + 1), Kind = PseudoKind.Menu });
                 for (int n = 0; n < choices.Count; n++)
                     lines.Add(new PseudoLine { Address = a, Indent = 2, Text = (n + 1) + ": " + choices[n], Kind = PseudoKind.Menu });

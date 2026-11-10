@@ -413,6 +413,21 @@ namespace UwEditor.Core.Conversations
             /// <summary>The statements of flats lo..hi-1; fw holds the addresses that lead where control goes after them.</summary>
             List<Node> Block(int lo, int hi, Scope sc, HashSet<int> fw)
             {
+                // Each loop head first structures the rest of its region tentatively, so nested loops cost
+                // by the power of their depth. Damaged code read as conversation code can nest them without
+                // end; past the budget the conversation is shown flat instead (Decompile catches this).
+                work += Math.Max(1, hi - lo);
+                if (work > MaxWork) throw new InvalidOperationException("the code is too tangled to structure (more than " + MaxWork + " steps)");
+                return BlockBody(lo, hi, sc, fw);
+            }
+
+            /// <summary>Flats visited by Block, over the whole function.</summary>
+            long work;
+            /// <summary>Four times what the costliest shipped conversation needs (UW1's #4: 5,005,447 steps, about a second).</summary>
+            public const long MaxWork = 20000000;
+
+            List<Node> BlockBody(int lo, int hi, Scope sc, HashSet<int> fw)
+            {
                 var list = new List<Node>();
                 int i = lo;
                 while (i < hi)
