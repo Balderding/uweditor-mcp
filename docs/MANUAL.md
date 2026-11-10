@@ -178,7 +178,8 @@ The toolbar above the view chooses the tool:
 - **Select:** a click picks an object or tile; a double click also moves the view to it
   (so does double-clicking in the list).
 - **Move:** click a square and the selected object goes there, keeping its height above the
-  floor. A critter's home moves with it.
+  floor. A critter's home moves with it. Traps and triggers keep their height, and some keep
+  their place in the tile too, because those are their settings (see Drag below).
 - **Paint:** drag over tiles to paint the light flag on or off (only that bit), a floor or
   wall texture from the level's texture list (shown with thumbnails), a tile type, a
   floor height, or a **tile template**. A template is a tile's type, height, floor texture
@@ -210,7 +211,8 @@ The toolbar above the view chooses the tool:
     each one's fine position, so on a slope they sit at different heights. Objects from 0x160
     on keep their height: pillars, bridges, writing and pictures on walls, switches, levers,
     traps and triggers.
-- **Ctrl+wheel** raises or lowers the floor under the mouse, together with the objects on it.
+- **Ctrl+wheel** raises or lowers the floor under the mouse, together with the objects on it
+  (traps and triggers stay where they are: their height is a setting).
 - The messages about what was just done show over the top of the view, so a long one never
   changes the view's size.
 - **First person** (P): walk the level at eye height. W A S D walk, Q and E or a drag turn,
@@ -307,6 +309,13 @@ Ultima Underworld keeps it but does not use it.
   within its tile, an object keeps its place in the tile's list. Dropping it on a container, a
   creature or a trigger puts it inside (into the trigger's chain for a trap). Esc cancels a
   drag.
+- **Traps and triggers keep their settings when moved.** Their height is a setting (a
+  teleport's level, a variable trap's variable, a look trigger's difficulty), so moving,
+  dragging, pasting or raising the floor never changes it. Some also hold settings in their
+  place inside the tile (fine X and Y): in both games the change terrain trap (the area) and
+  the set and check variable traps; in UW2 also the teleport, hack, inventory, change from,
+  oscillator, proximity and pit traps and the pressure plates. These change only their tile:
+  the status line says so while you drag, and no eighth is marked.
 - Deleting several objects is one undo step.
 - **Objects on this tile** (in the right-click menu on a tile) lists every object there,
   with what each holds under it, and selects the one clicked. This is how to reach an object

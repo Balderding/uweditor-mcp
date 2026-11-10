@@ -38,6 +38,33 @@ namespace UwEditor.Core.Editing
         public static bool IsTeleport(int item) { return item == 0x181; }
         public static bool IsDeleteTrap(int item) { return item == 0x18B; }
 
+        /// <summary>Traps and triggers: their height is a setting, not where they stand (a teleport's
+        /// level, a variable trap's index, a look trigger's difficulty), so moving, pasting or raising
+        /// the floor under them never changes it. Carried over from the Unity editor (MapCreator.SetNewPosition).</summary>
+        public static bool HeightIsData(int item) { return item >= 0x180 && item < 0x1C0; }
+
+        /// <summary>
+        /// Traps and triggers whose fine x and y are settings, not where they stand, so moving them
+        /// changes their square only (event/TRIGGER.C and WORLDEV.C of both games; the Unity editor's
+        /// MapCreator.FinePositionIsData). UW1: change terrain (the area), set and check variable
+        /// (value bits, sum flag). UW2 also: teleport (arrival flags), hack (cycling floors' area),
+        /// inventory (worn), change from (area), oscillator (mode and direction), proximity (sides),
+        /// pit (height), and the pressure plates (pressed state, weight, floor stepping).
+        /// </summary>
+        public static bool FinePositionIsData(int item, GameKind game)
+        {
+            if (item == 0x185 || item == 0x18D || item == 0x18E) return true;
+            if (game != GameKind.UW2) return false;
+            switch (item)
+            {
+                case 0x181: case 0x183: case 0x18C: case 0x193:
+                case 0x195: case 0x196: case 0x197:
+                case 0x1A4: case 0x1A5: case 0x1B4: case 0x1B5:
+                    return true;
+            }
+            return false;
+        }
+
         /// <summary>Whether this object's quality and owner are a square on the map (triggers, teleports, delete object traps).</summary>
         public static bool HasTargetSquare(int item) { return IsTrigger(item) || IsTeleport(item) || IsDeleteTrap(item); }
 

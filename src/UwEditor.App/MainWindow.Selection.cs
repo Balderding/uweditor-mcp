@@ -305,8 +305,11 @@ namespace UwEditor.App
                 {
                     int tx, ty, fx, fy;
                     DropPoint(hit, out tx, out ty, out fx, out fy);
-                    dropFineX = fx; dropFineY = fy;
-                    vm.EditStatus = string.Format("Drop to move {0} to {1} (Esc cancels).", n == 1 && vm.SelectedObject >= 0 ? level.Objects[vm.SelectedObject].Name : n + " objects", FinePlace(tx, ty, fx, fy));
+                    // a trap whose fine place is a setting changes its square only: no eighth to mark
+                    bool squareOnly = vm.SelectedObject >= 0 && Triggers.FinePositionIsData(level.Objects[vm.SelectedObject].Item, level.Session.Kind);
+                    if (!squareOnly) { dropFineX = fx; dropFineY = fy; }
+                    vm.EditStatus = string.Format("Drop to move {0} to {1} (Esc cancels).", n == 1 && vm.SelectedObject >= 0 ? level.Objects[vm.SelectedObject].Name : n + " objects",
+                        squareOnly ? "(" + tx + ", " + ty + "), keeping its fine place, which is a setting" : FinePlace(tx, ty, fx, fy));
                     preview = DragPreview(level, tx, ty, fx, fy);
                 }
             }
@@ -328,11 +331,12 @@ namespace UwEditor.App
             {
                 var o = level.Objects[i];
                 if (!o.OnTile) continue;
-                int nx = o.TileX + dx, ny = o.TileY + dy, nfx = i == grabbed ? fx : o.FineX, nfy = i == grabbed ? fy : o.FineY;
+                bool takesFine = i == grabbed && !Triggers.FinePositionIsData(o.Item, level.Session.Kind);
+                int nx = o.TileX + dx, ny = o.TileY + dy, nfx = takesFine ? fx : o.FineX, nfy = takesFine ? fy : o.FineY;
                 if (nx < 0 || ny < 0 || nx > 63 || ny > 63 || level.Tiles[nx, ny].IsSolid) continue;
-                // as LevelEditor.MoveObject: the same height above the floor
+                // as LevelEditor.MoveObject: the same height above the floor (a trap or trigger keeps its height)
                 double above = Math.Max(0, o.WorldZ - level.FloorAt(o.TileX, o.TileY, (o.FineX + 0.5) / 8, (o.FineY + 0.5) / 8));
-                double y = level.FloorAt(nx, ny, (nfx + 0.5) / 8, (nfy + 0.5) / 8) + above;
+                double y = Triggers.HeightIsData(o.Item) ? o.WorldZ : level.FloorAt(nx, ny, (nfx + 0.5) / 8, (nfy + 0.5) / 8) + above;
                 d[i] = new Vector3((float)(nx + (nfx + 0.5) / 8 - o.WorldX), (float)(y - o.WorldZ), (float)(ny + (nfy + 0.5) / 8 - o.WorldY));
                 foreach (int c in o.Children) d[c] = d[i];
             }
@@ -389,11 +393,14 @@ namespace UwEditor.App
                         // within its own tile only the fine place (and the height on a slope) changes: it keeps its
                         // place in the tile's list, so the object list is only updated, not built again
                         if (i != grabbed) continue;
+                        // a trap whose fine place is a setting has nothing to change within its tile
+                        if (Triggers.FinePositionIsData(o.Item, e.Session.Kind)) continue;
                         var S = UltimateEditor.Uw1.Uw1Schemas.StaticObject;
                         int above = o.Z - e.FloorZ(o.TileX, o.TileY, o.FineX, o.FineY);
                         e.SetObjectField(i, S["Fine X"], fx);
                         e.SetObjectField(i, S["Fine Y"], fy);
-                        e.SetObjectField(i, S["Z"], Math.Max(0, Math.Min(127, e.FloorZ(nx, ny, fx, fy) + Math.Max(0, above))));
+                        if (!Triggers.HeightIsData(o.Item))
+                            e.SetObjectField(i, S["Z"], Math.Max(0, Math.Min(127, e.FloorZ(nx, ny, fx, fy) + Math.Max(0, above))));
                     }
                     else if (i == grabbed) e.MoveObjectAnywhere(i, nx, ny, fx, fy);
                     else e.MoveObjectAnywhere(i, nx, ny);

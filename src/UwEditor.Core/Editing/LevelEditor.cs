@@ -266,7 +266,8 @@ namespace UwEditor.Core.Editing
 
         /// <summary>
         /// Raises (or lowers) a tile's floor by steps, clamped to 0-15, and moves the objects lying
-        /// on it with it (z, 8 a step) so they stay on the floor.
+        /// on it with it (z, 8 a step) so they stay on the floor. Traps and triggers keep their
+        /// height, which is a setting (Triggers.HeightIsData).
         /// </summary>
         public bool RaiseFloor(int x, int y, int steps)
         {
@@ -278,6 +279,7 @@ namespace UwEditor.Core.Editing
                 Uw1Schemas.Tile["Floor height"].Set(data, nh, TileAt(x, y));
                 foreach (var o in Model.TileObjects(x, y))
                 {
+                    if (Triggers.HeightIsData(o.Item)) continue;
                     int at = LevelBlock.ObjectOffset(o.Index) + 2;
                     int w = data[at] | data[at + 1] << 8;
                     int z = Math.Max(0, Math.Min(127, (w & 0x7F) + d));
@@ -596,7 +598,11 @@ namespace UwEditor.Core.Editing
             FreeIndex(i);
         }
 
-        /// <summary>Moves an object lying on a tile to another tile, keeping its height above the floor (onFloor: on the floor there).</summary>
+        /// <summary>
+        /// Moves an object lying on a tile to another tile, keeping its height above the floor (onFloor: on
+        /// the floor there). Traps and triggers keep their height, and those whose fine place is a setting
+        /// keep it too (Triggers.HeightIsData, FinePositionIsData): for them only the square changes.
+        /// </summary>
         public void MoveObject(int index, int x, int y, int? fineX = null, int? fineY = null, bool onFloor = false)
         {
             var o = Model.Objects[index];
@@ -610,10 +616,12 @@ namespace UwEditor.Core.Editing
                 SetHead(x, y, index);
                 var S = Uw1Schemas.StaticObject;
                 int at = LevelBlock.ObjectOffset(index);
-                int fx = fineX ?? o.FineX, fy = fineY ?? o.FineY;
+                bool fineIsData = Triggers.FinePositionIsData(o.Item, Session.Kind);
+                int fx = fineIsData ? o.FineX : fineX ?? o.FineX, fy = fineIsData ? o.FineY : fineY ?? o.FineY;
                 S["Fine X"].Set(data, fx, at);
                 S["Fine Y"].Set(data, fy, at);
-                S["Z"].Set(data, Math.Max(0, Math.Min(127, FloorZ(x, y, fx, fy) + Math.Max(0, above))), at);
+                if (!Triggers.HeightIsData(o.Item))
+                    S["Z"].Set(data, Math.Max(0, Math.Min(127, FloorZ(x, y, fx, fy) + Math.Max(0, above))), at);
                 if (o.IsMobile) { Uw1Schemas.MobileObject["Home X"].Set(data, x, at); Uw1Schemas.MobileObject["Home Y"].Set(data, y, at); }
                 MoveAnimation(index, x, y);
             });
@@ -742,7 +750,8 @@ namespace UwEditor.Core.Editing
             SetNext(i, 0);
             if (!IsQuant(i)) SetLink(i, 0);
             var S = Uw1Schemas.StaticObject;
-            if (root && container < 0)
+            // a trap's or trigger's height is a setting (Triggers.HeightIsData): it keeps the copied one
+            if (root && container < 0 && !Triggers.HeightIsData(S["Item id"].Get(data, at)))
             {
                 int fx = S["Fine X"].Get(data, at), fy = S["Fine Y"].Get(data, at);
                 S["Z"].Set(data, Math.Max(0, Math.Min(127, FloorZ(x, y, fx, fy) + Math.Max(0, n.Above))), at);
@@ -773,10 +782,12 @@ namespace UwEditor.Core.Editing
                 if (index < LevelBlock.Mobiles) AddToActive(index);
                 var S = Uw1Schemas.StaticObject;
                 int at = LevelBlock.ObjectOffset(index);
-                int fx = fineX ?? 3, fy = fineY ?? 3;
+                // a trap taken out of a chain keeps its settings: its height always, its fine place where that is one
+                bool fineIsData = Triggers.FinePositionIsData(o.Item, Session.Kind);
+                int fx = fineIsData ? o.FineX : fineX ?? 3, fy = fineIsData ? o.FineY : fineY ?? 3;
                 S["Fine X"].Set(data, fx, at);
                 S["Fine Y"].Set(data, fy, at);
-                S["Z"].Set(data, FloorZ(x, y, fx, fy), at);
+                if (!Triggers.HeightIsData(o.Item)) S["Z"].Set(data, FloorZ(x, y, fx, fy), at);
                 if (o.IsMobile) { Uw1Schemas.MobileObject["Home X"].Set(data, x, at); Uw1Schemas.MobileObject["Home Y"].Set(data, y, at); }
             });
         }
