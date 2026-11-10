@@ -40,7 +40,12 @@ namespace UwEditor.Core.Tests
             Assert.Equal("autoexec", sections.Last());
             Assert.Contains("mount c \"/home/me/games/uw2\"", conf);
             Assert.Contains("\nUW2", conf.Replace("\r", ""));
-            Assert.Null(DosBoxConfig.FindGogConf(Path.Combine(Path.GetTempPath(), "no-such-folder-" + Guid.NewGuid())));
+            // FindGogConf also looks in the folder above: an empty one of our own, since the temp folder
+            // itself may hold another program's .conf
+            string empty = Path.Combine(Path.GetTempPath(), "uwedit-nogog-" + Guid.NewGuid().ToString("N").Substring(0, 8));
+            Directory.CreateDirectory(empty);
+            try { Assert.Null(DosBoxConfig.FindGogConf(Path.Combine(empty, "no-such-folder"))); }
+            finally { Directory.Delete(empty, true); }
             Assert.Throws<ArgumentException>(() => DosBoxConfig.Build(null, "C:\\a\"b", "UW.EXE"));
             Assert.Equal(new[] { "-conf", "x.conf", "-noconsole", "a b" }, DosBoxConfig.Arguments("x.conf", "-noconsole \"a b\""));
         }
