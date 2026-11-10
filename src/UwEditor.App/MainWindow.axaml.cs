@@ -73,6 +73,7 @@ namespace UwEditor.App
             }
             View.SizeChanged += (s, e) => UpdateGridLabels();
             BuildRecentMenu();
+            if (Settings.LoadProblem != null) vm.EditStatus = Settings.LoadProblem;
             Opened += (s, e) =>
             {
                 if (Program.OpenAtStart != null) OpenPathNow(Program.OpenAtStart);

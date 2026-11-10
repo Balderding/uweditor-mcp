@@ -114,24 +114,47 @@ namespace UwEditor.App
             foreach (var d in Directory.GetDirectories(from)) CopyFolder(d, Path.Combine(to, Path.GetFileName(d)));
         }
 
-        public static Settings Load()
+        /// <summary>Why the settings file could not be read at the last Load, or null: the editor says so once it is open.</summary>
+        [System.Text.Json.Serialization.JsonIgnore] public static string LoadProblem { get; private set; }
+
+        public static Settings Load() { return Load(PathOf()); }
+
+        /// <summary>
+        /// Reads the settings. A file that cannot be read (damaged, half written, edited by hand) is
+        /// kept beside as settings.json.bad before the defaults are used, so the next save does not
+        /// destroy what was in it, and LoadProblem says so.
+        /// </summary>
+        public static Settings Load(string p)
         {
+            LoadProblem = null;
             try
             {
-                string p = PathOf();
-                if (File.Exists(p)) return JsonSerializer.Deserialize<Settings>(File.ReadAllText(p)) ?? new Settings();
+                if (!File.Exists(p)) return new Settings();
+                var s = JsonSerializer.Deserialize<Settings>(File.ReadAllText(p));
+                if (s != null) return s;
+                throw new JsonException("the file holds no settings");
             }
-            catch (Exception) { }
+            catch (Exception e) when (e is JsonException || e is NotSupportedException || e is ArgumentException || e is InvalidOperationException)
+            {
+                string bad = p + ".bad";
+                try { File.Copy(p, bad, true); LoadProblem = "The settings file could not be read (" + e.Message + "). It was kept as " + bad + "; the defaults are used."; }
+                catch (Exception) { LoadProblem = "The settings file could not be read (" + e.Message + "); the defaults are used."; }
+            }
+            catch (Exception e) { LoadProblem = "The settings file could not be read (" + e.Message + "); the defaults are used."; }
             return new Settings();
         }
 
-        public void Save()
+        public void Save() { Save(PathOf()); }
+
+        /// <summary>Writes the settings through a temporary file, so a crash or a full disk never leaves half a file.</summary>
+        public void Save(string p)
         {
             try
             {
-                string p = PathOf();
                 Directory.CreateDirectory(Path.GetDirectoryName(p));
-                File.WriteAllText(p, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
+                string tmp = p + "." + Environment.ProcessId + ".tmp";
+                File.WriteAllText(tmp, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
+                File.Move(tmp, p, true);
             }
             catch (Exception) { }
         }

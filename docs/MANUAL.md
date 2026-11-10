@@ -3292,6 +3292,8 @@ the files themselves, so it can be shared without the game's data:
 
 In the editor's settings folder (`%APPDATA%\UwEditorAvalonia`, `~/.config/UwEditorAvalonia` on Linux):
 `settings.json`, `checkpoints`, `crashes` (crash logs), `running-PID.json` (while it runs),
+`settings.json.bad` (a settings file the editor could not read, kept when it started with the
+defaults instead; the status line says so),
 `Play test` and `Exhumed check` (copies of the game for those). Versions before the rename kept
 this folder in `UwEditorFree`; the first time this version starts, it moves that folder to the
 new name.

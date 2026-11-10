@@ -14,6 +14,33 @@ namespace UwEditor.App.Tests
     public class RecoveryTests
     {
         [AvaloniaFact]
+        public void A_damaged_settings_file_is_kept_aside_and_the_defaults_used()
+        {
+            string dir = Path.Combine(Path.GetTempPath(), "uwedit-settings-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            string p = Path.Combine(dir, "settings.json");
+            try
+            {
+                File.WriteAllText(p, "{ \"Grid\": tru");   // cut off half way
+                var s = Settings.Load(p);
+                Assert.NotNull(s);
+                Assert.NotNull(Settings.LoadProblem);
+                Assert.Contains("settings.json.bad", Settings.LoadProblem);
+                Assert.Equal("{ \"Grid\": tru", File.ReadAllText(p + ".bad"));
+                // the next save writes a whole file, through a temporary one that does not stay
+                s.Save(p);
+                Assert.NotNull(Settings.Load(p));
+                Assert.Null(Settings.LoadProblem);
+                Assert.Empty(Directory.GetFiles(dir, "*.tmp"));
+                // wrong types are a damaged file too
+                File.WriteAllText(p, "{ \"Grid\": \"yes\" }");
+                Settings.Load(p);
+                Assert.NotNull(Settings.LoadProblem);
+            }
+            finally { Directory.Delete(dir, true); }
+        }
+
+        [AvaloniaFact]
         public void The_settings_folder_of_the_old_name_moves_to_the_new_one()
         {
             string root = Path.Combine(Path.GetTempPath(), "uwedit-rename-" + Guid.NewGuid().ToString("N"));
