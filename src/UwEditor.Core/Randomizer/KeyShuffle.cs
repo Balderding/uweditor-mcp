@@ -876,6 +876,7 @@ namespace UwEditor.Core.Randomizer
         public static void Apply(KeyShuffleResult r, LevelEdits edits)
         {
             if (!r.Success) throw new InvalidOperationException("There is no successful shuffle to apply.");
+            edits.RefuseDamagedLevels("The key shuffle");
             foreach (var kv in r.After)
             {
                 var e = edits.For(kv.Key);

@@ -61,9 +61,20 @@ The status line names them, and **File ▸ Check and repair the saved game…** 
 **Damaged files.** A game file that is cut short or holds numbers that point outside it (a
 bad download, a save written halfway, a file from elsewhere) is refused with a message that
 names it, such as "LEV.ARK is damaged: block 7 runs past the end of the file". Put back the
-file (its `.BKP` or `.ORIG` copy, or the game's own) and open the game again. A level whose
-object free lists are damaged can still be looked at, but adding and deleting objects there
-is refused until **Level ▸ Fixes** rebuilds the lists.
+file (its `.BKP` or `.ORIG` copy, or the game's own) and open the game again.
+
+What can be read is opened, and what cannot is said, not hidden. A level whose block is there
+but is no level shows as *(damaged)* in the level list, not *(empty)*; the status line lists
+damaged levels, string blocks that could not be read and a saved player that could not be read
+when the game opens; **Level ▸ World check…** lists damaged levels first. The randomizer
+(scatter, item shuffle and swap, monster swap, challenges) and the item cleaner refuse to
+apply while a level is damaged, since they would leave it out.
+
+A level whose object lists fail the game's check (a loop, an object in two lists, free lists
+that disagree) can still be looked at and its tiles painted, but adding, deleting, moving,
+pasting and putting objects inside are refused until **Level ▸ Fixes** repairs the lists.
+Saving refuses a level that passed the check when it was read and fails it now, and writes
+nothing; undo the last changes there.
 
 **Unsaved work.** Opening another game or closing the editor asks first when anything is
 unsaved: levels and their maps, the player, strings and conversations, global variables,

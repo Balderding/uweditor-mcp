@@ -64,6 +64,8 @@ namespace UwEditor.App
     {
         GameSession session;
         List<LevelSlot> slots = new List<LevelSlot>();
+        /// <summary>Every level slot of the open game, as read when it was opened.</summary>
+        public IReadOnlyList<LevelSlot> AllSlots { get { return slots; } }
         List<LevelSlot> levelsInWorld = new List<LevelSlot>();
         List<string> worlds = new List<string>();
         int worldIndex = -1;

@@ -481,6 +481,7 @@ namespace UwEditor.Core.Randomizer
 
         public static void Apply(MonsterSwapResult r, LevelEdits edits, int seed)
         {
+            edits.RefuseDamagedLevels("The monster swap");
             edits.Together(() =>
             {
                 foreach (var kv in r.ByLevel)

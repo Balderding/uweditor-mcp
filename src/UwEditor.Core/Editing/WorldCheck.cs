@@ -58,6 +58,13 @@ namespace UwEditor.Core.Editing
             }
             foreach (var slot in s.LevelSlots())
             {
+                if (slot.Damage != null)
+                {
+                    // a level that cannot be read is left out of every check above: say so first
+                    found.Add(new WorldFinding { Kind = "damaged", Severity = 2, Level = slot.Level,
+                        Text = string.Format("{0} cannot be read, so nothing in it was checked: {1}.", slot.Name, slot.Damage) });
+                    continue;
+                }
                 if (!slot.Present) continue;
                 LevelModel m;
                 try { m = level(slot.Level); } catch (Exception) { continue; }

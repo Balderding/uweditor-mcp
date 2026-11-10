@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using UltimateEditor.Games;
 
 namespace UwEditor.Core
@@ -46,6 +47,12 @@ namespace UwEditor.Core
         /// <summary>Reads the graphics the view draws again (after OBJECTS.GR or the textures were saved).</summary>
         public void ReloadGraphics() { Graphics = GameGraphics.Load(DataFolder, Kind); }
         public PlayerDat Player { get; private set; }
+        /// <summary>
+        /// What could not be read when the game was opened and was left out (a string block, the
+        /// saved player), as messages for the status line. Damaged levels are on their slots
+        /// (LevelSlot.Damage, DamagedLevels).
+        /// </summary>
+        public readonly List<string> ReadProblems = new List<string>();
         /// <summary>The 3D models built into UW.EXE / UW2.EXE, or null when the executable is missing.</summary>
         public UltimateEditor.Uw1.Uw1ExeModels ExeModels { get; private set; }
         /// <summary>COMOBJ.DAT's render field per item: 0 sprite, 1 critter, 2 model, 3 texture-mapped model.</summary>
@@ -140,6 +147,7 @@ namespace UwEditor.Core
             s.LevArk = Archive.Load(s.LevArkPath, s.Kind);
             s.Strings = GameStrings.Load(data);
             s.Names = ObjectNames.From(s.Strings);
+            s.ReadProblems.AddRange(s.Strings.Problems);
             s.Graphics = GameGraphics.Load(data, s.Kind);
             string comobj = GameProfile.Find(data, "COMOBJ.DAT");
             s.RenderTypes = ObjectModels.ReadRenderTypes(comobj != null ? File.ReadAllBytes(comobj) : null);
@@ -157,7 +165,11 @@ namespace UwEditor.Core
                 if (pd != null)
                 {
                     try { s.Player = PlayerDat.Parse(File.ReadAllBytes(pd), s.Kind); }
-                    catch (Exception) { s.Player = null; }
+                    catch (Exception e)
+                    {
+                        s.Player = null;
+                        s.ReadProblems.Add("PLAYER.DAT could not be read, so the player is left out (" + e.Message + ")");
+                    }
                 }
             }
             s.ExePath = StartPosition.ExePath(data, s.Kind);
@@ -258,15 +270,30 @@ namespace UwEditor.Core
             {
                 int b = Profile.LevelBlock(l);
                 bool present = false;
+                string damage = null;
                 if (LevArk.Has(b))
                 {
-                    byte[] block = LevArk.Read(b);
-                    present = block != null && block.Length >= LevelBlock.MagicAt + 2 && new LevelBlock(block, Kind).MagicOk;
+                    // a block that is there but is no level: damaged, not an empty slot
+                    try
+                    {
+                        byte[] block = LevArk.Read(b);
+                        if (block == null || block.Length == 0) { }
+                        else if (block.Length < LevelBlock.MagicAt + 2) damage = "its block is " + block.Length + " bytes, a level needs " + Profile.LevelBlockSize;
+                        else if (!new LevelBlock(block, Kind).MagicOk) damage = "its block does not end with a level's mark (0x" + new LevelBlock(block, Kind).W16(LevelBlock.MagicAt).ToString("X4") + ", not 0x" + LevelBlock.Magic.ToString("X4") + ")";
+                        else present = true;
+                    }
+                    catch (Exception e) when (e is GameFileException || e is IOException || e is InvalidDataException || e is IndexOutOfRangeException || e is ArgumentException)
+                    {
+                        damage = "its block cannot be read (" + e.Message + ")";
+                    }
                 }
-                list.Add(new LevelSlot(this, l, present));
+                list.Add(new LevelSlot(this, l, present, damage));
             }
             return list;
         }
+
+        /// <summary>The slots whose block is there but is no readable level (LevelSlot.Damage).</summary>
+        public List<LevelSlot> DamagedLevels() { return LevelSlots().Where(x => x.Damage != null).ToList(); }
 
         /// <summary>Takes a rewritten LEV.ARK (after saving levels).</summary>
         public void ReplaceLevArk(byte[] bytes) { LevArk = Archive.Open(bytes, Kind); }
@@ -316,15 +343,19 @@ namespace UwEditor.Core
         public bool Present { get; }
         public int World { get; }
         public string Name { get; }
+        /// <summary>Why a slot whose block is there is no readable level (damaged), or null.</summary>
+        public string Damage { get; }
 
-        public LevelSlot(GameSession s, int level, bool present)
+        public LevelSlot(GameSession s, int level, bool present, string damage = null)
         {
             Level = level;
             Present = present;
+            Damage = damage;
             World = s.Profile.WorldOf(level);
             if (s.Kind == GameKind.UW1) Name = "Level " + level;
             else Name = string.Format("Level {0}  ·  slot {1}", s.Profile.PlaceInWorld(level), level);
-            if (!present) Name += " (empty)";
+            if (damage != null) Name += " (damaged)";
+            else if (!present) Name += " (empty)";
         }
 
         public override string ToString() { return Name; }

@@ -261,6 +261,16 @@ namespace UwEditor.App
             s.Pictures.Saved += OnPicturesSaved;
             CheckpointsFor(s);
             CheckSaveAtOpen(s);
+            ReportDamageAtOpen(s);
+        }
+
+        /// <summary>What could not be read is said, not hidden: damaged levels, string blocks, the saved player.</summary>
+        void ReportDamageAtOpen(GameSession s)
+        {
+            var said = vm.AllSlots.Where(d => d.Damage != null).Select(d => d.Name.Replace(" (damaged)", "") + " is damaged (" + d.Damage + ")").Concat(s.ReadProblems).ToList();
+            if (said.Count == 0) return;
+            string text = "Damaged: " + string.Join("; ", said.Take(4)) + (said.Count > 4 ? "; and " + (said.Count - 4) + " more" : "") + ". Put back the file (its .BKP or .ORIG copy) to have them again.";
+            vm.EditStatus = string.IsNullOrEmpty(vm.EditStatus) ? text : vm.EditStatus + " " + text;
         }
 
         void BuildRecentMenu()

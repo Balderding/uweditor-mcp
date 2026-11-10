@@ -125,6 +125,13 @@ namespace UwEditor.Core.Tests
                 Directory.CreateDirectory(Path.Combine(Folder, "DATA"));
                 foreach (var f in Directory.GetFiles(Path.Combine(game, "DATA"))) File.Copy(f, Path.Combine(Folder, "DATA", Path.GetFileName(f)));
                 foreach (var f in Directory.GetFiles(game, "*.EXE")) File.Copy(f, Path.Combine(Folder, Path.GetFileName(f)));
+                // the saved games too, for the tests that damage one
+                foreach (var save in Directory.GetDirectories(game, "SAVE*"))
+                {
+                    string to = Path.Combine(Folder, Path.GetFileName(save));
+                    Directory.CreateDirectory(to);
+                    foreach (var f in Directory.GetFiles(save)) File.Copy(f, Path.Combine(to, Path.GetFileName(f)));
+                }
             }
             public string Data(string name) { return Path.Combine(Folder, "DATA", name); }
             public void Dispose() { try { Directory.Delete(Folder, true); } catch (Exception) { } }

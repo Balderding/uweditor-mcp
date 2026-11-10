@@ -232,6 +232,7 @@ namespace UwEditor.Core.Editing
         /// </summary>
         public static int Apply(LevelEdits edits, CleanPlan plan)
         {
+            edits.RefuseDamagedLevels("The item cleaner");
             int removed = 0;
             foreach (var g in plan.Remove.GroupBy(c => c.Level))
             {

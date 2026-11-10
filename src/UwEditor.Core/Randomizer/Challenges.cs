@@ -459,6 +459,7 @@ namespace UwEditor.Core.Randomizer
         public static ChallengeApplied Apply(ChallengeResult r, LevelEdits edits, Func<int, string, int, string> setTable, PlayerSheet player, string label)
         {
             if (r.Refused != null) throw new InvalidOperationException(r.Refused);
+            edits.RefuseDamagedLevels("Challenges");
             var a = new ChallengeApplied { Label = label };
             var w = r.World;
             // what lies outside the levels' undo: the automaps, the creature table, the player

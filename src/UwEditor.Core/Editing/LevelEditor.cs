@@ -857,6 +857,17 @@ namespace UwEditor.Core.Editing
 
         public LevelEdits(GameSession s) { Session = s; }
 
+        /// <summary>
+        /// Work across the whole world (the randomizer, the item cleaner) reads every level; one it
+        /// cannot read would be left out without a word. This refuses instead, naming the levels.
+        /// </summary>
+        public void RefuseDamagedLevels(string what)
+        {
+            var bad = Session.DamagedLevels();
+            if (bad.Count > 0)
+                throw new InvalidOperationException(what + " needs every level, and " + string.Join("; ", bad.Select(b => b.Name + ": " + b.Damage)) + ". Put back LEV.ARK (its .BKP or .ORIG copy) first.");
+        }
+
         int groupNow, lastGroup;
         // each group's levels (those that took a step of it), and what runs after it is undone or redone
         readonly Dictionary<int, SortedSet<int>> groupLevels = new Dictionary<int, SortedSet<int>>();

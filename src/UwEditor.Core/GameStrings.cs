@@ -13,6 +13,9 @@ namespace UwEditor.Core
     {
         readonly Dictionary<int, string[]> blocks = new Dictionary<int, string[]>();
 
+        /// <summary>The blocks that could not be read (each is empty in Block), as messages for the status line.</summary>
+        public readonly List<string> Problems = new List<string>();
+
         public static GameStrings Load(string dataFolder)
         {
             var g = new GameStrings();
@@ -31,7 +34,11 @@ namespace UwEditor.Core
                 foreach (var b in list.Item1)
                 {
                     try { g.blocks[b.BlockNumber] = StringsPak.ReadStrings(fs, b, nodes.Item1).ToArray(); }
-                    catch (Exception) { g.blocks[b.BlockNumber] = new string[0]; }
+                    catch (Exception e)
+                    {
+                        g.blocks[b.BlockNumber] = new string[0];
+                        g.Problems.Add("STRINGS.PAK block " + b.BlockNumber + " could not be read (" + e.Message + ")");
+                    }
                 }
             }
             return g;

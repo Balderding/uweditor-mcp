@@ -1150,6 +1150,7 @@ namespace UwEditor.Core.Randomizer
         /// <summary>Applies a result to the level editors, one undoable change per level.</summary>
         public static void Apply(ShuffleResult r, LevelEdits edits, int seed)
         {
+            edits.RefuseDamagedLevels("The item shuffle");
             string label = "Shuffle item properties (seed " + seed + ")";
             edits.Together(() =>
             {
