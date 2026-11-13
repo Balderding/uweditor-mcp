@@ -43,8 +43,6 @@ namespace UwEditor.App
             Title = "Automatic zones";
             Width = 980; Height = 760; MinWidth = 640; MinHeight = 480;
             WindowStartupLocation = WindowStartupLocation.CenterOwner;
-            opt.MaxClimb = main.ZoneClimb;
-            opt.JumpSpellClimb = 2 * opt.MaxClimb;
 
             var top = new StackPanel { Spacing = 6 };
             top.Children.Add(new TextBlock { Text = "Automatic zones", FontSize = 16, FontWeight = FontWeight.SemiBold });

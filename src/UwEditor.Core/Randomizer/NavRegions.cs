@@ -5,21 +5,24 @@ using UwEditor.Core.Editing;
 
 namespace UwEditor.Core.Randomizer
 {
-    /// <summary>The movement assumptions of the automatic zones (Karl's heuristics; ceilings are ignored).</summary>
+    /// <summary>The movement assumptions of the automatic zones: the game's jump (<see cref="JumpModel"/>); ceilings are ignored.</summary>
     public sealed class NavOptions
     {
-        /// <summary>The highest climb between touching tile edges, in floor steps, both ways inside a region (ZoneFlood's rule).</summary>
-        public int MaxClimb = ZoneFlood.DefaultMaxClimb;
-        /// <summary>The highest climb with the jump spell (Leap halves gravity, MB_LEAP in motion/PHYSICS.C do_player_input, so a jump goes about twice as high).</summary>
-        public int JumpSpellClimb = 2 * ZoneFlood.DefaultMaxClimb;
+        /// <summary>
+        /// The tick length the jumps are worked out at, in 1/256 s: the time of one frame, at most
+        /// 64 (motion/PLAYMOVE.C check_physics). Longer ticks give lower, shorter jumps, so a
+        /// larger number is the more cautious. 16 is about 16 frames a second.
+        /// </summary>
+        public int TickLength = 16;
+        /// <summary>What a gap jump is asked to spare, in eighths of a tile (2: a quarter tile, one side's footprint), for a take-off that is not on the last cell.</summary>
+        public int JumpMargin = 2;
         /// <summary>Gap jumps over lower ground are made at all (kind "jump").</summary>
         public bool GapJumps = true;
-        /// <summary>The widest gap, in open tiles, a running jump crosses with nothing (Karl: 2).</summary>
-        public int GapTiles = 2;
-        /// <summary>The widest gap with the jump spell (Karl: 3).</summary>
-        public int JumpSpellGapTiles = 3;
-        /// <summary>Gap jumps along the diagonals too (a diagonal tile counts as 1.41).</summary>
+        /// <summary>Gap jumps along the diagonals too (a diagonal tile is 1.41 long, and the tiles beside the line must be clear as well).</summary>
         public bool DiagonalJumps = false;
+
+        /// <summary>The highest step in floor levels a jump from a floor of this level gets onto, with nothing or with the jump spell.</summary>
+        public int Climb(int floor, bool spell) { return JumpModel.Climb(spell, floor, Math.Max(1, Math.Min(64, TickLength))); }
         /// <summary>Teleports between levels never merge zones (each level's zones stay apart).</summary>
         public bool CutAtLevelChanges = true;
         /// <summary>Groups of regions with one neighbour and no objects (empty pits and ledges) go into that neighbour's zone.</summary>
@@ -171,10 +174,12 @@ namespace UwEditor.Core.Randomizer
     /// <summary>
     /// The walkable regions of the levels and the ways between them, read from the geometry, the
     /// doors and the trigger chains (Phase A of the automatic zones). Movement is heuristic, after
-    /// Karl's rules: inside a region every step climbs at most MaxClimb floor steps both ways
-    /// (ZoneFlood's rule, compared at the touching edges); a drop is free; a climb above that needs
-    /// the jump spell, and above JumpSpellClimb levitation; a straight gap of lower ground of up to
-    /// GapTiles tiles is jumped, JumpSpellGapTiles with the jump spell. Ceilings are ignored (UW1
+    /// the game's jump (JumpModel): inside a region every step is one a jump gets onto, both ways
+    /// (compared at the touching edges; 3 floor steps from a floor of level 10 or lower, 2 from
+    /// 11, 1 from 12 up, at the default tick length); a drop is free; a climb above that needs
+    /// the jump spell (6, 4 and 2), and above that levitation; a gap is jumped where the flight
+    /// clears every tile under it and comes down on the far floor, higher or lower, with a sprint
+    /// jump where there is room to run up, else the standing long jump. Ceilings are ignored (UW1
     /// has no area cut off by a low one). Water joins regions (UW1 swimming is normal movement,
     /// motion/PHYSICS.C parse_player_terr) but is counted for waterwalk; lava regions stand apart
     /// and entering one needs hazard:lava.
@@ -297,9 +302,9 @@ namespace UwEditor.Core.Randomizer
                         if (!n.Open(nx, ny)) continue;
                         int b = ny * 64 + nx;
                         if (n.Door[b] || n.Lava[a] != n.Lava[b]) continue;
-                        int up, down;
-                        if (!Rise(m, x, y, d, out up) || !Rise(m, nx, ny, (d + 2) & 3, out down)) continue;
-                        if (up <= Options.MaxClimb && down <= Options.MaxClimb) parent[find(a)] = find(b);
+                        int up, down, fa, fb;
+                        if (!Rise(m, x, y, d, out up, out fa) || !Rise(m, nx, ny, (d + 2) & 3, out down, out fb)) continue;
+                        if (up <= Options.Climb(fa, false) && down <= Options.Climb(fb, false)) parent[find(a)] = find(b);
                     }
                 }
             var at = new int[64 * 64];
@@ -340,10 +345,10 @@ namespace UwEditor.Core.Randomizer
             return n;
         }
 
-        /// <summary>Whether (x, y) is open towards dir, and the climb from its edge into the neighbour (negative going down).</summary>
-        static bool Rise(LevelModel m, int x, int y, int dir, out int rise)
+        /// <summary>Whether (x, y) is open towards dir, the climb from its edge into the neighbour (negative going down), and the floor the climb starts from.</summary>
+        static bool Rise(LevelModel m, int x, int y, int dir, out int rise, out int floor)
         {
-            rise = 0;
+            rise = 0; floor = 0;
             int nx = x + Dx[dir], ny = y + Dy[dir];
             if (nx < 0 || ny < 0 || nx > 63 || ny > 63) return false;
             var a = m.Tiles[x, y];
@@ -353,15 +358,17 @@ namespace UwEditor.Core.Randomizer
             ZoneFlood.EdgeHeights(a, dir, out alo, out ahi);
             ZoneFlood.EdgeHeights(b, (dir + 2) & 3, out blo, out bhi);
             rise = blo - ahi;
+            floor = ahi;
             return true;
         }
 
         /// <summary>The geometric part of a step: free, a drop, the jump spell or levitation.</summary>
-        string ClimbRequirement(int rise, out string kind)
+        string ClimbRequirement(int rise, int floor, out string kind)
         {
-            if (rise <= Options.MaxClimb) { kind = rise < -Options.MaxClimb ? "drop" : "walk"; return "free"; }
+            // a drop: deeper than a jump from the bottom gets back up
+            if (rise <= Options.Climb(floor, false)) { kind = rise < 0 && -rise > Options.Climb(floor + rise, false) ? "drop" : "walk"; return "free"; }
             kind = "climb";
-            return rise <= Options.JumpSpellClimb ? "spell:jump" : "spell:levitate";
+            return rise <= Options.Climb(floor, true) ? "spell:jump" : "spell:levitate";
         }
 
         void AddEdge(NavEdge e) { Edges.Add(e); }
@@ -381,11 +388,11 @@ namespace UwEditor.Core.Randomizer
                         if (!n.Open(nx, ny)) continue;
                         int b = ny * 64 + nx;
                         if (at[b] == at[a]) continue;
-                        int rise, back;
-                        if (!Rise(m, x, y, d, out rise) || !Rise(m, nx, ny, (d + 2) & 3, out back)) continue;
+                        int rise, back, floor, backFloor;
+                        if (!Rise(m, x, y, d, out rise, out floor) || !Rise(m, nx, ny, (d + 2) & 3, out back, out backFloor)) continue;
                         string kind;
                         var req = new List<string>();
-                        string geo = ClimbRequirement(rise, out kind);
+                        string geo = ClimbRequirement(rise, floor, out kind);
                         req.Add(geo);
                         var ra = Regions[at[a]];
                         var rb = Regions[at[b]];
@@ -402,6 +409,17 @@ namespace UwEditor.Core.Randomizer
             if (Options.GapJumps) GapJumps(n);
         }
 
+        /// <summary>
+        /// The jumps over lower ground (JumpModel). From each tile and along each direction the
+        /// flight of each jump the player has there is followed: the standing long jump, the
+        /// sprint jump where the tiles behind give the run-up, and both with the jump spell.
+        /// The player's centre leaves a quarter tile past the edge (the back corners still on
+        /// the ledge) and he lands when the front corners are over the far floor, less the
+        /// margin. A tile under the flight must lie below the feet for as long as the footprint
+        /// is over it; the far floor is reached when the feet are still at or above it on
+        /// arrival (on the way up: within the step the jump climbs). A jump that would carry
+        /// too far is taken earlier or slower: that is not checked.
+        /// </summary>
         void GapJumps(LevelNav n)
         {
             var m = n.M;
@@ -410,6 +428,9 @@ namespace UwEditor.Core.Randomizer
             foreach (var e in Edges) if (e.Level == m.Level && e.Requires == "free") free.Add((long)e.From << 32 | (uint)e.To);
             var dirs = new List<int[]> { new[] { 0, 1 }, new[] { 1, 0 }, new[] { 0, -1 }, new[] { -1, 0 } };
             if (Options.DiagonalJumps) { dirs.Add(new[] { 1, 1 }); dirs.Add(new[] { 1, -1 }); dirs.Add(new[] { -1, 1 }); dirs.Add(new[] { -1, -1 }); }
+            int dt = Math.Max(1, Math.Min(64, Options.TickLength));
+            double margin = Math.Max(0, Options.JumpMargin) / 8.0, runUp = JumpModel.RunUp(dt);
+            double t0 = JumpModel.Radius - margin / 2;       // the centre past the edge at the take-off
             var best = new Dictionary<long, NavEdge>();
             for (int y = 0; y < 64; y++)
                 for (int x = 0; x < 64; x++)
@@ -424,45 +445,83 @@ namespace UwEditor.Core.Randomizer
                         int nearLo, nearHi;
                         if (diag) { nearLo = LevelGeometry.CornerHeights(ta).Min(); nearHi = LevelGeometry.CornerHeights(ta).Max(); if (ta.Type != TileType.Open && ta.Type < TileType.SlopeUpN) continue; }
                         else { if (!ZoneFlood.IsSideOpen(ta.Type, card)) continue; ZoneFlood.EdgeHeights(ta, card, out nearLo, out nearHi); }
-                        int maxGap = Options.JumpSpellGapTiles;
-                        for (int k = 1; k <= maxGap + 1; k++)
+                        // nothing to jump over: the next tile is not lower
+                        int fx = x + d[0], fy = y + d[1];
+                        if (!n.Open(fx, fy) || LevelGeometry.CornerHeights(m.Tiles[fx, fy]).Max() >= nearLo) continue;
+                        double len = diag ? 1.4142 : 1;
+                        // the run-up: this tile and the tiles straight behind it in the same region
+                        double room = len;
+                        for (int k = 1; room < runUp; k++)
                         {
-                            int tx = x + d[0] * k, ty = y + d[1] * k;
-                            if (!n.Open(tx, ty)) break;
-                            int tk = ty * 64 + tx;
-                            if (n.Door[tk]) break;
-                            var tt = m.Tiles[tx, ty];
-                            if (diag ? tt.Type != TileType.Open && tt.Type < TileType.SlopeUpN : !ZoneFlood.IsSideOpen(tt.Type, (card + 2) & 3)) break;
-                            int hi = LevelGeometry.CornerHeights(tt).Max();
-                            if (hi < nearLo)
+                            int bx = x - d[0] * k, by = y - d[1] * k;
+                            if (bx < 0 || by < 0 || bx > 63 || by > 63 || at[by * 64 + bx] != at[a]) break;
+                            room += len;
+                        }
+                        for (int pass = 0; pass < 4; pass++)
+                        {
+                            var kind = (pass & 1) == 0 ? JumpKind.Standing : JumpKind.Sprint;
+                            bool leap = pass >= 2;
+                            if (kind == JumpKind.Sprint && room < runUp) continue;
+                            // the take-off floor: its low side for the heights, its high side for the cut of the jump on high floors
+                            double top = JumpModel.PeakAt(kind, leap, nearHi, dt);
+                            int climb = JumpModel.Climb(leap, nearHi, dt);
+                            for (int k = 1; k <= 14; k++)
                             {
-                                // lower ground: part of the gap, if the jump goes on over it
+                                int tx = x + d[0] * k, ty = y + d[1] * k;
+                                if (!n.Open(tx, ty)) break;
+                                int tk = ty * 64 + tx;
+                                if (n.Door[tk]) break;
+                                var tt = m.Tiles[tx, ty];
+                                if (diag ? tt.Type != TileType.Open && tt.Type < TileType.SlopeUpN : !ZoneFlood.IsSideOpen(tt.Type, (card + 2) & 3)) break;
+                                double start = (k - 1) * len;                     // the gap so far
+                                if (diag)
+                                {
+                                    // the footprint also crosses the two tiles beside the corner it goes through
+                                    double sa = Math.Max(0, start - len / 2 - JumpModel.Radius - t0), sb = start + len / 2 + JumpModel.Radius - t0;
+                                    if (!Below(n, tx, ty - d[1], nearLo, sa, sb, kind, leap, nearHi, dt) || !Below(n, tx - d[0], ty, nearLo, sa, sb, kind, leap, nearHi, dt)) break;
+                                }
+                                if (k > 1)
+                                {
+                                    // landing here: the front corners over this floor, the feet not under it
+                                    int farLo, farHi;
+                                    if (diag) farLo = farHi = LevelGeometry.CornerHeights(tt).Max();
+                                    else ZoneFlood.EdgeHeights(tt, (card + 2) & 3, out farLo, out farHi);
+                                    int dh = farHi - nearLo;
+                                    double arrive = Math.Max(0, start - 2 * JumpModel.Radius + margin);
+                                    bool lands = arrive <= top ? dh <= climb : JumpModel.Height(arrive, kind, leap, nearHi, dt) >= dh;
+                                    int from = at[a], to = at[tk];
+                                    if (lands && to >= 0 && to != from && !free.Contains((long)from << 32 | (uint)to))
+                                    {
+                                        string req = leap ? "spell:jump" : "free";
+                                        if (n.Lava[tk] && !n.Lava[a]) req = req == "free" ? "hazard:lava" : req + " & hazard:lava";
+                                        long key = (long)from << 32 | (uint)to;
+                                        NavEdge old;
+                                        if (!best.TryGetValue(key, out old) || (old.Requires.Contains("spell:jump") && !leap))
+                                            best[key] = new NavEdge
+                                            {
+                                                From = from, To = to, Kind = "jump", Requires = req, Level = m.Level, X = x, Y = y,
+                                                Notes = string.Format("{0} over {1} tile{2} to ({3}, {4}){5}{6}", kind == JumpKind.Sprint ? "sprint jump" : "standing long jump", k - 1, k == 2 ? "" : "s", tx, ty,
+                                                    dh == 0 ? "" : dh > 0 ? ", " + dh + " up" : ", " + -dh + " down", diag ? ", diagonal" : ""),
+                                            };
+                                        else if (old.X != x || old.Y != y || !old.Notes.Contains("(" + tx + ", " + ty + ")")) old.Count++;
+                                    }
+                                }
+                                // flying on over it
                                 if (!diag && !ZoneFlood.IsSideOpen(tt.Type, card)) break;
-                                continue;
+                                if (!Below(n, tx, ty, nearLo, Math.Max(0, start - JumpModel.Radius - t0), start + len + JumpModel.Radius - t0, kind, leap, nearHi, dt)) break;
                             }
-                            int gaps = k - 1;
-                            if (gaps == 0) break;
-                            int farLo, farHi;
-                            if (diag) farLo = LevelGeometry.CornerHeights(tt).Min();
-                            else ZoneFlood.EdgeHeights(tt, (card + 2) & 3, out farLo, out farHi);
-                            if (farLo > nearHi + Options.MaxClimb) break;
-                            int from = at[a], to = at[tk];
-                            if (to < 0 || to == from || free.Contains((long)from << 32 | (uint)to)) break;
-                            double len = diag ? gaps * 1.4142 : gaps;
-                            string req = len <= Options.GapTiles + 0.01 ? "free" : len <= Options.JumpSpellGapTiles + 0.01 ? "spell:jump" : null;
-                            if (req == null) break;
-                            if (n.Lava[tk] && !n.Lava[a]) req = req == "free" ? "hazard:lava" : req + " & hazard:lava";
-                            long key = (long)from << 32 | (uint)to;
-                            NavEdge old;
-                            bool better = !best.TryGetValue(key, out old) || (old.Requires != "free" && req == "free");
-                            if (better)
-                                best[key] = new NavEdge { From = from, To = to, Kind = "jump", Requires = req, Level = m.Level, X = x, Y = y, Notes = string.Format("gap of {0} tile{1} to ({2}, {3}){4}", gaps, gaps == 1 ? "" : "s", tx, ty, diag ? ", diagonal" : "") };
-                            else old.Count++;
-                            break;
                         }
                     }
                 }
             Edges.AddRange(best.Values);
+        }
+
+        /// <summary>Whether a tile lies below the feet of a jump while the footprint is over it: from xa to xb tiles on from the take-off (a curve that only bends down is lowest at one of the ends).</summary>
+        static bool Below(LevelNav n, int x, int y, int takeOff, double xa, double xb, JumpKind kind, bool leap, int floor, int dt)
+        {
+            if (!n.Open(x, y) || n.Door[y * 64 + x]) return false;
+            int dh = LevelGeometry.CornerHeights(n.M.Tiles[x, y]).Max() - takeOff;
+            return dh < JumpModel.Height(xa, kind, leap, floor, dt) && dh < JumpModel.Height(xb, kind, leap, floor, dt);
         }
 
         // ---------------------------------------------------------------- triggers

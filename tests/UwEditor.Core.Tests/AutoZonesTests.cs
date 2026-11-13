@@ -154,9 +154,9 @@ namespace UwEditor.Core.Tests
             var jumps = NavGraph.Build(s, l => s.LoadLevel(l), new NavOptions(), new[] { 1 });
             Assert.True(jumps.EdgeCount("jump") > 0);
             Assert.Equal(noJumps.Regions.Count, jumps.Regions.Count);
-            var flat = NavGraph.Build(s, l => s.LoadLevel(l), new NavOptions { MaxClimb = 15 }, new[] { 1 });
-            Assert.True(flat.Regions.Count < jumps.Regions.Count);
-            Assert.Equal(0, flat.EdgeCount("climb"));
+            // longer ticks: lower jumps (2 floor steps, not 3), so more regions
+            var slow = NavGraph.Build(s, l => s.LoadLevel(l), new NavOptions { TickLength = 64 }, new[] { 1 });
+            Assert.True(slow.Regions.Count > jumps.Regions.Count);
             // cut at level changes: off joins the main areas of levels 1 and 2 into one zone
             var cut = AutoZones.FromGraph(s, l => s.LoadLevel(l), NavGraph.Build(s, l => s.LoadLevel(l), new NavOptions { CutAtLevelChanges = false }), null);
             Assert.Contains(cut.Set.Zones, z => cut.Set.LevelsOf(z.Id).Count > 1);

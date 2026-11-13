@@ -21,7 +21,7 @@ namespace UwEditor.App
             var auto = OpenAutoZones;
             if (apply != null) { nav = apply.Options.Nav.Clone(); abil = apply.Options.Logic.Clone(); from = "the Apply window's options"; }
             else if (auto != null) { nav = auto.MovementOptions.Clone(); abil = auto.LogicOptions.Clone(); from = "the Automatic zones window's options"; }
-            else { nav = new NavOptions { MaxClimb = ZoneClimb }; nav.JumpSpellClimb = 2 * nav.MaxClimb; abil = new AbilityOptions(); from = "the default options"; }
+            else { nav = new NavOptions(); abil = new AbilityOptions(); from = "the default options"; }
         }
 
         /// <summary>A solve over time set up on the UI thread (options, the zoning's copy, the levels as they are now), to run on any thread.</summary>

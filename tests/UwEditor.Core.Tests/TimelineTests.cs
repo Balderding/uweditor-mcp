@@ -241,17 +241,16 @@ namespace UwEditor.Core.Tests
             // the default solve loses nothing to a change, and gives no warning
             Assert.Empty(r.Solve.CutOff);
             Assert.Empty(r.Solve.Warnings);
-            // without Magic, the level 4 lever puzzle's last change (#550 raises the room's north end into the way to the alcove)
-            // leaves the player on the room's floor: the raised part, which keeps the zone's number, is out of reach from there
+            // without Magic neither: the level 4 lever puzzle's last change (#550 raises the room's north end into the way to
+            // the alcove) leaves the player on the room's floor, and from the raised square at (58, 33) he jumps one tile
+            // down onto the alcove's side (a landing lower than the take-off, which the tile rule before JumpModel refused)
             var o = r.Options.Clone();
             o.Magic = false; o.SingleUseItems = false;
             var sv = Timeline.Solve(r, o, "no magic");
-            var cut = Assert.Single(sv.CutOff);
-            Assert.Contains("flag:terrain_l4_550", sv.Spheres[cut.Key].Applied);
-            Assert.All(cut.Value, z => Assert.Contains(4, r.Set.LevelsOf(z)));
+            Assert.Empty(sv.CutOff);
+            Assert.Empty(sv.Warnings);
             Assert.True(sv.GoalReached);
-            // every zone lost to a change was reached before it
-            Assert.All(cut.Value, z => Assert.True(sv.ZoneSphere[z] <= cut.Key));
+            Assert.Contains(sv.Spheres, sp => sp.Applied.Contains("flag:terrain_l4_550"));
         }
 
         [Fact]

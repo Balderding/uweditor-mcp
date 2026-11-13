@@ -637,8 +637,9 @@ namespace UwEditor.Core.Randomizer
             sb.AppendLine();
             foreach (var w in res.Warnings) sb.AppendLine("Warning: " + w);
             var o = g.Options;
-            sb.AppendLine(string.Format("Options: highest climb {0}, jump spell climb {1}, gap jumps {2} ({3} tiles, {4} with the jump spell{5}), cut at level changes {6}.",
-                o.MaxClimb, o.JumpSpellClimb, o.GapJumps ? "on" : "off", o.GapTiles, o.JumpSpellGapTiles, o.DiagonalJumps ? ", diagonals too" : "", o.CutAtLevelChanges ? "on" : "off"));
+            sb.AppendLine(string.Format("Options: jumps at tick length {0} (a jump climbs {1} floor steps, {2} with the jump spell; from floor 11 {3} and {4}, from 12 up {5} and {6}), gap jumps {7} (margin {8}/8 tile{9}), cut at level changes {10}.",
+                o.TickLength, o.Climb(0, false), o.Climb(0, true), o.Climb(11, false), o.Climb(11, true), o.Climb(12, false), o.Climb(12, true),
+                o.GapJumps ? "on" : "off", o.JumpMargin, o.DiagonalJumps ? ", diagonals too" : "", o.CutAtLevelChanges ? "on" : "off"));
             sb.AppendLine();
             sb.AppendLine("COUNTS");
             sb.AppendLine(string.Format("  Regions: {0} ({1} door tiles, {2} lava, {3} with water, {4} with no-magic tiles).", g.Regions.Count, g.Regions.Count(r => r.IsDoor), g.Regions.Count(r => r.Lava), g.Regions.Count(r => r.WaterTiles > 0), g.Regions.Count(r => r.NoMagicTiles > 0)));

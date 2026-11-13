@@ -395,7 +395,8 @@ namespace UwEditor.Core.Randomizer
                                 terms.Add(also);
                                 terms.Add(look);
                                 terms.Add(doorReq);
-                                terms.Add(Climb(o, Math.Max(p.Value[0], q.Value[1])));
+                                // up onto the opened tile from p's floor (h less the climb), then up off it from h
+                                terms.Add(Climb(o, p.Value[0], h - p.Value[0], q.Value[1], h));
                                 var rq = g.Regions[q.Key];
                                 if (rq.IsDoor) terms.Add(rq.DoorRequires);
                                 g.Edges.Add(new NavEdge
@@ -416,10 +417,11 @@ namespace UwEditor.Core.Randomizer
                     res.Warnings.Add(string.Format("Facts: {0}: no look trigger #{1} opening a wall on L{2}.", f.Id, f.Trigger, f.Level));
         }
 
-        static string Climb(NavOptions o, int rise)
+        /// <summary>What two climbs in a row need, each from its own floor (NavGraph's climb rule).</summary>
+        static string Climb(NavOptions o, int rise1, int floor1, int rise2, int floor2)
         {
-            if (rise <= o.MaxClimb) return "free";
-            return rise <= o.JumpSpellClimb ? "spell:jump" : "spell:levitate";
+            if (rise1 <= o.Climb(floor1, false) && rise2 <= o.Climb(floor2, false)) return "free";
+            return rise1 <= o.Climb(floor1, true) && rise2 <= o.Climb(floor2, true) ? "spell:jump" : "spell:levitate";
         }
 
         static void MatchPainted(ZoneSet painted, HiddenGate gate)

@@ -72,14 +72,12 @@ namespace UwEditor.App
             {
                 Children.Add(Heading("AUTOZONE MOVEMENT", "how the levels' tiles become regions joined by drops, climbs and jumps, and how regions become zones"));
                 var g = new OptionGrid(3);
-                var climb = Num(nav.MaxClimb, 1, 15, v => nav.MaxClimb = v);
-                ToolTip.SetTip(climb, "The highest climb in floor steps, both ways inside a region (the Zones window's setting).");
-                var spellClimb = Num(nav.JumpSpellClimb, 1, 15, v => nav.JumpSpellClimb = v);
-                var gap = Num(nav.GapTiles, 0, 6, v => nav.GapTiles = v);
-                var spellGap = Num(nav.JumpSpellGapTiles, 0, 8, v => nav.JumpSpellGapTiles = v);
-                g.AddRow("Highest climb", Row(climb, Note("floor steps")), Row(Label("With the jump spell", 130), spellClimb), null);
-                g.AddRow("Gap jumps", Row(Check("On, up to (tiles)", nav.GapJumps, v => nav.GapJumps = v), gap), Row(Label("With the jump spell", 130), spellGap),
-                    Check("Diagonals too", nav.DiagonalJumps, v => nav.DiagonalJumps = v));
+                var tick = Num(nav.TickLength, 4, 64, v => nav.TickLength = v);
+                ToolTip.SetTip(tick, "The time of one frame in 1/256 s, at most 64. The game works a jump out frame by frame: longer frames give lower, shorter jumps, so a larger number is more cautious. 16 is about 16 frames a second.");
+                var margin = Num(nav.JumpMargin, 0, 8, v => nav.JumpMargin = v);
+                ToolTip.SetTip(margin, "What a gap jump is asked to spare, in eighths of a tile, for a take-off that is not on the last cell of the ledge.");
+                g.AddRow("Jumps", Row(Label("Tick length", 90), tick), Row(Label("Margin (1/8 tile)", 130), margin), null);
+                g.AddRow("Gap jumps", Check("On", nav.GapJumps, v => nav.GapJumps = v), Check("Diagonals too", nav.DiagonalJumps, v => nav.DiagonalJumps = v), null);
                 g.AddRow("Zones", Check("Cut at level changes", nav.CutAtLevelChanges, v => nav.CutAtLevelChanges = v),
                     Check("Fold empty dead ends (pits and ledges with nothing in them)", nav.FoldEmptyDeadEnds, v => nav.FoldEmptyDeadEnds = v));
                 var start = Check("Consider the current starting square in the editor", !nav.ShippedStart, v => nav.ShippedStart = !v);

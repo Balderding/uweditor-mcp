@@ -2202,8 +2202,9 @@ The rules are glitchless: no trick, clip or sequence break counts, only plain pl
 
 The editor reads every level and groups its open tiles into **regions**: areas in which the
 player can walk anywhere and back. Two touching tiles are in one region when the step
-between them, measured at their touching edges (so slopes count), is at most the **highest
-climb** (2 floor steps by default) both ways. Ceilings are ignored: no area of Ultima
+between them, measured at their touching edges (so slopes count), is one a jump gets onto,
+both ways: 3 floor steps from a floor of height 10 or lower, 2 from height 11 and 1 from 12
+up, because the game cuts the jump on high floors. Ceilings are ignored: no area of Ultima
 Underworld is cut off by a low ceiling. A tile holding a door is a region of its own, so the
 door can be a requirement. Water joins regions (the player swims), but lava tiles only join
 other lava. Tiles with the no-magic bit are marked.
@@ -2422,8 +2423,9 @@ The spoiler log names each place by the zones of the hand-made zoning (the zone 
 
 | Option | Default | What it changes |
 |---|---|---|
-| Highest climb | 2 steps | a two-way walk; up to twice that with jump |
-| Gap jumps | on, 2 tiles (3 with jump) | jumps across pits, water and lava |
+| Tick length | 16 | the frame time the jumps are worked out at; larger is more cautious |
+| Margin | 2 (a quarter tile) | what a gap jump must spare |
+| Gap jumps | on | jumps across pits, water and lava |
 | Diagonal jumps | off | jumps on the diagonals too |
 | Cut at level changes | on | zones never span two levels |
 | Fold empty dead ends | on | fewer, larger zones |
@@ -2441,7 +2443,11 @@ The spoiler log names each place by the zones of the hand-made zoning (the zone 
 - Casting ignores level, mana and the casting roll.
 - A spell cast before stepping onto a no-magic tile is assumed not to carry over (in the
   game it does).
-- Jumps are judged by tiles, not by speed and run-up; the jump spell's height is an estimate.
+- Jumps follow the game's own arithmetic, but only straight along the tiles (and the
+  diagonals, with the option). A jump that would carry too far is assumed to be taken
+  earlier or slower. The small hop after a landing is not followed, so a landing on a
+  single tile may be harder than the logic takes it to be. No jump has been checked by
+  playing yet.
 - Bashing assumes any weapon and strength will do; chest locks are treated as unbreakable.
 - Filler items (food, coins) are checked by the final solve, not while the key items are
   placed.
@@ -2456,17 +2462,16 @@ for UW1; UW2's levels are read the same way but nobody has checked the result.
 It works in steps:
 
 - **Regions.** The open tiles of each level are grouped into regions. Inside a region the
-  player can walk from any tile to any other and back: no step climbs more than the
-  **highest climb**, either way. Each tile holding a door (any door, portcullis or secret
+  player can walk from any tile to any other and back: every step is one a jump gets onto,
+  either way. Each tile holding a door (any door, portcullis or secret
   door) is a region of its own. Lava tiles make regions of their own. Water joins regions,
   because swimming is normal movement in UW1, but the window counts water tiles. Tiles where
   magic does not work are counted too (all of level 9 counts).
-- **Edges** join the regions. A **drop** goes down more than the highest climb; it is free and
-  one-way. A **climb** is the other way: it needs the jump spell up to the climb set **with the
-  jump spell**, and levitation above that. A **jump** crosses a straight gap of lower ground:
-  free up to **Gap jumps** tiles (2), and with the jump spell up to one tile more (3). The far side
-  may be no higher than the near side plus the highest climb. **Diagonals too** also tries the
-  diagonals; a diagonal tile counts as 1.4. A **door** edge needs what the door's lock needs
+- **Edges** join the regions. A **drop** goes down more than a jump gets back up; it is free
+  and one-way. A **climb** is the other way: it needs the jump spell up to the step the spell
+  reaches, and levitation above that. A **jump** crosses a straight gap of lower ground (see
+  **Jumps** below). **Diagonals too** also tries the diagonals; a diagonal tile is 1.4 long,
+  and the tiles beside the line must be clear too. A **door** edge needs what the door's lock needs
   (key, picking, bashing), or the lever that opens it. Walking into lava needs
   the lava ability, `spell:lava` (below). Ceilings are ignored.
 - **Teleports.** Every trigger the player sets off whose chain reaches a teleport trap makes
@@ -2492,8 +2497,30 @@ It works in steps:
   editor's start tool moved it. With it off, the start is the game's own square, level 1
   (32, 2), whatever the executable says. The report's **Start** line says which square and zone were used.
 
+**Jumps.** The editor works a jump out as the game does (the game's source,
+`motion/PHYSICS.C` and `MOTION.C`). The feet follow a curve set by the upward speed, gravity
+and the forward speed.
+
+- **Two jumps.** The sprint jump (jump while running) carries the player's centre about 3.6
+  tiles on level ground. It needs a run-up: at full load about 2 tiles, so the take-off tile
+  and one more behind it in the same region. Where there is no room, the standing long jump
+  is used: about 2 tiles. Load changes only the run-up, not the flight.
+- **The jump spell** halves gravity: about twice the height and twice the length.
+- **High floors.** From a floor of height 11 the jump is cut to 5/6, from 12 up to 5/9.
+  So a jump climbs 3 floor steps from height 10 or lower, 2 from 11 and 1 from 12 up; with
+  the jump spell 6, 4 and 2.
+- **A gap** is crossed when every tile under the flight lies below the feet for as long as
+  the player is over it, and the feet are still at or above the far floor when the player
+  gets there. The far floor may be higher or lower than the take-off. The player's
+  footprint is a quarter tile to each side: he leaves with his back edge still on the ledge
+  and lands on his front edge, less the **Margin**.
+- **Tick length.** The game works a jump out once a frame, so longer frames give lower,
+  shorter jumps: a sprint jump is 3.8 tiles at tick 4 and 3.0 at 64 (about 4 frames a
+  second, the longest the game allows). Tick 16 is the default. Set it higher to be more
+  cautious; at 64 a jump climbs only 2 steps (5 with the spell).
+
 The options come in two groups. **Autozone movement** says how tiles become regions and
-regions zones (climbs, gap jumps, the level cut, dead ends, the start). **Player logic (the
+regions zones (the jumps' tick length and margin, gap jumps, the level cut, dead ends, the start). **Player logic (the
 solver)** says what the solver may expect of the player. The Apply window has the same two
 groups.
 

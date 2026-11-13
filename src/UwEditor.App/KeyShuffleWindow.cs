@@ -62,8 +62,6 @@ namespace UwEditor.App
             Title = "Apply";
             Width = 1000; Height = 960; MinWidth = 680; MinHeight = 520;
             WindowStartupLocation = WindowStartupLocation.CenterOwner;
-            opt.Nav.MaxClimb = main.ZoneClimb;
-            opt.Nav.JumpSpellClimb = 2 * opt.Nav.MaxClimb;
 
             var top = new StackPanel { Spacing = 6 };
             top.Children.Add(new TextBlock { Text = "Apply", FontSize = 16, FontWeight = FontWeight.SemiBold });
@@ -274,8 +272,8 @@ namespace UwEditor.App
             if (r == null || !r.Success || r.IsApplied) return false;
             var o = r.Options;
             if (o.Seed != opt.Seed || o.Retries != opt.Retries || o.Anywhere != opt.Anywhere || o.Filler != opt.Filler || !o.Extra.SetEquals(opt.Extra) || o.CreatureInventories != opt.CreatureInventories || !o.Move.SetEquals(opt.Move)) return false;
-            if (o.Logic.ToString() != opt.Logic.ToString() || o.Nav.MaxClimb != opt.Nav.MaxClimb || o.Nav.JumpSpellClimb != opt.Nav.JumpSpellClimb || o.Nav.GapJumps != opt.Nav.GapJumps
-                || o.Nav.GapTiles != opt.Nav.GapTiles || o.Nav.JumpSpellGapTiles != opt.Nav.JumpSpellGapTiles || o.Nav.DiagonalJumps != opt.Nav.DiagonalJumps
+            if (o.Logic.ToString() != opt.Logic.ToString() || o.Nav.TickLength != opt.Nav.TickLength || o.Nav.JumpMargin != opt.Nav.JumpMargin || o.Nav.GapJumps != opt.Nav.GapJumps
+                || o.Nav.DiagonalJumps != opt.Nav.DiagonalJumps
                 || o.Nav.CutAtLevelChanges != opt.Nav.CutAtLevelChanges || o.Nav.FoldEmptyDeadEnds != opt.Nav.FoldEmptyDeadEnds || o.Nav.ShippedStart != opt.Nav.ShippedStart) return false;
             // the zoning as it is now
             if ((o.Zoning != null) != UsesZoning || (o.Zoning != null && o.Zoning.ToJson() != zoning.ForSolver().ToJson())) return false;
