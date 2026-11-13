@@ -61,6 +61,26 @@ namespace UwEditor.Core.Editing
             return Pak.Blocks.Select(b => new StringBlockInfo { Number = b, Count = Pak.Get(b).Count, Description = Describe(Session, b), Changed = Pak.IsChanged(b) }).ToList();
         }
 
+        /// <summary>Every block as JSON: {"game", "blocks": [{"block", "hex", "description", "strings": [...]}]}, the strings as the editor shows them (with unsaved edits).</summary>
+        public string ExportJson()
+        {
+            var blocks = new System.Text.Json.Nodes.JsonArray();
+            foreach (var b in Blocks())
+            {
+                var strings = new System.Text.Json.Nodes.JsonArray();
+                foreach (var s in Get(b.Number)) strings.Add(s);
+                blocks.Add(new System.Text.Json.Nodes.JsonObject
+                {
+                    ["block"] = b.Number,
+                    ["hex"] = "0x" + b.Number.ToString("X4"),
+                    ["description"] = b.Description,
+                    ["strings"] = strings,
+                });
+            }
+            var root = new System.Text.Json.Nodes.JsonObject { ["file"] = "STRINGS.PAK", ["blocks"] = blocks };
+            return root.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping });
+        }
+
         AccentTable Accents { get { return Session.Accents ?? new AccentTable(); } }
 
         /// <summary>A block's strings as shown (mapped codes as their letters).</summary>

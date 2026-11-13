@@ -6,6 +6,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
+using Avalonia.Platform.Storage;
 using UwEditor.Core.Editing;
 
 namespace UwEditor.App
@@ -200,6 +201,23 @@ namespace UwEditor.App
         void OnSearchKey(object sender, KeyEventArgs e)
         {
             if (e.Key == Key.Enter && (e.KeyModifiers & KeyModifiers.Control) != 0) { Model.SearchAll(); e.Handled = true; }
+        }
+
+        async void OnExportJson(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var f = await StorageProvider.SaveFilePickerAsync(new Avalonia.Platform.Storage.FilePickerSaveOptions
+                {
+                    Title = "Export STRINGS.PAK as JSON", SuggestedFileName = "STRINGS.json", DefaultExtension = "json",
+                    FileTypeChoices = new[] { new Avalonia.Platform.Storage.FilePickerFileType("JSON") { Patterns = new[] { "*.json" } } },
+                });
+                string path = f?.TryGetLocalPath();
+                if (path == null) return;
+                System.IO.File.WriteAllText(path, Model.Editor.ExportJson(), new System.Text.UTF8Encoding(false));
+                Model.Status = "All strings exported to " + path + ".";
+            }
+            catch (Exception ex) { Model.Status = "Not exported: " + ex.Message; }
         }
 
         void OnSave(object sender, RoutedEventArgs e)
