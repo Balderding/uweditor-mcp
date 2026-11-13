@@ -2524,11 +2524,14 @@ solver)** rows:
   are reached. Character level, mana and the casting roll are ignored.
 - **Single-use items count.** Scrolls, potions and wands with charges count. With it off,
   only items that keep working count: a worn enchantment, or an item enchanted to cast without
-  charges.
+  charges. Each such item is one use. Every way, item or change that only a single-use item
+  opens takes one, so one Fly potion does not cross two ledges. A way crossed a second time
+  is not counted.
 - **Lock picking in logic, skill.** The solver may pick locks with this Pick Lock skill, if a
   lock pick is reached. A lock of difficulty Z can be picked when skill − 3Z + 30 is above 15
   (with retries; the pick does not break). Difficulty 14 needs skill 31, and 15 never opens.
-  The Open spell picks with skill 45.
+  The Open spell picks with skill 45. It counts whenever **Magic** is on, with lock picking on
+  or off, and never with Magic off.
 - **Search skill** and **Retry until found.** These apply to walls that a look opens (below).
 
 The tiles of the damaging maze on level 7 that hold a move trigger hurting the player are
@@ -2616,15 +2619,24 @@ both ways for free.
 picking something up) is one way: free towards the trigger, and back only with what opens the
 closed door (its new lock's key, picking, or a lever on that side). A door closed without a
 locked lock opens by hand, so it changes nothing. A change the player chooses (a lever) that
-only takes ways away is never applied. A change that opens and closes things is applied: the
-zones reached before stay reached.
+only takes ways away is never applied. A change that opens and closes things is applied. The
+solver then works out which of the zones reached so far the player can still get to from
+where he stood when he set it off. What he holds stays his, but a zone he is cut off from is
+no longer a place to go on from until he reaches it again. Changes to the same squares are
+applied in the order they go off. A change the player cannot avoid (a square he walks onto)
+goes off before he takes anything in that sphere, so things in a part it seals off are not
+counted as his.
 
 **Return check.** For each zone reached, the solver checks that the player can get back to the
 start with what he held when he got there (and what he finds on the way). A zone he cannot
 leave is a **one-way trap**. The report lists each trap, how it is entered, what it holds and
-whether that strands him (an item needed later that only the trap holds). It also solves again
-taking nothing from inside the traps. Once the silver sapling can be planted, no zone counts as
-a trap: dying takes the player back to it.
+whether that strands him. To find out, the solver solves again taking nothing from inside the
+traps and working no lever there. If the goal is then out of reach, each trap is tried alone,
+and the ones the goal needs strand the player. A trap that leads on to the goal is a point of
+no return and does not count. On the way back a spell counts once its runes are held,
+wherever they were found, and a single-use item counts only if a use of it was left when the
+player got there. Once the silver sapling can be planted, no zone counts as a trap: dying
+takes the player back to it.
 
 **The facts files.** Every `docs/facts/uw1-*.json` shipped with the editor is read:
 `uw1-facts.json` and the quest facts `uw1-quests.json`. Facts can also add a **link**
@@ -3091,6 +3103,8 @@ level instead of where items lay:
 - not water or lava, and not a square with a door, a trap or a trigger;
 - only in zones the logic reaches when every item that moves is counted as held, so the fill
   can still put each key item somewhere reachable;
+- not in an empty pit or ledge that the zones fold into the area beside it, since such a
+  place may need more to enter or leave than that area does;
 - one place a square while there are squares.
 
 Places in containers and creatures' inventories stay those places. The log says how many places

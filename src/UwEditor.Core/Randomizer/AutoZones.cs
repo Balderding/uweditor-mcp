@@ -125,6 +125,7 @@ namespace UwEditor.Core.Randomizer
             // links between zones
             var linkBy = new Dictionary<string, ZoneLink>();
             var linkCount = new Dictionary<ZoneLink, int>();
+            int dropped = 0;
             Func<string, string> zoneTerms = req => Regex.Replace(req, @"region:(\d+)", mm => "zone:" + g.Regions[int.Parse(mm.Groups[1].Value)].Zone);
             foreach (var e in g.Edges)
             {
@@ -148,11 +149,13 @@ namespace UwEditor.Core.Randomizer
                         var have = Alternatives(k.Requires);
                         var add = Alternatives(req).Where(a => !have.Contains(a)).ToList();
                         if (add.Count > 0 && have.Count + add.Count <= 6) k.Requires = Normalize(JoinOr(have.Concat(add)));
+                        else if (add.Count > 0) dropped++;
                     }
                 }
                 linkCount[k] += e.Count;
                 if (e.Kind == "drop" && e.Fall > 0) k.Notes = MaxFallNote(k.Notes, e.Fall);
             }
+            if (dropped > 0) res.Warnings.Add(string.Format("{0} passage(s) between zones already joined in six ways were left out of their link's requirement: the solver may be too strict there.", dropped));
             // a link both ways with the same kind and requirement is one two-way link
             var links = new List<ZoneLink>();
             var done = new HashSet<ZoneLink>();
@@ -398,7 +401,7 @@ namespace UwEditor.Core.Randomizer
                     into[kv.Key] = other;
                 }
                 if (into.Count == 0) break;
-                for (int i = 0; i < n; i++) { int t; if (into.TryGetValue(comp[i], out t)) comp[i] = t; }
+                for (int i = 0; i < n; i++) { int t; if (into.TryGetValue(comp[i], out t)) { comp[i] = t; g.Regions[i].Folded = true; } }
                 folded += into.Count;
             }
             return folded;
@@ -421,7 +424,20 @@ namespace UwEditor.Core.Randomizer
                 else if (req[i] == '(') depth++;
                 else if (req[i] == ')') depth--;
             }
-            return list.Select(x => x.StartsWith("(") && x.EndsWith(")") ? x.Substring(1, x.Length - 2).Trim() : x).ToList();
+            // the brackets around a whole alternative go; "(a | b) & (c | d)" keeps its own
+            return list.Select(x => x.StartsWith("(") && x.EndsWith(")") && Balanced(x.Substring(1, x.Length - 2)) ? x.Substring(1, x.Length - 2).Trim() : x).ToList();
+        }
+
+        /// <summary>Whether every bracket in the text closes one opened before it.</summary>
+        static bool Balanced(string t)
+        {
+            int depth = 0;
+            foreach (char c in t)
+            {
+                if (c == '(') depth++;
+                else if (c == ')' && --depth < 0) return false;
+            }
+            return depth == 0;
         }
 
         internal static string JoinOr(IEnumerable<string> alts)

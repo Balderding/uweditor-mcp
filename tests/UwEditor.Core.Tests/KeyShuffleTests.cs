@@ -447,8 +447,9 @@ namespace UwEditor.Core.Tests
         public void With_picking_off_no_key_item_lies_behind_a_pick_only_lock()
         {
             var s = Session(); if (s == null) return;
-            var r = Run("defaults", null, 77);
-            Assert.True(r.Success);
+            // Magic off too: with it on the Open spell opens such a lock
+            var r = Run("no magic", o => o.Logic.Magic = false, 77);
+            Assert.True(r.Success, string.Join("; ", r.Failures));
             Assert.False(r.Options.Logic.LockPicking);
             // the L4 chest #867 has a lock no key opens: only picking would get what lies in it
             foreach (var m in r.Moves.Where(m => m.ByFill))
@@ -478,15 +479,18 @@ namespace UwEditor.Core.Tests
             });
             string req = ZoneDoors.Requirement(s, e.Model, e.Model.Objects[door.Index], out _);
             Assert.StartsWith("pick:", req);
-            Assert.False(Timeline.Build(s, edits.Model, new NavOptions(), new AbilityOptions(), null, null, false).Solve.GoalReached);
+            // (Magic off throughout: with it on the Open spell opens the door)
+            var noMagic = new AbilityOptions { Magic = false };
+            Assert.False(Timeline.Build(s, edits.Model, new NavOptions(), noMagic, null, null, false).Solve.GoalReached);
+            Assert.True(Timeline.Build(s, edits.Model, new NavOptions(), new AbilityOptions(), null, null, false).Solve.GoalReached);
             // the keys move: key 10 and the Key of Courage come out, nothing goes behind the door, nothing is unlocked
-            var moves = KeyShuffle.Run(s, edits, new KeyShuffleOptions { Seed = 3 });
+            var moves = KeyShuffle.Run(s, edits, new KeyShuffleOptions { Seed = 3, Logic = noMagic.Clone() });
             Assert.True(moves.Success, string.Join("; ", moves.Failures));
             Assert.Empty(moves.Unlocked);
             Assert.All(moves.Moves.Where(m => m.ByFill), m => Assert.True(m.Sphere >= 0));
             // the keys and the Key of Infinity's parts stay (key 10 in the room behind the door, the Key of Courage
             // behind key 10's door): the door is unlocked, and the log says so
-            var opt = new KeyShuffleOptions { Seed = 3 };
+            var opt = new KeyShuffleOptions { Seed = 3, Logic = noMagic.Clone() };
             opt.Move.Remove("infinity");
             opt.Move.Remove("keys");
             var r = KeyShuffle.Run(s, edits, opt);
@@ -501,7 +505,7 @@ namespace UwEditor.Core.Tests
             KeyShuffle.Undo(r, edits);
             Assert.StartsWith("pick:", ZoneDoors.Requirement(s, edits.Model(3), edits.Model(3).Objects[door.Index], out _));
             // with lock picking on, nothing is unlocked
-            var p = KeyShuffle.Run(s, edits, new KeyShuffleOptions { Seed = 3, Logic = new AbilityOptions { LockPicking = true }, Move = opt.Move });
+            var p = KeyShuffle.Run(s, edits, new KeyShuffleOptions { Seed = 3, Logic = new AbilityOptions { LockPicking = true, Magic = false }, Move = opt.Move });
             Assert.True(p.Success);
             Assert.Empty(p.Unlocked);
         }

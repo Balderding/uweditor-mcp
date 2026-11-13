@@ -740,8 +740,8 @@ namespace UwEditor.Core.Randomizer
         /// (PrepareAnywhere); each attempt of the fill scatters the places with its own seed
         /// (Scatter), so the seed the log names gives the same squares again. The places' records
         /// move in the attempt's copy of the world's bytes before the fill, so the fill, the check
-        /// and Apply all see them there; the zone graph does not change, since loose items do not
-        /// shape it.
+        /// and Apply all see them there. Squares in an empty dead end that the zones fold into its
+        /// neighbour are left out: an item there would keep it from folding and so change the zones.
         /// </summary>
         static AnywherePlan PrepareAnywhere(GameSession s, World w, TimelineResult t, KeyShuffleOptions opt, List<ShuffleObject> objs)
         {
@@ -755,7 +755,16 @@ namespace UwEditor.Core.Randomizer
             {
                 int level = g.Key;
                 var m = w.Model(level);
-                var squares = Anywhere.Squares(s, m, terrain, (x, y) => { int z = t.Set.ZoneAt(level, x, y); return z > ZoneSet.Unassigned && zones.Contains(z); });
+                // not in a dead end folded into its neighbour's zone (an empty pit or ledge): an item there would make it a zone
+                // of its own, with its own way in and out, which the fill's zones do not know
+                var graph = t.Abilities.Auto.Graph;
+                var squares = Anywhere.Squares(s, m, terrain, (x, y) =>
+                {
+                    int z = t.Set.ZoneAt(level, x, y);
+                    if (z <= ZoneSet.Unassigned || !zones.Contains(z)) return false;
+                    int reg = graph.RegionOf(level, x, y);
+                    return reg < 0 || !graph.Regions[reg].Folded;
+                });
                 plan.Levels.Add(new AnywhereLevel { Level = level, Model = m, Squares = squares, Places = g.OrderBy(o => o.Index).ToList() });
             }
             foreach (var o in floor) plan.Home[o] = (o.X, o.Y, o.Zone);

@@ -235,6 +235,26 @@ namespace UwEditor.Core.Tests
         }
 
         [Fact]
+        public void A_change_that_takes_ways_away_leaves_only_what_the_player_can_still_get_to()
+        {
+            var r = Uw1(); if (r == null) return;
+            // the default solve loses nothing to a change, and gives no warning
+            Assert.Empty(r.Solve.CutOff);
+            Assert.Empty(r.Solve.Warnings);
+            // without Magic, the level 4 lever puzzle's last change (#550 raises the room's north end into the way to the alcove)
+            // leaves the player on the room's floor: the raised part, which keeps the zone's number, is out of reach from there
+            var o = r.Options.Clone();
+            o.Magic = false; o.SingleUseItems = false;
+            var sv = Timeline.Solve(r, o, "no magic");
+            var cut = Assert.Single(sv.CutOff);
+            Assert.Contains("flag:terrain_l4_550", sv.Spheres[cut.Key].Applied);
+            Assert.All(cut.Value, z => Assert.Contains(4, r.Set.LevelsOf(z)));
+            Assert.True(sv.GoalReached);
+            // every zone lost to a change was reached before it
+            Assert.All(cut.Value, z => Assert.True(sv.ZoneSphere[z] <= cut.Key));
+        }
+
+        [Fact]
         public void Telekinesis_has_the_poles_uses()
         {
             var s = Session(); if (s == null) return;
@@ -396,7 +416,9 @@ namespace UwEditor.Core.Tests
   { ""id"": ""plate_code"", ""kind"": ""free"", ""level"": 4, ""object"": 747, ""flags"": [""flag:var27_is_38""], ""source"": ""test"" },
   { ""id"": ""goal_far"", ""kind"": ""goal"", ""at"": [" + st.Level + ", " + (int)st.X + ", " + (int)st.Y + @"], ""requires"": ""flag:never_given"", ""source"": ""test"" }
 ] }";
-            var r = With(json);
+            // Magic off: with it on the Open spell opens the vault's door
+            var noMagic = new AbilityOptions { Magic = false };
+            var r = With(json, noMagic);
             int ledge = ZoneAt(r, 2, 9, 18), plate = ZoneAt(r, 4, 13, 44);
             var sv = r.Solve;
             Assert.True(sv.ZoneSphere.ContainsKey(ledge));
@@ -407,7 +429,7 @@ namespace UwEditor.Core.Tests
             Assert.False(sv.GoalReached);
             Assert.Contains("flag:never_given", sv.GoalMissing);
             // without the facts neither is reached
-            var none = With(null);
+            var none = With(null, noMagic);
             Assert.False(none.Solve.ZoneSphere.ContainsKey(ledge));
             Assert.False(none.Solve.ZoneSphere.ContainsKey(plate));
         }

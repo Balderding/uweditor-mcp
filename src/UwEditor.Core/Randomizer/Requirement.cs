@@ -72,7 +72,7 @@ namespace UwEditor.Core.Randomizer
 			"key:N          hold a key whose owner field is N (the lock's key number)",
 			"bash           bashing a breakable door is allowed (solver option)",
 			"pick:Z         picking a lock of difficulty Z is allowed (solver option: Pick Lock skill; 3Z needed, Z 14 needs 31, Z 15 never;",
-			"               with ability sources also the Open spell, a pick of skill 45)",
+			"               with ability sources and Magic on also the Open spell, a pick of skill 45, lock picking on or off)",
 			"item:NAME      hold the named item (granted by a placement: medallion, crystal, lava_boots ...)",
 			"talismans:N    hold at least N different talismans (each talisman grants talisman:<name>)",
 			"flag:NAME      a quest or event flag (granted by a placement, e.g. gazer_dead)",
@@ -141,11 +141,12 @@ namespace UwEditor.Core.Randomizer
 				switch (head)
 				{
 					case "pick":
-						if (o.LockpickSkill < 0) return false;
 						if (!int.TryParse(tail, out n)) return false;
 						if (n >= 15) return false;
-						// the Open spell tries the lock as a pick of skill 45 (combat/SPELLS.C obj_spells, checkLock(ThePlayer, target, -45)): sure up to z 9
-						if (o.AbilitySources && (o.PickRetry || n <= 9) && HasAbility(ctx, "open")) return true;
+						// the Open spell tries the lock as a pick of skill 45 (combat/SPELLS.C obj_spells, checkLock(ThePlayer, target, -45)): sure up to z 9.
+						// It counts with Magic on, whether lock picking is on or not, and never with Magic off.
+						if (o.Magic && o.AbilitySources && (o.PickRetry || n <= 9) && HasAbility(ctx, "open")) return true;
+						if (o.LockpickSkill < 0) return false;
 						if (o.PickNeedsLockpick && !ctx.HasToken("item:lockpick")) return false;
 						if (n == 14) return o.LockpickSkill >= 31;
 						// obj/USEITEMS.C checkLock: skill_check(skill, 3z) > 0, i.e. skill - 3z + rand() % 31 > 15

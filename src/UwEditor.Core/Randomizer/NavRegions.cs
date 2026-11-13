@@ -78,6 +78,8 @@ namespace UwEditor.Core.Randomizer
         public bool Lava;
         /// <summary>A door that every way out of needs more than it did (a closer, NavGraph.Closers): it stays a zone of its own, not given to a neighbour.</summary>
         public bool KeepApart;
+        /// <summary>An empty dead end folded into its only neighbour's zone (AutoZones.FoldDeadEnds): a pit or a ledge that may need more to enter or leave than its zone does, so nothing is put there.</summary>
+        public bool Folded;
         public int WaterTiles, LavaTiles, NoMagicTiles;
         public int MinHeight = 99, MaxHeight = -1;
         /// <summary>The automatic zone it ended in (0 until zones are made).</summary>

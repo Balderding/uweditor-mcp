@@ -191,6 +191,7 @@ namespace UwEditor.Core.Tests
             var res = Uw1(); if (res == null) return;
             var off = res.Options.Clone();
             off.LockPicking = false;
+            off.Magic = false;      // with Magic on the Open spell opens them
             var doors = AbilityZones.DoorsToOpen(res.Set, off);
             Assert.NotEmpty(doors);
             Assert.All(doors, d => Assert.Contains("pick:", d.Link.Requires));

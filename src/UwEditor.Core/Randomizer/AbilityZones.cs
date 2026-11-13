@@ -345,9 +345,15 @@ namespace UwEditor.Core.Randomizer
                 int type = trap.Heading * 2 + (trap.Quality & 1);
                 if (type == 15) type = 10;
                 if (type == 0) continue;        // it makes rock
+                // a trigger the player cannot set off opens nothing
+                if (string.IsNullOrEmpty(mech.SetOff)) continue;
                 int A = -1;
                 var mm = Regex.Match(mech.SetOff ?? "", @"region:(\d+)");
                 if (mm.Success) A = int.Parse(mm.Groups[1].Value);
+                // what the chain needs besides the look: where it is set off from (all of it, not only the first region),
+                // the conditions met along it, and what the facts add (as the timeline's mechanism does)
+                bool plain = mech.SetOff == "region:" + A;
+                string also = ZoneLink.JoinAnd(new[] { mech.Conditions, res.Facts.MechanismNeeds(mech.Level, mech.Trigger, mech.Flag) });
                 for (int y = mech.Y; y < mech.Y + mech.H; y++)
                     for (int x = mech.X; x < mech.X + mech.W; x++)
                     {
@@ -385,7 +391,8 @@ namespace UwEditor.Core.Randomizer
                             {
                                 if (p.Key == q.Key) continue;
                                 var terms = new List<string>();
-                                if (A >= 0 && p.Key != A) terms.Add("region:" + A);
+                                if (!plain || p.Key != A) terms.Add(mech.SetOff);
+                                terms.Add(also);
                                 terms.Add(look);
                                 terms.Add(doorReq);
                                 terms.Add(Climb(o, Math.Max(p.Value[0], q.Value[1])));
@@ -464,7 +471,7 @@ namespace UwEditor.Core.Randomizer
                 else if (nomana != null)
                 {
                     string until = string.IsNullOrEmpty(nomana.Until) ? "flag:__never__" : nomana.Until;
-                    req = SpellTerm.Replace(req, mm => string.Format("((cast:{0} & {1}) | use:{0})", mm.Groups[1].Value, until));
+                    req = SpellTerm.Replace(req, mm => string.Format("((cast:{0} & ({1})) | use:{0})", mm.Groups[1].Value, until));
                     res.NoManaEdges++;
                 }
                 string err;
@@ -768,7 +775,9 @@ namespace UwEditor.Core.Randomizer
             r.Tokens(toks);
             if (!toks.Any(t => t == "bash" || t.StartsWith("pick:"))) return false;
             // with picking and bashing impossible and every token that some placement grants held, does it still hold?
-            var ctx = new FixedContext(new SolverOptions { AllowBash = true, LockpickSkill = -1, AbilitySources = true, Magic = true, SingleUseItems = true, SearchSkill = 30, OptionsOn = new HashSet<string>(FactSet.KnownOptions) }, granted);
+            // (the Open spell is a pick: it is left out, as it was when it needed lock picking on)
+            granted = new HashSet<string>(granted.Where(t => !t.EndsWith(":open")));
+            var ctx =new FixedContext(new SolverOptions { AllowBash = true, LockpickSkill = -1, AbilitySources = true, Magic = true, SingleUseItems = true, SearchSkill = 30, OptionsOn = new HashSet<string>(FactSet.KnownOptions) }, granted);
             return !r.Eval(ctx);
         }
 
