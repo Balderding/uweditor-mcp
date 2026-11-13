@@ -64,12 +64,22 @@ namespace UwEditor.App.Tests
             Assert.True(w.ShownJump.Leap);
             Assert.Contains("bridge", vm.EditStatus);
             Assert.Contains("2 places to land", vm.EditStatus);
+            // both flights are worked out and drawn: the plain jump falls short of the bridge, the spell's lands on it
+            Assert.False(w.ShownPlainJump.Lands);
+            Assert.False(w.ShownPlainJump.Leap);
+            Assert.True(w.ShownSpellJump.Lands);
+            Assert.Same(w.ShownSpellJump, w.ShownJump);
+            Assert.True(w.ShownPlainJump.Path.Count > 0 && w.ShownSpellJump.Path.Count > 0);
+            Assert.Contains("Try Jump, plain: Does not reach", vm.EditStatus);
+            Assert.Contains("With the Jump spell: Lands on", vm.EditStatus);
             // again: the floor under it, with a plain jump
             w.TryJumpAt(32, 27, 10);
             Ui.Pump();
             Assert.True(w.ShownJump.Lands, w.ShownJump.Text);
             Assert.False(w.ShownJump.Leap);
             Assert.Equal(-1, w.ShownJump.On.Object);
+            Assert.Same(w.ShownPlainJump, w.ShownJump);
+            Assert.True(w.ShownSpellJump.Leap);
             // and round to the bridge again
             w.TryJumpAt(32, 27, 10);
             Ui.Pump();

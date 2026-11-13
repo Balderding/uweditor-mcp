@@ -9,8 +9,10 @@ namespace UwEditor.App
 {
     /// <summary>
     /// The Try Jump tool: click the square to jump from, then the square to land on. The flight
-    /// (Core JumpTrace, the game's jump as the automatic zones use it) is drawn over the level:
-    /// green when the player comes down where he was asked to, red up to where it ends when not.
+    /// (Core JumpTrace, the game's jump as the automatic zones use it) is drawn over the level
+    /// twice, the plain jump and the jump with the Jump spell: the plain one green when the
+    /// player comes down where he was asked to and red up to where it ends when not, the
+    /// spell's light blue and orange.
     /// A square may have several things to stand on (a bridge and the floor under it): the click
     /// takes the one nearest to where it hit, and a click on the same square again takes the next
     /// one down.
@@ -24,13 +26,16 @@ namespace UwEditor.App
         /// <summary>Which of the square's surfaces (highest first) the jump leaves and lands on.</summary>
         int jumpFromSurface, jumpToSurface;
 
-        /// <summary>The jump now shown, or null (for tests).</summary>
+        /// <summary>The jump now shown, or null (for tests): the plain jump when it lands, else the one with the Jump spell when that does, else the plain one.</summary>
         public JumpTrace ShownJump { get; private set; }
+        /// <summary>Both jumps now shown: the plain one and the one with the Jump spell (null: none).</summary>
+        public JumpTrace ShownPlainJump { get; private set; }
+        public JumpTrace ShownSpellJump { get; private set; }
 
         void ClearJump()
         {
             jumpLevel = jumpFromX = jumpToX = -1;
-            ShownJump = null;
+            ShownJump = ShownPlainJump = ShownSpellJump = null;
         }
 
         List<Hitbox> JumpBoxes(LevelModel level) { return JumpTrace.Obstacles(level, ComObj()); }
@@ -83,13 +88,15 @@ namespace UwEditor.App
             if (jumpToX >= 0 && here.Count > 1)
                 note = string.Format(" This square has {0} places to land: {1}. Click it again for the next one.", here.Count, string.Join(", ", here.Select(s => s.ToString())));
             UpdateMarkers();
-            if (ShownJump != null) vm.EditStatus = "Try Jump: " + ShownJump.Text + note;
+            if (ShownPlainJump != null && ShownSpellJump != null)
+                vm.EditStatus = "Try Jump, plain: " + ShownPlainJump.Text + " With the Jump spell: " + ShownSpellJump.Text + note;
+            else if (ShownJump != null) vm.EditStatus = "Try Jump: " + ShownJump.Text + note;
         }
 
         /// <summary>The jump's squares and flight, for the markers (worked out again each time, so an edit of the level shows).</summary>
         void AddJump(List<float> lines, List<float> tris, LevelModel level)
         {
-            ShownJump = null;
+            ShownJump = ShownPlainJump = ShownSpellJump = null;
             if (vm.ToolIndex != TryJumpTool || jumpFromX < 0 || jumpLevel != level.Level) return;
             var white = new Vector4(1f, 1f, 1f, 1f);
             var boxes = JumpBoxes(level);
@@ -104,10 +111,20 @@ namespace UwEditor.App
             NavOptions nav; AbilityOptions abil; string why;
             ZoningOptions(out nav, out abil, out why);
             var names = vm.Session.Names;
-            var t = JumpTrace.Try(level, jumpFromX, jumpFromY, jumpToX, jumpToY, nav, boxes, from, to, i => names.Get(i));
-            ShownJump = t;
-            var colour = t.Lands ? new Vector4(0.2f, 1f, 0.3f, 1f) : new Vector4(1f, 0.15f, 0.1f, 1f);
-            SurfaceOutline(lines, level, jumpToX, jumpToY, to, colour);
+            var plain = JumpTrace.Try(level, jumpFromX, jumpFromY, jumpToX, jumpToY, nav, boxes, from, to, i => names.Get(i), false);
+            var spell = JumpTrace.Try(level, jumpFromX, jumpFromY, jumpToX, jumpToY, nav, boxes, from, to, i => names.Get(i), true);
+            ShownPlainJump = plain;
+            ShownSpellJump = spell;
+            ShownJump = plain.Lands || !spell.Lands ? plain : spell;
+            SurfaceOutline(lines, level, jumpToX, jumpToY, to, ShownJump.Lands ? new Vector4(0.2f, 1f, 0.3f, 1f) : new Vector4(1f, 0.15f, 0.1f, 1f));
+            // the spell's flight first, so the plain one lies over it where they run together
+            DrawFlight(lines, tris, level, spell, spell.Lands ? new Vector4(0.35f, 0.8f, 1f, 1f) : new Vector4(1f, 0.6f, 0.1f, 1f), true);
+            DrawFlight(lines, tris, level, plain, plain.Lands ? new Vector4(0.2f, 1f, 0.3f, 1f) : new Vector4(1f, 0.15f, 0.1f, 1f), false);
+        }
+
+        /// <summary>One flight: its path, drop lines to the floor, and where it ends (a bullseye where it lands, a cross where it does not).</summary>
+        void DrawFlight(List<float> lines, List<float> tris, LevelModel level, JumpTrace t, Vector4 colour, bool spell)
+        {
             if (t.Path.Count == 0) return;
             // the flight, a little above the feet so it does not sink into the floor it leaves
             var lift = new Vector3(0, 0.02f, 0);
@@ -122,7 +139,7 @@ namespace UwEditor.App
                 if (f < p.Y) LevelScene.Line(lines, p, new Vector3(p.X, f, p.Z), new Vector4(colour.X, colour.Y, colour.Z, 0.35f));
             }
             var end = t.End + lift;
-            if (t.Lands) Markers.Bullseye(tris, end, 0.25f, Markers.Green);
+            if (t.Lands) Markers.Bullseye(tris, end, spell ? 0.18f : 0.25f, spell ? new Vector4(0.35f, 0.8f, 1f, 1f) : Markers.Green);
             else
             {
                 // where it ends: a cross
@@ -130,7 +147,7 @@ namespace UwEditor.App
                 LevelScene.Line(lines, end + new Vector3(-r, 0, -r), end + new Vector3(r, 0, r), colour);
                 LevelScene.Line(lines, end + new Vector3(-r, 0, r), end + new Vector3(r, 0, -r), colour);
                 LevelScene.Line(lines, end + new Vector3(0, -r, 0), end + new Vector3(0, r, 0), colour);
-                Markers.ArrowDown(tris, end + new Vector3(0, r, 0), Markers.Red, 0.6f);
+                Markers.ArrowDown(tris, end + new Vector3(0, r, 0), spell ? new Vector4(1f, 0.6f, 0.1f, 1f) : Markers.Red, 0.6f);
             }
         }
 

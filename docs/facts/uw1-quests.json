@@ -297,6 +297,7 @@
       "kind": "trade",
       "token": "talisman:taper",
       "requires": "(npc:zak & item:food) | (option:kill_npcs & npc:zak)",
+      "usesUp": ["item:food"],
       "notes": "Zak (L3 (47, 38), conversation 28) barters (setup_to_barter, do_offer): his four lights, the taper among them. He likes classes 1011 (items 0xB0-0xBF, food and drink) and 1009 (0x90-0x9F, lights and wands) and dislikes coins, gems, weapons and armour (set_likes_dislikes). do_offer accepts when (player's value - his) * 100 / his reaches his greed. The taper is worth 1 (COMOBJ value 1, quality 40); a liked item is worth 1.5 times its value times quality / 64, blurred by his appraisal (at most 44 %). His greed (haggle 9) is at most 67 %, so any offer valued 2 or more is taken: one piece of meat (value 4, quality 40: 3, at worst 2) is enough. The data would also take a lantern or a wand; Karl's rule is food, and the logic keeps it. Killing him also gets it.",
       "source": "conversation 28 (func_0836 set_likes_dislikes, func_09CC do_offer); conv/BARTER.C barter_init, do_offer, assess_value, does_npc_like; OBJECTS.DAT creature 0x68 (trade level 6, shrewd 10, haggle 9, patience 10); COMOBJ.DAT values",
       "confidence": "probable"

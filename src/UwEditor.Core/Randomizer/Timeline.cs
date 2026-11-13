@@ -36,6 +36,8 @@ namespace UwEditor.Core.Randomizer
         public readonly Dictionary<string, int> OnceLeft = new Dictionary<string, int>();
         /// <summary>The state of each changed level after this sphere (level -> state key).</summary>
         public Dictionary<int, string> State = new Dictionary<int, string>();
+        /// <summary>The links of the world as it stood after this sphere (the walkthrough finds the way from one step to the next over them).</summary>
+        public List<ZoneLink> Links;
     }
 
     /// <summary>A zone the player can enter but not leave (back to the start), with what it holds.</summary>
@@ -80,6 +82,41 @@ namespace UwEditor.Core.Randomizer
         public readonly List<KeyValuePair<int, List<int>>> CutOff = new List<KeyValuePair<int, List<int>>>();
         /// <summary>Names of the zones made by changes (parts split off), by id.</summary>
         public readonly Dictionary<int, string> NewZones = new Dictionary<int, string>();
+        /// <summary>What the solve found, in order (Walkthrough reads it).</summary>
+        public readonly List<TimelineEvent> Events = new List<TimelineEvent>();
+        /// <summary>The solver options the solve ran with.</summary>
+        public SolverOptions Options;
+        /// <summary>The zone the goal was reached in (the goal zone, or the zone of the end of the game), or 0.</summary>
+        public int GoalAt;
+    }
+
+    /// <summary>
+    /// One thing a timeline solve found, in the order it found it: a zone first entered (by a
+    /// link, by a warp, or stood in when a change went off), a token gained from a placement, a
+    /// mechanism set off, a part of a count (Shak's coins), or another use of a single-use
+    /// source. Whatever an event needed came before it in the list.
+    /// </summary>
+    public sealed class TimelineEvent
+    {
+        public int Sphere;
+        /// <summary>zone, token, flag, count, use.</summary>
+        public string Kind = "";
+        /// <summary>The zone entered, or the zone the placement lay in then (0 for a mechanism: its trigger is on the mechanism's level).</summary>
+        public int Zone;
+        /// <summary>A zone event: the zone it was entered from (-1: by a warp, or where the player stood).</summary>
+        public int From = -1;
+        public ZoneLink Link;
+        public Fact Warp;
+        public string Token = "";
+        public Placement Placement;
+        public NavMechanism Mechanism;
+        /// <summary>The requirement that held: the link's, the placement's, the warp's, or the mechanism's set-off in zone terms.</summary>
+        public string Requires = "";
+        /// <summary>The single-use sources (once:X) this step used up, one entry a use.</summary>
+        public readonly List<string> Spent = new List<string>();
+        /// <summary>A zone event: the changes applied to the link's level by then, in order (the link may exist only because of some of them: Timeline.ChangesFor).</summary>
+        public readonly List<string> Changes = new List<string>();
+        public override string ToString() { return Sphere + " " + Kind + " " + (Token.Length > 0 ? Token : Zone.ToString()); }
     }
 
     /// <summary>Phase C of the automatic zones: the zones of Phase B, the world changes and the facts' links, warps and goal, and the timeline solves.</summary>
@@ -260,6 +297,12 @@ namespace UwEditor.Core.Randomizer
                         m.Kind == "hack" ? "its flag is granted when set off; the hack itself is not modelled" : "its flag is granted when set off (facts may test it)";
                     continue;
                 }
+                if (m.Airlock)
+                {
+                    c.Effect = "comes and goes";
+                    c.Treatment = "not applied: an airlock, the lock it puts on the other door comes off again when this door is closed";
+                    continue;
+                }
                 if (m.Kind == "door" && (m.DoorAction == 2 || (m.DoorAction == 3 && m.Unavoidable)))
                 {
                     var cl = res.Closers.FirstOrDefault(x => x.Mechanism == m);
@@ -269,7 +312,7 @@ namespace UwEditor.Core.Randomizer
                     continue;
                 }
                 // the mechanisms of one trigger go off together: try them together
-                var together = res.Abilities.Auto.Graph.Mechanisms.Where(x => x.Level == m.Level && x.Trigger == m.Trigger && Appliable.Contains(x.Kind) && !(x.Kind == "door" && (x.DoorAction == 2 || (x.DoorAction == 3 && x.Unavoidable))))
+                var together = res.Abilities.Auto.Graph.Mechanisms.Where(x => x.Level == m.Level && x.Trigger == m.Trigger && Appliable.Contains(x.Kind) && !x.Airlock && !(x.Kind == "door" && (x.DoorAction == 2 || (x.DoorAction == 3 && x.Unavoidable))))
                     .Select(x => Requirement.Normalize(x.Flag)).ToList();
                 var basis = e.Rebuild(m.Level, new List<string>());
                 var trial = e.Rebuild(m.Level, together);
@@ -674,6 +717,33 @@ namespace UwEditor.Core.Randomizer
                 return list;
             }
 
+            /// <summary>
+            /// The changes (of those applied to its level, in order) without which a link of a
+            /// changed level would not be there: none when the unchanged level has it; else each
+            /// change is left out in turn, from the last, and kept only when the link goes without it.
+            /// </summary>
+            public List<string> ChangesFor(ZoneLink k, List<string> applied)
+            {
+                var keep = new List<string>();
+                if (k == null || k.Level < 1 || applied == null || applied.Count == 0 || globalLinks.Contains(k)) return keep;
+                // the same way: the same kind and requirement into the same zone, at the same square when the link has one
+                // (a change that joins two zones gives the joined zone one of their ids, so the zone a way starts in may be named anew
+                // though the way was always there: UW1 level 7's door at (55, 2) once the wall at (42, 10) is open)
+                Func<IEnumerable<ZoneLink>, bool> has = ls => ls.Any(x => x.Kind == k.Kind && x.Requires == k.Requires &&
+                    (k.X >= 0 ? x.X == k.X && x.Y == k.Y && (x.To == k.To || (x.TwoWay && x.From == k.To)) : x.From == k.From && x.To == k.To));
+                List<ZoneLink> bl;
+                if (baseLinks.TryGetValue(k.Level, out bl) && has(bl)) return keep;
+                // not a way of the level's own (a fact's link anchored there): no change makes it
+                if (!has(Rebuild(k.Level, applied).Links)) return keep;
+                keep.AddRange(applied.Distinct());
+                for (int i = keep.Count - 1; i >= 0; i--)
+                {
+                    var trial = keep.Where((f, j) => j != i).ToList();
+                    if (has(Rebuild(k.Level, trial).Links)) keep = trial;
+                }
+                return keep;
+            }
+
             /// <summary>The level rebuilt with the changes (flags, in order), its regions grouped and mapped onto the base zones (cached).</summary>
             public LevelState Rebuild(int level, List<string> flags)
             {
@@ -906,15 +976,19 @@ namespace UwEditor.Core.Randomizer
                 public HashSet<int> Hidden;
                 /// <summary>The single-use sources (once:X) that count just now; null: all of them.</summary>
                 public HashSet<string> OnceAllowed;
+                /// <summary>Tokens taken as not held just now (to see whether a requirement can do without them); null: none.</summary>
+                public HashSet<string> Without;
                 public bool HasToken(string t)
                 {
                     t = Requirement.Normalize(t);
+                    if (Without != null && Without.Contains(t)) return false;
                     if (OnceAllowed != null && t.StartsWith("once:") && !OnceAllowed.Contains(t)) return false;
                     return Tokens.Contains(t);
                 }
                 public bool ZoneReachable(int z) { return (Hidden == null || !Hidden.Contains(z)) && (Reach.Contains(z) || (Before != null && Before.Contains(z))); }
                 public bool ZoneNow(int z) { return Reach.Contains(z) && (Hidden == null || !Hidden.Contains(z)); }
                 public int TalismanCount() { return Tokens.Count(t => t.StartsWith("talisman:")); }
+                public int PlotClock() { return Requirement.PlotClock(Tokens); }
             }
 
             /// <summary>The links of the world in the given level states.</summary>
@@ -973,7 +1047,7 @@ namespace UwEditor.Core.Randomizer
             /// <summary>The forward search with the world changing; banned zones grant nothing (the safe solve).</summary>
             public TimelineSolve Run(SolverOptions so, AbilityOptions opt, string label, HashSet<int> banned)
             {
-                var sv = new TimelineSolve { Label = label };
+                var sv = new TimelineSolve { Label = label, Options = so };
                 var ctx = new Ctx { Options = so, Hidden = banned };
                 foreach (var t in so.StartTokens) ctx.Tokens.Add(Requirement.Normalize(t));
                 // single-use sources (scrolls, potions): each placement is one use, and each way, item or change that
@@ -986,12 +1060,12 @@ namespace UwEditor.Core.Randomizer
                 var none = new HashSet<string>();
                 Func<Requirement, bool> holds = r =>
                 {
-                    if (!so.SingleUseItems || onceHave.Count == 0) return r.Eval(ctx);
+                    if (!so.SingleUseItems || !onceHave.Keys.Any(k => k.StartsWith("once:"))) return r.Eval(ctx);
                     try
                     {
                         ctx.OnceAllowed = none;
                         if (r.Eval(ctx)) return true;       // something lasting does it
-                        var avail = onceHave.Keys.Where(left).ToList();
+                        var avail = onceHave.Keys.Where(k => k.StartsWith("once:") && left(k)).ToList();
                         foreach (var tok in avail)
                         {
                             ctx.OnceAllowed = new HashSet<string> { tok };
@@ -1011,12 +1085,29 @@ namespace UwEditor.Core.Randomizer
                     }
                     finally { ctx.OnceAllowed = null; }
                 };
+                // what a step hands over (a fact's usesUp: food for Zak, food for Marrowsuck): each source of such a token is one piece,
+                // counted as the single-use sources are, and a step that cannot do without the token takes one; with none left it waits for another
+                var handed = new HashSet<string>(Placements.Where(p => p.UsesUp != null).SelectMany(p => p.UsesUp).Select(Requirement.Normalize));
+                Func<Placement, Requirement, List<string>> handsOver = (p, r) =>
+                {
+                    var l = new List<string>();
+                    if (p.UsesUp == null) return l;
+                    foreach (var g in p.UsesUp)
+                    {
+                        try { ctx.Without = new HashSet<string> { g }; if (!r.Eval(ctx)) l.Add(g); }
+                        finally { ctx.Without = null; }
+                    }
+                    return l;
+                };
                 var cur = new Dictionary<int, LevelState>();
                 var applied = new Dictionary<int, List<string>>();
                 var fired = new HashSet<string>();
                 int start = zs.StartZone;
                 ctx.Reach.Add(start);
                 sv.ZoneSphere[start] = 0;
+                sv.Events.Add(new TimelineEvent { Kind = "zone", Zone = start });
+                // the single-use sources a step used up: those spent since the count n
+                Action<TimelineEvent, int> spentSince = (ev, n) => { for (int i = n; i < sv.OnceSpent.Count; i++) ev.Spent.Add(sv.OnceSpent[i]); };
                 var warpTo = res.Warps.ToDictionary(f => f, f => WarpTarget(f));
                 var counted = new HashSet<Placement>();
                 var tally = new Dictionary<string, int>();
@@ -1038,17 +1129,35 @@ namespace UwEditor.Core.Randomizer
                             bool fwd = ctx.Reach.Contains(k.From) && !ctx.Reach.Contains(k.To) && !newly.Contains(k.To);
                             bool back = k.TwoWay && ctx.Reach.Contains(k.To) && !ctx.Reach.Contains(k.From) && !newly.Contains(k.From);
                             if (!fwd && !back) continue;
+                            int n0 = sv.OnceSpent.Count;
                             if (!holds(Req(k.Requires))) continue;
                             int z = fwd ? k.To : k.From;
                             newly.Add(z);
-                            if (!sv.FirstLink.ContainsKey(z)) sv.FirstLink[z] = k;
+                            if (!sv.FirstLink.ContainsKey(z))
+                            {
+                                sv.FirstLink[z] = k;
+                                var ev = new TimelineEvent { Sphere = sphere.Index, Kind = "zone", Zone = z, From = fwd ? k.From : k.To, Link = k, Requires = k.Requires ?? "" };
+                                spentSince(ev, n0);
+                                List<string> was;
+                                if (k.Level > 0 && applied.TryGetValue(k.Level, out was)) ev.Changes.AddRange(was);
+                                sv.Events.Add(ev);
+                            }
                         }
                         foreach (var f in res.Warps)
                         {
                             int z = warpTo[f];
                             if (z <= ZoneSet.Unassigned || ctx.Reach.Contains(z) || newly.Contains(z) || !WarpHolds(f, ctx, cur)) continue;
+                            // a warp made with a scroll or a potion uses it up, as a way does
+                            int w0 = sv.OnceSpent.Count;
+                            if (!holds(Req(f.Requires))) continue;
                             newly.Add(z);
-                            if (!sv.FirstLink.ContainsKey(z)) sv.FirstLink[z] = new ZoneLink { From = 0, To = z, Kind = "warp", Requires = f.Requires, Notes = "facts: " + f.Id };
+                            if (!sv.FirstLink.ContainsKey(z))
+                            {
+                                sv.FirstLink[z] = new ZoneLink { From = 0, To = z, Kind = "warp", Requires = f.Requires, Notes = "facts: " + f.Id };
+                                var wev = new TimelineEvent { Sphere = sphere.Index, Kind = "zone", Zone = z, Link = sv.FirstLink[z], Warp = f, Requires = f.Requires ?? "" };
+                                spentSince(wev, w0);
+                                sv.Events.Add(wev);
+                            }
                         }
                         // a zone reached again after a change cut it off keeps the sphere it first came in
                         foreach (int z in newly) { ctx.Reach.Add(z); if (!sv.ZoneSphere.ContainsKey(z)) { sv.ZoneSphere[z] = sphere.Index; sphere.Zones.Add(z); } }
@@ -1071,7 +1180,11 @@ namespace UwEditor.Core.Randomizer
                             foreach (var kv in ms)
                             {
                                 string f = Requirement.Normalize(kv.Key.Flag);
+                                int n0 = sv.OnceSpent.Count;
                                 if (fired.Contains(f) || !which(kv.Key, f) || !holds(kv.Value)) continue;
+                                var fev = new TimelineEvent { Sphere = sphere.Index, Kind = "flag", Token = f, Mechanism = kv.Key, Requires = kv.Value.ToString() };
+                                spentSince(fev, n0);
+                                sv.Events.Add(fev);
                                 if (Closing.Contains(f)) stood.AddRange(StandingTiles(kv.Key, cur, ctx));
                                 fired.Add(f);
                                 sv.Fired.Add(f);
@@ -1116,18 +1229,28 @@ namespace UwEditor.Core.Randomizer
                         {
                             string t = Requirement.Normalize(p.Grants);
                             bool counts = t.Length == 0 && !string.IsNullOrEmpty(p.Counts);
-                            bool once = so.SingleUseItems && t.StartsWith("once:");
+                            bool once = (so.SingleUseItems && t.StartsWith("once:")) || handed.Contains(t);
                             if (counts ? counted.Contains(p) : once ? onceSeen.Contains(p) : (t.Length == 0 || ctx.Tokens.Contains(t))) continue;
                             int z = PlacementZone(p, cur);
                             if (!ctx.Reach.Contains(z) || (banned != null && banned.Contains(z))) continue;
+                            int n0 = sv.OnceSpent.Count;
+                            List<string> over = null;
+                            if (p.UsesUp != null && !string.IsNullOrEmpty(p.Requires))
+                            {
+                                over = handsOver(p, Req(p.Requires));
+                                if (over.Any(g => !left(g))) continue;      // nothing left to hand over: another piece must be found first
+                            }
                             if (!string.IsNullOrEmpty(p.Requires) && !holds(Req(p.Requires))) continue;
+                            if (over != null) foreach (var g in over) spend(g);
+                            var pev = new TimelineEvent { Sphere = sphere.Index, Kind = "token", Zone = z, Token = t, Placement = p, Requires = p.Requires ?? "" };
+                            spentSince(pev, n0);
                             if (once)
                             {
                                 // one more use of this kind; the token itself comes with the first
                                 onceSeen.Add(p);
                                 int h; onceHave.TryGetValue(t, out h); onceHave[t] = h + 1;
                                 more = true;
-                                if (ctx.Tokens.Contains(t)) continue;
+                                if (ctx.Tokens.Contains(t)) { pev.Kind = "use"; sv.Events.Add(pev); continue; }
                             }
                             if (counts)
                             {
@@ -1135,10 +1258,15 @@ namespace UwEditor.Core.Randomizer
                                 counted.Add(p);
                                 int n; tally.TryGetValue(p.Counts, out n); tally[p.Counts] = n += p.Quantity;
                                 Fact cf;
+                                pev.Kind = "count";
+                                pev.Token = p.Counts;
+                                sv.Events.Add(pev);
                                 if (!countFacts.TryGetValue(p.Counts, out cf) || n < cf.AtLeast) continue;
                                 t = Requirement.Normalize(cf.Grants);
                                 if (ctx.Tokens.Contains(t)) continue;
+                                pev = new TimelineEvent { Sphere = sphere.Index, Kind = "token", Zone = z, Token = t, Placement = p, Requires = "count:" + p.Counts };
                             }
+                            sv.Events.Add(pev);
                             ctx.Tokens.Add(t);
                             sphere.Tokens.Add(t);
                             sphere.TokenSources.Add(t + " (zone " + z + (string.IsNullOrEmpty(p.Requires) ? "" : ", with " + p.Requires) + ")");
@@ -1155,6 +1283,7 @@ namespace UwEditor.Core.Randomizer
                         break;
                     }
                     foreach (var kv in onceHave) { int u; onceUsed.TryGetValue(kv.Key, out u); sphere.OnceLeft[kv.Key] = kv.Value - u; }
+                    sphere.Links = links;
                     sv.Spheres.Add(sphere);
                 }
                 // the goal: the goal zone (level 9), or a square that ends the game
@@ -1166,8 +1295,8 @@ namespace UwEditor.Core.Randomizer
                 var greq = Req(res.GoalFor(so));
                 var ereq = Req(res.EndFor(so));
                 sv.GoalZoneReached = atGoal || end.Key != null;
-                if (atGoal && greq.Eval(ctx)) { sv.GoalReached = true; sv.GoalBy = "the goal zone"; }
-                else if (end.Key != null && ereq.Eval(ctx)) { sv.GoalReached = true; sv.GoalBy = "the end of the game at " + end.Key; }
+                if (atGoal && greq.Eval(ctx)) { sv.GoalReached = true; sv.GoalBy = "the goal zone"; sv.GoalAt = res.GoalZone; }
+                else if (end.Key != null && ereq.Eval(ctx)) { sv.GoalReached = true; sv.GoalBy = "the end of the game at " + end.Key; sv.GoalAt = EndZoneNow(end, cur); }
                 else sv.GoalReached = false;
                 if (!sv.GoalZoneReached) sv.GoalMissing.Add("the goal zone " + ZoneName(res.GoalZone) + (res.Ends.Count > 0 ? " or an end of the game (" + string.Join(", ", res.Ends.Select(e => e.Key.ToString())) + ")" : ""));
                 if (!sv.GoalReached) (atGoal || end.Key == null ? greq : ereq).Missing(ctx, sv.GoalMissing);
@@ -1284,7 +1413,7 @@ namespace UwEditor.Core.Randomizer
                     waiting.RemoveAll(w => now.Contains(w.Key));
                     if (queue.Count == 0) break;
                 }
-                foreach (int z in seeds) if (!sv.ZoneSphere.ContainsKey(z)) { sv.ZoneSphere[z] = sphere.Index; sphere.Zones.Add(z); }
+                foreach (int z in seeds) if (!sv.ZoneSphere.ContainsKey(z)) { sv.ZoneSphere[z] = sphere.Index; sphere.Zones.Add(z); sv.Events.Add(new TimelineEvent { Sphere = sphere.Index, Kind = "zone", Zone = z }); }
                 var lost = old.Where(z => !now.Contains(z)).OrderBy(z => z).ToList();
                 if (lost.Count > 0) sv.CutOff.Add(new KeyValuePair<int, List<int>>(sphere.Index, lost));
             }

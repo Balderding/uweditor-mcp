@@ -158,7 +158,7 @@ namespace UwEditor.Core.Randomizer
             facts = facts ?? FactSet.Shipped(s.IsUw2);
             nav = FreeChains(nav ?? new NavOptions(), facts);
             var res = new AbilityZoneResult { Facts = facts, Options = opt, Nav = nav };
-            if (!s.IsUw2) for (int i = 0; i < Abilities.Uw1SpellCount; i++) res.SpellNames[i] = SpellTables.Name(s, i);
+            for (int i = 0; i < Abilities.SpellCount(s.IsUw2); i++) res.SpellNames[i] = SpellTables.Name(s, i);
             foreach (var w in facts.Check()) res.Warnings.Add("Facts: " + w);
 
             // ---- walls: the facts' areas, and with the option every damage-trap tile
@@ -487,11 +487,11 @@ namespace UwEditor.Core.Randomizer
         static string Slug(string t) { return new string((t ?? "").ToLowerInvariant().Select(c => char.IsLetterOrDigit(c) ? c : '_').ToArray()).Trim('_'); }
 
         /// <summary>Adds a placement; with perObject (an object of the levels) always, else only when the zone has none like it.</summary>
-        static void Add(ZoneSet zs, int zone, string grants, string requires, string notes, string source, bool perObject = false)
+        static void Add(ZoneSet zs, int zone, string grants, string requires, string notes, string source, bool perObject = false, List<string> usesUp = null)
         {
             if (zone <= ZoneSet.Unassigned) return;
             if (!perObject && zs.Placements.Any(p => p.Zone == zone && Requirement.Normalize(p.Grants) == Requirement.Normalize(grants) && (p.Requires ?? "") == (requires ?? ""))) return;
-            zs.Placements.Add(new Placement { Zone = zone, Grants = grants, Requires = requires ?? "", Notes = notes, Source = source });
+            zs.Placements.Add(new Placement { Zone = zone, Grants = grants, Requires = requires ?? "", Notes = notes, Source = source, UsesUp = usesUp != null && usesUp.Count > 0 ? usesUp : null });
         }
 
         static void AddPlacements(GameSession s, Func<int, LevelModel> level, ZoneSet zs, FactSet facts, AbilityZoneResult res)
@@ -503,7 +503,7 @@ namespace UwEditor.Core.Randomizer
             // casting: the runes in the rune bag (combat/RUNES.C try_cast; ignoring character level and mana)
             foreach (var ab in Abilities.Names)
                 foreach (int sp in Abilities.SpellsGiving(s.IsUw2, ab))
-                    Add(zs, zs.StartZone, "cast:" + ab, Abilities.CastRequirement(s, sp), SpellTables.Name(s, sp) + " (" + string.Join(" ", Abilities.Uw1Runes(sp).Select(r => Abilities.RuneNames[r])) + ")", "facts");
+                    Add(zs, zs.StartZone, "cast:" + ab, Abilities.CastRequirement(s, sp), SpellTables.Name(s, sp) + " (" + string.Join(" ", Abilities.Runes(s.IsUw2, sp).Select(r => Abilities.RuneNames[r])) + ")", "facts");
             // the rune bag, lock picks, and the items the facts name
             var wanted = new HashSet<string> { "item:rune_bag", "item:lockpick" };
             var mustExist = new HashSet<string>();
@@ -561,13 +561,14 @@ namespace UwEditor.Core.Randomizer
                 switch (f.Kind)
                 {
                     case "craft":
-                        Add(zs, zs.StartZone, f.Grants, f.Requires, f.Notes, "facts: " + f.Id);
+                        Add(zs, zs.StartZone, f.Grants, f.Requires, f.Notes, "facts: " + f.Id, false, f.UsesUp);
                         break;
                     case "trade":
                         foreach (var p in zs.Placements.Where(p => Requirement.Normalize(p.Grants) == Requirement.Normalize(f.Token)))
                         {
                             p.Requires = string.IsNullOrEmpty(p.Requires) ? f.Requires : ZoneLink.JoinAnd(new[] { p.Requires, f.Requires });
                             p.Notes = (p.Notes ?? "") + "; " + f.Notes;
+                            if (f.UsesUp.Count > 0) p.UsesUp = (p.UsesUp ?? new List<string>()).Union(f.UsesUp).ToList();
                         }
                         break;
                     case "flag":
@@ -576,7 +577,7 @@ namespace UwEditor.Core.Randomizer
                             try { m = level(f.Level); } catch (Exception) { }
                             var o = m != null && f.Object >= 0 && f.Object < m.Objects.Length ? m.Objects[f.Object] : null;
                             if (o == null || o.Free || o.TileX < 0) { res.Warnings.Add("Facts: " + f.Id + ": no object #" + f.Object + " on L" + f.Level + "."); break; }
-                            Add(zs, zs.ZoneOf(f.Level, m, o), f.Grants, f.Requires, f.Notes + " (#" + o.Index + " " + o.Name + ")", "facts: " + f.Id);
+                            Add(zs, zs.ZoneOf(f.Level, m, o), f.Grants, f.Requires, f.Notes + " (#" + o.Index + " " + o.Name + ")", "facts: " + f.Id, false, f.UsesUp);
                             break;
                         }
                 }
@@ -890,10 +891,10 @@ namespace UwEditor.Core.Randomizer
             {
                 int first = sv == null ? int.MaxValue : FirstSphere(sv, so, ab);
                 var items = res.Sources.Where(x => x.Ability == ab).ToList();
-                var spells = Abilities.SpellsGiving(false, ab);
+                var spells = Abilities.SpellsGiving(zs.Game == "UW2", ab);
                 var crafted = zs.Placements.Where(p => Requirement.Normalize(p.Grants) == "worn:" + ab && (p.Source ?? "").StartsWith("facts")).ToList();
                 sb.AppendLine(string.Format("  {0}: {1} items ({2} permanent), {3} spells{4}; {5}", ab, items.Count, items.Count(x => x.Permanent), spells.Count, crafted.Count > 0 ? ", crafted" : "", first == int.MaxValue ? "never available" : "first in sphere " + first));
-                foreach (int sp in spells) { string nm; res.SpellNames.TryGetValue(sp, out nm); sb.AppendLine(string.Format("    cast {0}: {1}", nm ?? "spell " + sp, string.Join(" ", Abilities.Uw1Runes(sp).Select(r => Abilities.RuneNames[r])))); }
+                foreach (int sp in spells) { string nm; res.SpellNames.TryGetValue(sp, out nm); sb.AppendLine(string.Format("    cast {0}: {1}", nm ?? "spell " + sp, string.Join(" ", Abilities.Runes(zs.Game == "UW2", sp).Select(r => Abilities.RuneNames[r])))); }
                 foreach (var x in items) sb.AppendLine(string.Format("    {0}{1}: #{2} {3} ({4}){5}, L{6} ({7}, {8}), {9}", x.Permanent ? (x.Worn ? "worn" : "unlimited") : "single-use", x.Kind == "worn" ? "" : " " + x.Kind, x.Index, x.Name, x.Spell, x.Holder != null ? " in " + x.Holder : "", x.Level, x.TileX, x.TileY, Z(zs, x.Zone)));
                 foreach (var p in crafted) sb.AppendLine("    crafted: " + p.Requires);
                 var gates = zs.Links.Where(k => UsesAbility(k.Requires, ab)).ToList();

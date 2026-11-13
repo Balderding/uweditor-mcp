@@ -227,6 +227,9 @@ namespace UwEditor.Core.Randomizer
             var st = g.Options.StartOf(s);
             res.Start = st;
             if (st != null) zs.StartZone = Math.Max(2, (int)zs.NearestZone(st.Level, (int)st.X, (int)st.Y));
+            // UW2's state: each token where the game starts, granted by the mechanisms that bring the state about
+            foreach (var ns in g.States)
+                if (ns.Requires != null) zs.Placements.Add(new Placement { Zone = zs.StartZone, Grants = ns.Token, Requires = ns.Requires, Notes = ns.Notes, Source = "state" });
             zs.GoalZone = GoalFrom(zs, painted);
             if (painted != null && painted.GoalZone > ZoneSet.Unassigned && painted.TileCount(painted.GoalZone) == 0)
                 res.Warnings.Add(string.Format("The painted goal zone {0} has no tiles, so the goal is the largest zone of the last level.", painted.GoalZone));
@@ -698,6 +701,15 @@ namespace UwEditor.Core.Randomizer
             sb.AppendLine(string.Format("  Zones: {0}. Links: {1} ({2}). Placements: {3}.", zs.Zones.Count(z => z.Id > ZoneSet.Unassigned), zs.Links.Count,
                 string.Join(", ", zs.Links.GroupBy(k => k.Kind).OrderByDescending(x => x.Count()).Select(x => x.Key + " " + x.Count())), zs.Placements.Count));
             sb.AppendLine(string.Format("  Mechanisms: {0} ({1}).", g.Mechanisms.Count, string.Join(", ", g.Mechanisms.GroupBy(m => m.Kind).OrderByDescending(x => x.Count()).Select(x => x.Key + " " + x.Count()))));
+            if (g.StreamTiles.Count > 0) sb.AppendLine(string.Format("  Streams (UW2, water with a current, one way unless over the water): {0} tiles on levels {1}; {2} ways carried by a current.", g.StreamTiles.Values.Sum(), string.Join(", ", g.StreamTiles.Keys.OrderBy(x => x)), g.Edges.Count(e => e.Notes.StartsWith("carried by the current"))));
+            if (g.IceSlopes.Count > 0) sb.AppendLine(string.Format("  Ice slopes (UW2, not walked up): {0} tiles on levels {1}.", g.IceSlopes.Values.Sum(), string.Join(", ", g.IceSlopes.Keys.OrderBy(x => x))));
+            int pads = g.Edges.Count(e => e.Notes.StartsWith("spring pad"));
+            if (pads > 0) sb.AppendLine(string.Format("  Spring pads (UW2 jump traps): {0} ways.", pads));
+            if (g.States.Count > 0)
+            {
+                sb.AppendLine(string.Format("  State (UW2): {0} tokens, {1} that nothing known brings about.", g.States.Count, g.States.Count(x => x.Requires == null)));
+                foreach (var st in g.States) sb.AppendLine(string.Format("    {0}: {1}", st.Token, st.Requires == null ? "no source (" + st.Notes + ")" : "when " + st.Requires + " (" + st.Notes + ")"));
+            }
             sb.AppendLine(string.Format("  Levers (switches holding a trigger): {0}, out of reach {1}.", g.Levers.Count, g.Levers.Count(l => l.OutOfReach)));
             if (res.Folded > 0) sb.AppendLine(string.Format("  Empty dead ends folded into their only neighbour: {0} groups of regions.", res.Folded));
             sb.AppendLine(string.Format("  Start: {0}. Goal: {1}.", SolveResult.ZoneName(zs, zs.StartZone), SolveResult.ZoneName(zs, zs.GoalZone)));

@@ -58,7 +58,8 @@ namespace UwEditor.Core.Tests
             string path = Docs(Path.Combine("facts", "uw1-facts.json"));
             // Phase C: every docs/facts/uw1-*.json is shipped (uw1-facts.json first, then the quest facts)
             if (path != null) Assert.Equal(shipped.Facts.Count(f => f.File == "uw1-facts.json"), FactSet.Load(path).Facts.Count);
-            Assert.Empty(FactSet.Shipped(true).Facts);
+            // UW2 has its own files (uw2-*.json), none of UW1's
+            Assert.All(FactSet.Shipped(true).Facts, x => Assert.StartsWith("uw2-", x.File));
             // a hand edit with a mistake is reported, not thrown
             var bad = FactSet.FromJson("{\"format\":\"uw1-facts\",\"facts\":[{\"id\":\"x\",\"kind\":\"craft\",\"grants\":\"worn:lava\",\"requires\":\"item:a &\"},{\"id\":\"y\",\"kind\":\"what\"}]}");
             Assert.Equal(2, bad.Check().Count);

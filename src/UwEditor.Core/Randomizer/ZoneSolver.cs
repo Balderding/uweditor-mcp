@@ -142,6 +142,8 @@ namespace UwEditor.Core.Randomizer
 			return n;
 		}
 
+		public int PlotClock() { return Requirement.PlotClock(tokens); }
+
 		public ZoneSolver(ZoneSet set, SolverOptions opts)
 		{
 			zs = set;
@@ -282,7 +284,8 @@ namespace UwEditor.Core.Randomizer
 			// tokens without a source
 			var needed = new List<string>();
 			foreach (var k in zs.Links) Req(k, res).Tokens(needed);
-			foreach (var p in zs.Placements) if (!string.IsNullOrEmpty(p.Requires)) PlacementReq(p, res).Tokens(needed);
+			// (a state's placement asks for mechanism flags, which only the timeline grants: not listed here)
+			foreach (var p in zs.Placements) if (!string.IsNullOrEmpty(p.Requires) && p.Source != "state") PlacementReq(p, res).Tokens(needed);
 			var granted = new HashSet<string>();
 			foreach (var p in zs.Placements) granted.Add(Requirement.Normalize(p.Grants));
 			foreach (var t in options.StartTokens) granted.Add(Requirement.Normalize(t));
@@ -298,6 +301,13 @@ namespace UwEditor.Core.Randomizer
 					continue;
 				}
 				if (t.StartsWith("search:") || t.StartsWith("option:") || t.StartsWith("now_zone:")) continue;
+				if (t.StartsWith("plot:"))
+				{
+					int n;
+					int most = Requirement.PlotClock(granted);
+					if (int.TryParse(t.Substring(5), out n) && most < n) res.NoSource.Add(t + " (the plot's known sources reach " + most + ")");
+					continue;
+				}
 				if (options.AbilitySources && (t.StartsWith("spell:") || t.StartsWith("use:") || t.StartsWith("cast:")))
 				{
 					// an ability: any of its sources counts (Requirement's spell:, use: and cast: terms), whatever the options

@@ -186,6 +186,14 @@ namespace UwEditor.Core.Randomizer
         public int Look = -1;
         /// <summary>A door trap's quality: 1 opens, 2 closes, 3 toggles (event/TRIGGER.C TRAP_DOOR); 0 for other traps.</summary>
         public int DoorAction;
+        /// <summary>
+        /// UW2: a door trap that swaps the lock of the door on its square (owner set), set off by
+        /// an open or a close trigger held by another door: an airlock. Opening one door locks
+        /// the other and closing it takes the lock off again (the Prison Tower's doors at level
+        /// 10 (32, 36) and (34, 36)), so the lock comes and goes and the way stays: not a change
+        /// of the world.
+        /// </summary>
+        public bool Airlock;
         /// <summary>Set off by walking onto it or picking something up: the player does not choose it.</summary>
         public bool Unavoidable;
         /// <summary>A free chain (the facts' kind "free"): its conditions and the reach of its switch were dropped.</summary>
@@ -228,6 +236,16 @@ namespace UwEditor.Core.Randomizer
         Dictionary<int, List<NavDeck>>[] decksAt;
         /// <summary>Things worth saying that are not edges (triggers the player cannot set off, conditions met).</summary>
         public readonly List<string> Notes = new List<string>();
+        /// <summary>UW2: the tests of the game's state the chains make that the starting state fails, by token.</summary>
+        public readonly Dictionary<string, StateTest> Tests = new Dictionary<string, StateTest>();
+        /// <summary>UW2: the set variable traps the player can set off.</summary>
+        public readonly List<StateSet> Sets = new List<StateSet>();
+        /// <summary>UW2: the state tokens and what grants each (StateRules.Derive); AutoZones makes them placements.</summary>
+        public readonly List<NavState> States = new List<NavState>();
+        /// <summary>UW2: the tiles of water with a current, and the ice slopes (one way down), by level.</summary>
+        public readonly Dictionary<int, int> StreamTiles = new Dictionary<int, int>(), IceSlopes = new Dictionary<int, int>();
+        /// <summary>The flag a schedule row grants when it fires the scheduled triggers of a square.</summary>
+        public static string ScheduleToken(int level, int x, int y) { return string.Format("flag:schedule_l{0}_{1}_{2}", level, x, y); }
         /// <summary>Doors closed behind the player by a trigger he cannot avoid (with ClosersOneWay).</summary>
         public readonly List<NavCloser> Closers = new List<NavCloser>();
 
@@ -306,6 +324,7 @@ namespace UwEditor.Core.Randomizer
             foreach (var kv in models) lv[kv.Key] = g.BuildRegions(s, kv.Value, terrain);
             foreach (var kv in models) g.BuildEdges(lv[kv.Key]);
             foreach (var kv in models) g.ReadTriggers(s, lv[kv.Key], lv);
+            if (s.IsUw2) g.States.AddRange(StateRules.Derive(g.Tests.Values, g.Sets));
             foreach (var kv in models) g.ReachPastBarriers(lv[kv.Key]);
             g.ApplyDoorRequirements(lv);
             if (g.Options.ClosersOneWay) g.OneWayClosers(s, lv);
@@ -422,6 +441,27 @@ namespace UwEditor.Core.Randomizer
             public ObjectInfo[] DoorObj = new ObjectInfo[64 * 64];
             public bool[] Water = new bool[64 * 64], Lava = new bool[64 * 64];
             public int[] Class = new int[64 * 64];      // floor terrain class: 0 floor, 1 water, 2 lava
+            /// <summary>
+            /// UW2: the way a tile's water flows (0 north, 1 east, 2 south, 3 west), or -1. The floor
+            /// texture's terrain bits 3-5 on water give the current (motion/PHYSICS.C
+            /// set_player_phys_params: 1 south, 2 north, 3 west, 4 east); the swimmer cannot go
+            /// against it.
+            /// </summary>
+            public int[] Flow = Enumerable.Repeat(-1, 64 * 64).ToArray();
+            /// <summary>UW2: the way an ice slope rises (0 north, 1 east, 2 south, 3 west), or -1: on ice a slope pushes downhill and cannot be walked up.</summary>
+            public int[] IceUp = Enumerable.Repeat(-1, 64 * 64).ToArray();
+
+            /// <summary>A tile of a stream: water with a current (its floor, not a bridge over it).</summary>
+            public bool Stream(Surf s) { return s.Deck == null && Flow[s.Tile] >= 0; }
+
+            /// <summary>Going from a towards dir onto b is against a current (of either tile) or up an ice slope: not done on foot or swimming.</summary>
+            public bool Pushed(Surf a, Surf b, int dir)
+            {
+                int back = (dir + 2) & 3;
+                if (a.Deck == null && (Flow[a.Tile] == back || IceUp[a.Tile] == dir)) return true;
+                if (b.Deck == null && (Flow[b.Tile] == back || IceUp[b.Tile] == dir)) return true;
+                return false;
+            }
             /// <summary>Terms that open each door tile besides its lock (levers, triggers), by tile.</summary>
             public Dictionary<int, List<string>> DoorOpeners = new Dictionary<int, List<string>>();
             public bool Open(int x, int y) { return x >= 0 && y >= 0 && x < 64 && y < 64 && !M.Tiles[x, y].IsSolid; }
@@ -503,6 +543,17 @@ namespace UwEditor.Core.Randomizer
                     n.Class[y * 64 + x] = c;
                     n.Water[y * 64 + x] = c == 1;
                     n.Lava[y * 64 + x] = c == 2;
+                    if (s.IsUw2)
+                    {
+                        int bits = (w & 0x38) >> 3;
+                        if (c == 1 && bits >= 1 && bits <= 4) { n.Flow[y * 64 + x] = bits == 1 ? 2 : bits == 2 ? 0 : bits == 3 ? 3 : 1; int q; StreamTiles.TryGetValue(m.Level, out q); StreamTiles[m.Level] = q + 1; }
+                        // ice with any of its effects (bits 7: none) on a slope
+                        if (c == 3 && bits != 7 && t.Type >= TileType.SlopeUpN && t.Type <= TileType.SlopeUpW)
+                        {
+                            n.IceUp[y * 64 + x] = t.Type == TileType.SlopeUpN ? 0 : t.Type == TileType.SlopeUpE ? 1 : t.Type == TileType.SlopeUpS ? 2 : 3;
+                            int q; IceSlopes.TryGetValue(m.Level, out q); IceSlopes[m.Level] = q + 1;
+                        }
+                    }
                 }
             ReadBoxes(n);
             // union of the two-way steps, over the floors and the decks
@@ -522,6 +573,10 @@ namespace UwEditor.Core.Randomizer
                                 int b = sb.Tile;
                                 if (sb.Deck == null && (n.Closed(b) || n.Low[b])) continue;
                                 if ((sa.Deck == null && n.Lava[a]) != (sb.Deck == null && n.Lava[b])) continue;
+                                // a stream is a region of its own (its ways in and out go by the current: Streams); an ice slope is one way
+                                bool sta = n.Stream(sa), stb = n.Stream(sb);
+                                if (sta != stb) continue;
+                                if (!sta && (n.Pushed(sa, sb, d) || n.Pushed(sb, sa, (d + 2) & 3))) continue;
                                 int up, down, fa, fb;
                                 if (!n.Step(sa, sb, d, out up, out fa) || !n.Step(sb, sa, (d + 2) & 3, out down, out fb)) continue;
                                 if (up <= ClimbFrom(n, sa, fa, false) && down <= ClimbFrom(n, sb, fb, false)) parent[find(sa.Node)] = find(sb.Node);
@@ -659,10 +714,14 @@ namespace UwEditor.Core.Randomizer
                                 if (!n.Step(sa, sb, d, out rise, out floor)) continue;
                                 // the floor under a low deck: nobody stands there
                                 if (sa.Deck == null && n.Low[a]) continue;
+                                // into and out of a stream: by the current (Streams)
+                                if (n.Stream(sa) || n.Stream(sb)) continue;
                                 string kind;
                                 var req = new List<string>();
                                 string geo = ClimbRequirement(n, sa, rise, floor, out kind);
                                 req.Add(geo);
+                                // up an ice slope: only off the ground
+                                if (n.Pushed(sa, sb, d)) { req.Add("spell:levitate"); if (kind == "walk") kind = "climb"; }
                                 var ra = Regions[ra0];
                                 var rb = Regions[rb0];
                                 if (rb.IsDoor || ra.IsDoor)
@@ -676,7 +735,167 @@ namespace UwEditor.Core.Randomizer
                                 AddEdge(new NavEdge { From = ra0, To = rb0, Kind = kind, Requires = ZoneLink.JoinAnd(req), Level = m.Level, X = x, Y = y, Fall = kind == "drop" ? -rise : 0 });
                             }
                     }
+            Streams(n);
             if (Options.GapJumps) GapJumps(n);
+        }
+
+        /// <summary>
+        /// UW2's spring pad: a jump trap under a trigger the player walks onto (motion/MOTION.C
+        /// set_jmp) throws him up at force * 47 / 2 with the jump spell's gravity (2) and halves
+        /// his forward speed (a trap with owner set stops him dead: it only lifts, and is left
+        /// out). From the pad's square, towards each side: the next square when its floor is
+        /// within the pad's climb (he rises almost straight up at a walk), and the squares
+        /// beyond, up to four, that a running player's flight comes down on with the squares
+        /// between cleared. The flight is counted from the pad's near edge and from its middle,
+        /// and a square must do for both. The ceiling over the pad cuts the rise.
+        /// </summary>
+        void SpringPad(LevelNav n, ObjectInfo t, ObjectInfo trap, string cond)
+        {
+            int px = t.TileX, py = t.TileY;
+            if (!n.Open(px, py)) return;
+            var pad = new Surf { Tile = py * 64 + px };
+            int from = n.RegionOfNode[pad.Node];
+            if (from < 0) return;
+            int dt = Math.Max(1, Math.Min(64, Options.TickLength));
+            double v = trap.Quality * 47 / 2 - 2.0 * dt / 2, u = (JumpModel.SprintSpeed - 1) / 2.0;
+            double b = 4 * v / u, c = 131072 * 2 / (u * u);
+            Func<double, double> z = x => b * x - c * x * x - JumpModel.Sag(true, dt) - Math.Min(Math.Max(x, 0), b / (2 * c)) / 64;
+            for (int d = 0; d < 4; d++)
+            {
+                int lo, floor;
+                if (!n.Edge(pad, d, out lo, out floor)) continue;
+                double cap = n.Cap(pad.Tile, floor);
+                if (cap < 0) continue;
+                double peak = Math.Min(Math.Max(0, v * v / 4 / 16384 - JumpModel.Sag(true, dt)), cap);
+                int climb = Math.Max(JumpModel.WalkStep, (int)Math.Floor(peak + 1));
+                // the lowest the feet are over a stretch, and the highest (cut by what is overhead)
+                Func<double, double, double> least = (x0, x1) => Math.Min(Math.Min(z(x0), z(x1)), cap);
+                Func<double, double, double> most = (x0, x1) => { double top = b / (2 * c); return Math.Min(x0 <= top && top <= x1 ? z(top) : Math.Max(z(x0), z(x1)), cap); };
+                for (int k = 1; k <= 4; k++)
+                {
+                    int tx = px + Dx[d] * k, ty = py + Dy[d] * k;
+                    if (!n.Open(tx, ty)) break;
+                    int tk = ty * 64 + tx;
+                    if (n.Closed(tk)) break;
+                    bool stop = false;
+                    foreach (var sb in n.Surfs(tx, ty))
+                    {
+                        int blo, bhi;
+                        if (!n.Edge(sb, (d + 2) & 3, out blo, out bhi) || !n.Clear(sb)) { if (sb.Deck == null) stop = true; continue; }
+                        int rise = bhi - floor;
+                        bool lands = k == 1 ? rise <= climb : most(k - 0.5, k + 1) >= rise - 1 && most(k - 0.5, k + 1) <= cap + 1e-9 && least(k - 0.5, k - 0.5) >= rise - 1;
+                        int to = n.RegionOfNode[sb.Node];
+                        if (lands && to >= 0 && to != from && !Regions[to].IsDoor && !Edges.Exists(e => e.From == from && e.To == to && e.Trigger == t.Index && e.Kind == "jump"))
+                            AddEdge(new NavEdge
+                            {
+                                From = from, To = to, Kind = "jump", Requires = string.IsNullOrEmpty(cond) ? "free" : cond, Level = n.Level, X = px, Y = py, Trigger = t.Index,
+                                Notes = string.Format("spring pad (jump trap #{0}, force {1}: up to {2} levels) to ({3}, {4})", trap.Index, trap.Quality, climb, tx, ty),
+                            });
+                        // a floor the flight does not clear ends it here
+                        if (sb.Deck == null && least(k - 0.5, k + 1) < rise) stop = true;
+                    }
+                    if (stop) break;
+                }
+            }
+        }
+
+        /// <summary>Over the water, whichever way it flows.</summary>
+        public const string OverWater = "spell:waterwalk | spell:levitate";
+
+        /// <summary>
+        /// UW2's streams: water with a current carries the swimmer and cannot be swum against
+        /// (not a step against the current of the tile he is on, nor into a tile whose current
+        /// comes at him). A stream (the current tiles that touch) is one region. From a bank
+        /// the player gets in where he does not step against the current, and is carried to
+        /// every bank he can get out at from there: a way from bank to bank ("carried by the
+        /// current"). Out of the stream as a region (for a thing lying in it) only the banks
+        /// reached from every one of its tiles are free. Every other way in or out needs to be
+        /// over the water: Water Walk, Levitate or Fly.
+        /// </summary>
+        void Streams(LevelNav n)
+        {
+            var tiles = new Dictionary<int, List<int>>();
+            for (int k = 0; k < 64 * 64; k++)
+            {
+                if (n.Flow[k] < 0 || n.RegionOfNode[k] < 0) continue;
+                List<int> l;
+                if (!tiles.TryGetValue(n.RegionOfNode[k], out l)) tiles[n.RegionOfNode[k]] = l = new List<int>();
+                l.Add(k);
+            }
+            var made = new HashSet<string>();
+            Action<int, int, string, string, int, string> edge = (from, to, kind, req, at, notes) =>
+            {
+                if (from == to || !made.Add(from + ">" + to + ">" + req)) return;
+                AddEdge(new NavEdge { From = from, To = to, Kind = kind, Requires = req, Level = n.Level, X = at % 64, Y = at / 64, Notes = notes });
+            };
+            foreach (var kv in tiles)
+            {
+                int S = kv.Key;
+                var set = new HashSet<int>(kv.Value);
+                // where the current lets the swimmer go from each tile
+                Func<int, HashSet<int>> carried = t0 =>
+                {
+                    var seen = new HashSet<int> { t0 };
+                    var queue = new Queue<int>();
+                    queue.Enqueue(t0);
+                    while (queue.Count > 0)
+                    {
+                        int u = queue.Dequeue();
+                        var su = new Surf { Tile = u };
+                        for (int d = 0; d < 4; d++)
+                        {
+                            int vx = u % 64 + Dx[d], vy = u / 64 + Dy[d];
+                            if (!n.Open(vx, vy)) continue;
+                            int v = vy * 64 + vx;
+                            if (!set.Contains(v) || seen.Contains(v)) continue;
+                            var sv = new Surf { Tile = v };
+                            int rise, floor;
+                            if (!n.Step(su, sv, d, out rise, out floor) || rise > ClimbFrom(n, su, floor, false) || n.Pushed(su, sv, d)) continue;
+                            seen.Add(v);
+                            queue.Enqueue(v);
+                        }
+                    }
+                    return seen;
+                };
+                var reach = kv.Value.ToDictionary(t0 => t0, t0 => carried(t0));
+                var common = new HashSet<int>(kv.Value);
+                foreach (var r in reach.Values) common.IntersectWith(r);
+                var ins = new List<KeyValuePair<int, int>>();       // bank region, stream tile
+                var outs = new List<KeyValuePair<int, int>>();      // stream tile, bank region
+                foreach (int u in kv.Value)
+                {
+                    var su = new Surf { Tile = u };
+                    for (int d = 0; d < 4; d++)
+                        foreach (var sb in n.Surfs(u % 64 + Dx[d], u / 64 + Dy[d]))
+                        {
+                            if (n.Stream(sb) || (sb.Deck == null && n.Low[sb.Tile])) continue;
+                            int B = n.RegionOfNode[sb.Node];
+                            if (B < 0 || B == S) continue;
+                            string door = Regions[B].IsDoor ? "door:" + Regions[B].Id : "";
+                            string doorKind = Regions[B].IsDoor ? Regions[B].DoorKind : "walk";
+                            int rise, floor;
+                            // out onto the bank
+                            if (n.Step(su, sb, d, out rise, out floor) && rise <= ClimbFrom(n, su, floor, false))
+                            {
+                                bool with = !n.Pushed(su, sb, d);
+                                if (with && door.Length == 0) outs.Add(new KeyValuePair<int, int>(u, B));
+                                edge(S, B, doorKind, ZoneLink.JoinAnd(new[] { with && common.Contains(u) ? "" : OverWater, door }), u, with && common.Contains(u) ? "out of the stream, where its current brings every swimmer" : "out of the stream against or across its current");
+                            }
+                            // in from the bank
+                            int back = (d + 2) & 3;
+                            if (n.Step(sb, su, back, out rise, out floor) && rise <= ClimbFrom(n, sb, floor, false))
+                            {
+                                bool with = !n.Pushed(sb, su, back);
+                                if (with && door.Length == 0) ins.Add(new KeyValuePair<int, int>(B, u));
+                                edge(B, S, doorKind, ZoneLink.JoinAnd(new[] { with ? "" : OverWater, door }), sb.Tile, with ? "into the stream" : "into the stream against its current");
+                            }
+                        }
+                }
+                foreach (var a in ins)
+                    foreach (var b in outs)
+                        if (a.Key != b.Value && reach[a.Value].Contains(b.Key))
+                            edge(a.Key, b.Value, "other", "free", a.Value, string.Format("carried by the current from ({0}, {1}) to ({2}, {3})", a.Value % 64, a.Value / 64, b.Key % 64, b.Key / 64));
+            }
         }
 
         /// <summary>
@@ -888,6 +1107,72 @@ namespace UwEditor.Core.Randomizer
             public ObjectInfo Trap;
             public int RunX, RunY;
             public List<string> Conditions;
+            /// <summary>UW2: the rectangle a proximity trap before it asks the player to stand in (x0, y0, x1, y1), or null.</summary>
+            public int[] Near;
+        }
+
+        /// <summary>
+        /// UW2's chain (event/TRIGGER.C UseTrap): as UW1's, and the condition traps branch. A
+        /// check variable trap goes on when the variables match and else runs its other chain
+        /// (the object after the one it links to, RUN_ELSE_CHAIN); a skill trap goes on when the
+        /// check fails and runs the other chain when it passes; a proximity trap goes on with the
+        /// player inside its rectangle; an inventory trap goes on with the item held. The state
+        /// the game starts in costs nothing; any other is a condition (StateTest.Token). A skill
+        /// trap that rolls (heading 1) or reads the player's own numbers may go either way; one
+        /// that compares "skill" 3, the constant 15, plainly runs only one of its chains. A door
+        /// trap that swaps a lock (owner set) ends the chain.
+        /// </summary>
+        static void WalkUw2(GameSession s, LevelModel m, ObjectInfo next, int rx, int ry, List<string> conds, int[] near, HashSet<int> seen, List<ChainStep> list, Dictionary<string, StateTest> tests)
+        {
+            while (next != null && list.Count < 256)
+            {
+                if (!seen.Add(next.Index)) return;
+                if (Triggers.IsTrigger(next.Item)) { rx = next.Quality; ry = next.Owner; next = Triggers.LinksTo(m, next); continue; }
+                if (!Triggers.IsTrap(next.Item)) return;
+                list.Add(new ChainStep { Trap = next, RunX = rx, RunY = ry, Conditions = new List<string>(conds), Near = near });
+                int it = next.Item;
+                var link = Triggers.LinksTo(m, next);
+                var other = link != null && link.Next > 0 && link.Next < m.Objects.Length && !m.Objects[link.Next].Free ? m.Objects[link.Next] : null;
+                Action<string> elseChain = cond =>
+                {
+                    if (other == null) return;
+                    var c = new List<string>(conds);
+                    if (cond != null) c.Add(cond);
+                    WalkUw2(s, m, other, rx, ry, c, near, new HashSet<int>(seen), list, tests);
+                };
+                switch (it)
+                {
+                    case 0x18C:
+                        elseChain(null);
+                        conds = new List<string>(conds) { ItemToken(s, next.Quality << 5 | next.Owner) };
+                        break;
+                    case 0x18E:
+                        {
+                            var yes = StateTest.Of(next, false);
+                            var no = StateTest.Of(next, true);
+                            bool atStart = yes.Holds(i => 0);
+                            if (tests != null) tests[(atStart ? no : yes).Token] = atStart ? no : yes;
+                            elseChain(atStart ? no.Token : null);
+                            if (!atStart) conds = new List<string>(conds) { yes.Token };
+                            break;
+                        }
+                    case 0x18A:
+                        {
+                            // quality 3 is the constant 15, compared plainly unless the heading asks for a roll: value < owner * 3 fails
+                            bool known = next.Quality == 3 && next.Heading != 1;
+                            bool fails = 15 < next.Owner * 3;
+                            if (!known || !fails) elseChain(null);
+                            if (known && !fails) return;
+                            break;
+                        }
+                    case 0x196:
+                        elseChain(null);
+                        near = new[] { rx, ry, rx + next.Quality, ry + next.Owner };
+                        break;
+                }
+                if (it == 0x187 || it == 0x18B || it == 0x189 || (it == 0x188 && next.Owner != 0)) return;
+                next = link;
+            }
         }
 
         /// <summary>
@@ -896,9 +1181,14 @@ namespace UwEditor.Core.Randomizer
         /// object, ward, tell and UW1's door trap end the chain; an inventory trap ends it when the
         /// item is missing (so later traps need the item), a check-variable trap branches.
         /// </summary>
-        static List<ChainStep> Walk(GameSession s, LevelModel m, ObjectInfo trigger)
+        static List<ChainStep> Walk(GameSession s, LevelModel m, ObjectInfo trigger, Dictionary<string, StateTest> tests = null)
         {
             var list = new List<ChainStep>();
+            if (s.IsUw2)
+            {
+                WalkUw2(s, m, Triggers.LinksTo(m, trigger), trigger.Quality, trigger.Owner, new List<string>(), null, new HashSet<int> { trigger.Index }, list, tests);
+                return list;
+            }
             var conds = new List<string>();
             int rx = trigger.Quality, ry = trigger.Owner;
             var seen = new HashSet<int> { trigger.Index };
@@ -989,20 +1279,66 @@ namespace UwEditor.Core.Randomizer
                     if (r >= 0) fromRegions.Add(r);
                     setOff = r >= 0 ? "region:" + r : "";
                 }
-                bool player = s.IsUw2 || PlayerSetsOff(t);
-                if (!player) setOff = "";
+                // UW2's trigger kinds come twice (0x1A0.. and 0x1B0..): 9 a timer, 12 a scheduled trigger; neither is set off by the player's own action,
+                // so the flag that lets the player set a trigger off (event/TRIGGER.C UseTrigger, ID_FLAG11) is not asked of them
+                int mode = s.IsUw2 ? ti & 0xF : ti;
+                bool player = s.IsUw2 ? mode == 9 || mode == 12 || PlayerSetsOff(t) : PlayerSetsOff(t);
+                if (s.IsUw2 && mode == 12)
+                {
+                    // a scheduled trigger goes off when a schedule row fires the triggers of its square: a flag, until the schedules are read
+                    setOff = ScheduleToken(L, t.TileX, t.TileY);
+                    fromRegions.Clear();
+                }
+                if (!player)
+                {
+                    if (s.IsUw2 && setOff.Length > 0) Notes.Add(string.Format("L{0} trigger #{1} {2} at ({3}, {4}): the player cannot set it off (no flag 11).", L, t.Index, t.Name, t.TileX, t.TileY));
+                    setOff = "";
+                }
                 string how = (s.IsUw2 ? "trigger" : TriggerVerb[Math.Min(ti, TriggerVerb.Length - 1)]) + (holder != null ? " " + holder.Name : "");
-                foreach (var st in Walk(s, m, t))
+                foreach (var st in Walk(s, m, t, Tests))
                 {
                     var trap = st.Trap;
                     string cond = free ? "free" : ZoneLink.JoinAnd(st.Conditions);
+                    if (s.IsUw2 && trap.Item == 0x192 && player && (mode == 0 || mode == 6) && trap.Owner == 0)
+                        SpringPad(n, t, trap, ZoneLink.JoinAnd(new[] { extra, cond }));
+                    if (s.IsUw2 && trap.Item == 0x183 && trap.Quality == 55 && player)
+                    {
+                        // the blackrock gem: each facet takes the player to its world once the castle plot lets the gem show it
+                        foreach (var w in StateRules.GemWorlds)
+                        {
+                            int dest = NearestRegion(w[0], w[1], w[2]);
+                            if (dest < 0) continue;
+                            foreach (int fr in fromRegions)
+                            {
+                                // (the gem itself closes its square: nobody stands there)
+                                if (fr < 0 || fr == dest || Regions[fr].IsBarrier || Edges.Exists(e => e.From == fr && e.To == dest && e.Kind == "stairs" && e.Trigger == t.Index)) continue;
+                                AddEdge(new NavEdge
+                                {
+                                    From = fr, To = dest, Kind = "stairs", Requires = ZoneLink.JoinAnd(new[] { extra, cond, w[3] > 0 ? "plot:" + w[3] : "" }), Level = L, X = t.TileX, Y = t.TileY, Trigger = t.Index,
+                                    Notes = string.Format("the blackrock gem (trigger #{0}, hack 55): the facet to L{1} ({2}, {3}){4}", t.Index, w[0], w[1], w[2], w[3] > 0 ? ", shown from castle plot " + w[3] : ""),
+                                });
+                            }
+                        }
+                    }
                     if (Triggers.IsTeleport(trap.Item))
                     {
                         if (!player) { Notes.Add(string.Format("L{0} trigger #{1} at ({2}, {3}) teleports, but the player cannot set it off (no flag 11).", L, t.Index, t.TileX, t.TileY)); continue; }
                         int to = trap.Z == 0 ? L : trap.Z;
                         int dest = NearestRegion(to, trap.Quality, trap.Owner);
                         if (dest < 0) { Notes.Add(string.Format("L{0} teleport #{1} (trigger #{2}) lands on L{3} ({4}, {5}): no open square there.", L, trap.Index, t.Index, to, trap.Quality, trap.Owner)); continue; }
-                        foreach (int fr in fromRegions)
+                        // past a proximity trap the player stands in its rectangle, wherever the trigger is
+                        var starts = fromRegions;
+                        if (st.Near != null && setOff.Length > 0)
+                        {
+                            starts = new List<int>();
+                            for (int py = st.Near[1]; py <= st.Near[3]; py++)
+                                for (int px = st.Near[0]; px <= st.Near[2]; px++)
+                                {
+                                    int pr = px < 0 || py < 0 || px > 63 || py > 63 ? -1 : RegionOf(L, px, py);
+                                    if (pr >= 0 && !starts.Contains(pr)) starts.Add(pr);
+                                }
+                        }
+                        foreach (int fr in starts)
                         {
                             if (fr < 0 || (fr == dest)) continue;
                             var req = new List<string> { extra, cond };
@@ -1034,9 +1370,19 @@ namespace UwEditor.Core.Randomizer
                     mech.Look = ti == 3 ? t.Z : -1;
                     mech.Unavoidable = !s.IsUw2 && (ti == 0 || ti == 1);
                     if (trap.Item == 0x188) mech.DoorAction = trap.Quality;
+                    if (s.IsUw2 && trap.Item == 0x188 && trap.Owner != 0 && (mode == 10 || mode == 11) && holder != null && holder.Item >= 0x140 && holder.Item <= 0x14F) mech.Airlock = true;
                     if (lever != null) lever.What += (lever.What.Length > 0 ? "; " : "") + mech.Kind + ": " + mech.What;
                     if (mech.Kind == "door" && lever != null) continue;     // a lever's door is on the door's edges
-                    var same = Mechanisms.Find(x => x.Level == L && x.Trigger == t.Index && x.Kind == mech.Kind);
+                    // UW2: the traps of one trigger behind different conditions are different mechanisms
+                    var same = Mechanisms.Find(x => x.Level == L && x.Trigger == t.Index && x.Kind == mech.Kind && (!s.IsUw2 || x.Conditions == mech.Conditions));
+                    if (same == null && s.IsUw2 && Mechanisms.Exists(x => x.Level == L && x.Trigger == t.Index && x.Kind == mech.Kind)) mech.Flag += "_" + trap.Index;
+                    if (s.IsUw2 && trap.Item == 0x18D && setOff.Length > 0)
+                    {
+                        var set = Sets.Find(x => x.Level == L && x.Trap == trap.Index);
+                        if (set == null) Sets.Add(set = new StateSet { Level = L, Trap = trap.Index, Variable = trap.Z + (trap.FineX << 7), Op = trap.Heading & 7, Value = (trap.Quality << 6) + trap.Owner });
+                        string fl = (same ?? mech).Flag;
+                        if (!set.Flags.Contains(fl)) set.Flags.Add(fl);
+                    }
                     if (same != null)
                     {
                         // one mechanism per trigger and kind: the effects joined

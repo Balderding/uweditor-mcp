@@ -234,11 +234,13 @@ The toolbar above the view chooses the tool:
     on keep their height: pillars, bridges, writing and pictures on walls, switches, levers,
     traps and triggers.
 - **Try Jump:** click the square to jump from, then the square to land on. The editor
-  follows the jump as the game works it out and draws the flight over the level: **green**
-  with a ring where the player comes down on the second square, **red** with a cross and an
-  arrow where the jump ends when he does not (it hits rock or the side of a higher floor,
-  or comes down short). The status line says which jump it was (the standing long jump or
-  the sprint jump, with or without the jump spell), or why it failed. A third click starts
+  follows the jump as the game works it out and draws two flights over the level, the plain
+  jump and the jump with the Jump spell. The plain one is **green** with a ring where the
+  player comes down on the second square, **red** with a cross and an arrow where the jump
+  ends when he does not (it hits rock or the side of a higher floor, or comes down short);
+  the spell's is **light blue** where it lands and **orange** where it does not. The status
+  line says for each which jump it was (the standing long jump or the sprint jump), or why
+  it failed. A third click starts
   again, Esc clears it. The jump starts at the first square's edge towards the second, or up
   to a tile further back when that would carry too far. It uses the tick length and margin
   of the Automatic zones window when that is open (see **Jumps** under Automatic zones).
@@ -2110,6 +2112,54 @@ map is still one number a tile, so a level is painted here, or exported as a pic
 painted elsewhere, exactly as in Ultima Underworld 1. **Add zone** makes a zone of the level
 open in the view, and the brush paints a zone only on its own level. The file carries
 `"perLevel": true`; a UW1 file has one numbering for the whole game, as before.
+
+**Ultima Underworld 2's state.** The automatic zones read UW2's trap chains as the game runs
+them. A check variable trap goes on when its variables match and runs its other chain when
+they do not; a skill trap that rolls may go either way; a proximity trap asks the player to
+stand in its rectangle; an inventory trap asks for the item. Every variable starts at 0, so
+a chain that needs the state the game starts in is free, and any other state is a
+requirement, `flag:state_var2_is_4` or `flag:state_var255_not_0`, granted by the set variable
+traps that bring it about: one trap alone, or all of a level's traps on those variables
+together (four pick-ups that each add one, three levers that each toggle a bit). A state no
+trap brings about is listed without a source: a conversation, a schedule or the game's code
+sets it, and a fact has to say so. A trigger without the flag that lets the player set it off
+never runs for the player (the report's notes list them). Two doors that lock each other (an
+airlock: opening one puts a lock on the other, closing it takes the lock off, as on level 10
+of the Prison Tower) are left as they are, since the lock comes and goes. A scheduled trigger waits for
+`flag:schedule_lL_X_Y`, which nothing grants until the schedules are read.
+
+**Floors that move the player (UW2).** Water with a current carries the swimmer and cannot
+be swum against: a stream (the current tiles that touch) is a region of its own, entered
+from a bank where the step does not go against the current. From there the current carries
+the player to the banks he can get out at, and each such bank is a way of its own ("carried
+by the current from (x, y) to (x, y)"). Out of the stream itself, for a thing lying in it,
+only the banks reached from every one of its tiles are free. Any other way in or out needs
+the player to be over the water: Water Walk, Levitate or Fly. An **ice slope** is not walked
+up: the step up asks for Levitate, the step down is free; flat ice is plain floor. A
+**spring pad** (a jump trap under a trigger the player walks onto) throws him up with the
+Jump spell's gravity: the automatic zones add a way from the pad to the next square each
+side when its floor is within the pad's rise, and to the squares up to four on that a
+running player's flight comes down on. A pad that stops the player dead only lifts him and
+adds nothing. The report counts the streams' tiles, the ice slopes and the pads' ways. Fall
+damage is not counted in either game: a drop is free however deep. The Bounce spell is not
+in the logic.
+
+**Abilities in UW2.** UW2's own spells are read as UW1's are: Leaping (Uus Por) is `jump`,
+Levitate and Fly `levitate`, Water Walk `waterwalk`, Flameproof `lava`, Reveal, Open,
+Telekinesis and Gate Travel their own. Casting asks for the rune bag and the spell's runes;
+a scroll, a potion (UW2's are items 0xE1 to 0xE7) or a charged wand is a single use; a
+thing enchanted and worn works while worn.
+
+The **castle plot** (X clock 1) is a count: `plot:N` in a requirement holds when the highest
+value the plot was set to (`plotset:V`) plus the steps that add one (`plotstep:NAME`) reach
+N. The traps that set it to 1, 2 and 3 (levels 3, 9 and 14) and the two that add one when a
+gem is picked up (levels 26 and 48) are read from the levels; the steps a conversation or a
+schedule makes are in `docs/facts/uw2-facts.json`, which is shipped and read as UW1's facts
+are. The **blackrock gem** on level 5 is a link to each world: the Prison Tower at once,
+Killorn Keep and the Ice Caverns from plot 4, Talorus, the Academy and the Pits from 8, the
+Tomb and the Void from 13, as the gem picks the facet it shows among the first 1, 3, 6 or 8.
+The facts do not yet hold every step of the plot: what is known brings it to 10 at most, so
+the Tomb and the Void stay closed.
 **Load the UW1 example** starts from Karl's UW1 zoning, built from his painted maps and
 notes: 91 zones, 139 links and 50 grants.
 
@@ -3306,6 +3356,61 @@ each key item went: level, square, the container or creature holding it, the nam
 hand-made zone it lies in, where it was, and what the place held before. A painted zoning in
 the Zones window names the places itself; otherwise the names come from the zone file in
 `DATA`, or else Karl's painted UW1 map. The log's first lines say which zones were used.
+
+**The walkthrough** ends the log: one way to finish the seed, step by step, taken from the
+fresh solve that proved it. It is meant for checking the logic, and for a player who is stuck.
+- **Only what the goal needs.** It starts at the goal (reaching level 9, or a square that ends
+  the game) and works back: the zone the goal lies in, every way that leads there, and every
+  item, talk, lever or quest step each of those needs. Things the logic reaches but does not
+  need are left out.
+- **In playing order.** The steps follow the solve's spheres ("-- sphere 3 --"). Inside a
+  sphere each step comes after the steps it needs, and steps on the same level stay together
+  where they can. The steps are numbered, so a later step can name an earlier one.
+- **What to do:** "Take the key at L2 (36, 23) in the center (key:5)", "Go through the door at
+  L2 (30, 13) …", "Take the stairs at L1 (7, 34) … to level 2", "Meet Zak at …", "Set off the
+  trigger #539 at L8 (32, 27): …", "Kill Tyball at …". A quest step, a trade or a crafting step
+  gives the first sentence of its fact's notes. Places are named as elsewhere in the log: level
+  and square, then the hand-made zone's name, or without names the part of the level.
+- **Why it can be done**, on the line after: where it is ("In zone 19 (L2 area at (31, 3))
+  (step 9)"), what it needs (the requirement as the logic has it), and what met it, each with
+  the step that gave it: "Needs key:5 | pick:6; met by key 5 (step 21)". Of several
+  alternatives only one is named: one that held then, items and zones before the logic
+  options. So "bash it open (bashing is allowed)", "pick the lock (… the lock picking option
+  …)", "look with the Search skill", "the spell levitate (spells are allowed)" or "the logic
+  option kill_npcs is on" means that this step relies on that option. A way that only exists
+  after a change of its level (a lever that opened a wall) also names the change and its step.
+- **Ways that need nothing** are not steps: the zones walked through are listed as "on the
+  way" before the first step that needs them.
+- **The way from one step to the next.** When a step is done in another zone than the one the
+  step before left you in, a line before it gives the way there: "the way there from zone 4:
+  door L1 (56, 6) [key:2 | pick:0 | bash] > 2", each stretch with its kind, its square, what it
+  needs and the zone it leads to. It is the shortest way over the ways open by then, with what
+  the steps so far gave; single-use items are not counted on the way. **NO WAY FOUND** before
+  a step means the logic reaches it but you cannot get there from where you stand (a one-way
+  drop with no way round): the logic takes every zone once reached as reachable again, and
+  this is where that fails. Such steps are also listed before the walkthrough.
+- **A thing that is used up** says so: "Uses up the food (step 2)", "Uses up a single-use gate
+  travel (step 3)". Food handed to Zak or Marrowsuck is one piece a time, so two of them need
+  two pieces of food, and a warp made with a scroll uses the scroll.
+- **A fight** is named as one ("A fight: the logic takes it as won, whatever the creature"):
+  the logic does not weigh the creature against the player.
+- Anything the walkthrough cannot account for (a requirement that held with nothing it can
+  name, an item in a zone not reached before) is listed under "Could not justify" before the
+  steps, and marked UNEXPLAINED in the step. Such a line points at a possible oversight in the
+  logic.
+- The walkthrough is in the log only, not in the map notes: with its reasons it runs to some
+  70 to 90 steps, too long for the notes' pages of 25 lines in capitals.
+
+**The reverse check** follows the walkthrough: the same steps read from the goal back to the
+start, as a second look at the logic. What a step needs (the keys and items it uses, the zone
+it is done in, the pieces of a count) is owed from there backwards; an earlier step that
+gives the thing pays it off. A lasting thing (a key) is paid once for all its uses; a thing
+that is used up (a scroll, food handed over) is owed once a use and paid one piece a source;
+the talismans are paid one a talisman. Each step's requirement is also read again with only
+what the step names. "Passed: 118 needs, each paid by an earlier step; nothing is owed at the
+start" is the good case. A problem reads "key:5 is needed by step 31, and no step before
+gives it", "item:food: 1 more use than pieces found before" or "Step 12: what it names … does
+not meet its requirement …", and means the logic counted something it should not have.
 
 ## Mods
 

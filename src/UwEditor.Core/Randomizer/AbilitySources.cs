@@ -35,8 +35,7 @@ namespace UwEditor.Core.Randomizer
     /// <summary>
     /// The player's abilities that the zones' links ask for, the spells and enchantments that
     /// give them, and the objects of the levels that carry them (Phase B of the automatic zones).
-    /// UW1 only for now: UW2's spell table differs (its own SPELLS.C), and AbilityOfSpell returns
-    /// null there.
+    /// Each game has its own spell table (combat/SPELLS.C spells[]): UW1's 53 spells, UW2's 69.
     /// </summary>
     public static class Abilities
     {
@@ -72,20 +71,62 @@ namespace UwEditor.Core.Randomizer
             { 0x50, 0x6318, 0x03 }, { 0x50, 0x6318, 0x09 },
         };
 
-        public static int Uw1SpellCount { get { return Uw1Spells.GetLength(0); } }
-
-        /// <summary>A UW1 spell's class (combat.h SPELL_CLASS) and minor (SPELL_MINOR).</summary>
-        public static void Uw1Spell(int spell, out int cls, out int minor)
+        /// <summary>
+        /// UW2's 69 spells (uw2 combat/SPELLS.C spells[]), eight to a circle, in the same form;
+        /// the last five have no runes. An object carries the index in its link's low six bits
+        /// (obj/OBJUSE.C decode_obj_spell: a cast-on-use spell with link bits 6-8 clear).
+        /// </summary>
+        static readonly int[,] Uw2Spells =
         {
-            cls = (Uw1Spells[spell, 0] & 0xF8) >> 3;
-            minor = Uw1Spells[spell, 2] & 0x3F;
+            { 0x40, 0x2197, 0x01 }, { 0x18, 0x05C8, 0x01 }, { 0x29, 0x3938, 0x01 },   // 0 Create Food, Luck, Magic Arrow
+            { 0x10, 0x0512, 0x02 }, { 0x3A, 0x5938, 0x0D }, { 0x00, 0x2178, 0x83 },   // 3 Resist Blows, Detect Trap, Light
+            { 0x08, 0x506F, 0x06 }, { 0x58, 0x06C4, 0x03 }, { 0x38, 0x4058, 0x01 },   // 6 Bouncing, Locate, Cause Fear
+            { 0x18, 0x4002, 0x0A }, { 0x28, 0x3AC9, 0x05 }, { 0x20, 0x202C, 0x02 },   // 9 Valor, Deadly Seeker, Lesser Heal
+            { 0x40, 0x20A9, 0x02 }, { 0x08, 0x446F, 0x02 }, { 0x08, 0x51F8, 0x01 },   // 12 Rune of Flame, Slow Fall, Leaping
+            { 0x58, 0x4197, 0x0D }, { 0x38, 0x2598, 0x00 }, { 0x58, 0x01B8, 0x06 },   // 15 Dispel Hunger, Bleeding, Cure Poison
+            { 0x38, 0x012E, 0x08 }, { 0x29, 0x38D8, 0x02 }, { 0x00, 0x4178, 0x85 },   // 18 Dispel Rune, Lightning, Night Vision
+            { 0x30, 0x0142, 0x85 }, { 0x58, 0x466F, 0x00 }, { 0x08, 0x5DF8, 0x44 },   // 21 Repel Undead, Speed, Water Walk
+            { 0x30, 0x2005, 0x87 }, { 0x20, 0x2198, 0x04 }, { 0x18, 0x3537, 0x0B },   // 24 Frost, Heal, Poison Weapon
+            { 0x3A, 0x0138, 0x0A }, { 0x18, 0x48B8, 0x46 }, { 0x10, 0x2258, 0x43 },   // 27 Remove Trap, Flameproof, Thick Skin
+            { 0x3A, 0x5998, 0x07 }, { 0x18, 0x1A4F, 0x05 }, { 0x08, 0x50EF, 0x03 },   // 30 Study Monster, Missile Protection, Levitate
+            { 0x29, 0x3CB8, 0x03 }, { 0x3A, 0x3AD7, 0x0B }, { 0x3A, 0x12F8, 0x0C },   // 33 Fireball, Name Enchantment, Open
+            { 0x38, 0x004C, 0x02 }, { 0x40, 0x2269, 0x03 }, { 0x3A, 0x4657, 0x09 },   // 36 Smite Undead, Rune of Stasis, Mending
+            { 0x5A, 0x39F7, 0x08 }, { 0x38, 0x4236, 0x03 }, { 0x30, 0x55C6, 0x42 },   // 39 Telekinesis, Charm, Sheet Lightning
+            { 0x00, 0x550B, 0x86 }, { 0x38, 0x562F, 0x0F }, { 0x20, 0x550C, 0x0F },   // 42 Daylight, Gate Travel, Greater Heal
+            { 0x18, 0x564B, 0x44 }, { 0x68, 0x5898, 0x07 }, { 0x38, 0x008F, 0x05 },   // 45 Invisibility, Map Area, Paralyze
+            { 0x30, 0x5416, 0x83 }, { 0x3A, 0x55D7, 0x0E }, { 0x30, 0x3810, 0x81 },   // 48 Mass Confusion, Enchantment, Reveal
+            { 0x30, 0x24F8, 0x86 }, { 0x40, 0x280C, 0x05 }, { 0x58, 0x55F7, 0x09 },   // 51 Shockwave, Summon Demon, Tremor
+            { 0x58, 0x5497, 0x01 }, { 0x40, 0x39E6, 0x06 }, { 0x30, 0x14F8, 0x84 },   // 54 Portal, Magic Satellite, Flame Wind
+            { 0x08, 0x54EF, 0x05 }, { 0x58, 0x0278, 0x0B }, { 0x10, 0x22B2, 0x45 },   // 57 Fly, Freeze Time, Iron Flesh
+            { 0x58, 0x5598, 0x02 }, { 0x58, 0x39F6, 0x07 }, { 0x38, 0x552C, 0x06 },   // 60 Restoration, Roaming Sight, Smite Foe
+            { 0x58, 0x5542, 0x0C }, { 0x30, 0x6318, 0x05 }, { 0x28, 0x6318, 0x04 },   // 63 Armageddon, Mass Paralyze, Acid
+            { 0x58, 0x6318, 0x0D }, { 0x50, 0x6318, 0x03 }, { 0x50, 0x6318, 0x09 },   // 66 Local Teleport, Mana Boost, Restore Mana
+        };
+
+        static int[,] Table(bool uw2) { return uw2 ? Uw2Spells : Uw1Spells; }
+
+        public static int Uw1SpellCount { get { return Uw1Spells.GetLength(0); } }
+        public static int SpellCount(bool uw2) { return Table(uw2).GetLength(0); }
+
+        /// <summary>A spell's class (combat.h SPELL_CLASS) and minor (SPELL_MINOR).</summary>
+        public static void Spell(bool uw2, int spell, out int cls, out int minor)
+        {
+            var t = Table(uw2);
+            cls = (t[spell, 0] & 0xF8) >> 3;
+            minor = t[spell, 2] & 0x3F;
         }
 
+        /// <summary>A UW1 spell's class and minor.</summary>
+        public static void Uw1Spell(int spell, out int cls, out int minor) { Spell(false, spell, out cls, out minor); }
+
         /// <summary>A UW1 spell's runes (0 An .. 23 Ylem), none for the five spells without runes.</summary>
-        public static List<int> Uw1Runes(int spell)
+        public static List<int> Uw1Runes(int spell) { return Runes(false, spell); }
+
+        /// <summary>A spell's runes (0 An .. 23 Ylem), none for the spells without runes.</summary>
+        public static List<int> Runes(bool uw2, int spell)
         {
             var list = new List<int>();
-            int r = Uw1Spells[spell, 1];
+            int r = Table(uw2)[spell, 1];
             foreach (int sh in new[] { 10, 5, 0 })
             {
                 int k = (r >> sh) & 31;
@@ -114,10 +155,17 @@ namespace UwEditor.Core.Randomizer
         /// <summary>The ability a spell gives when cast or used: its effect, Reveal (class 6 minor 1, combat/SPELLS.C sp_true_sight) or Open (class 11 minor 5, obj_spells).</summary>
         public static string OfSpell(bool uw2, int spell)
         {
-            if (uw2 || spell < 0 || spell >= Uw1SpellCount) return null;
+            if (spell < 0 || spell >= SpellCount(uw2)) return null;
             int cls, minor;
-            Uw1Spell(spell, out cls, out minor);
+            Spell(uw2, spell, out cls, out minor);
             if (cls == 6 && minor == 1) return "reveal";
+            if (uw2)
+            {
+                // UW2's object spells are class 7: 12 Open, 15 Gate Travel; class 11 minor 8 is Telekinesis as in UW1 (uw2 combat/SPELLS.C)
+                if (cls == 7) return minor == 12 ? "open" : minor == 15 ? "gate_travel" : null;
+                if (cls == 11) return minor == 8 ? "telekinesis" : null;
+                return OfEffect(cls, minor);
+            }
             // class 11 spells are xt_spells' subs, not effects: 5 Open (obj_spells picks the lock with skill 45),
             // 8 Telekinesis (set_curmagic(SPELLC_XT, 3), the PickDist 0 effect), 10 Gate Travel (to player->moonstone,
             // game/SKILLS.C do_mstone; Phase D: so its scrolls are found wherever they lie); combat/SPELLS.C xt_spells
@@ -125,13 +173,12 @@ namespace UwEditor.Core.Randomizer
             return OfEffect(cls, minor);
         }
 
-        /// <summary>The UW1 spells with runes that give an ability.</summary>
+        /// <summary>The game's spells with runes that give an ability.</summary>
         public static List<int> SpellsGiving(bool uw2, string ability)
         {
             var list = new List<int>();
-            if (uw2) return list;
-            for (int i = 0; i < Uw1SpellCount; i++)
-                if (OfSpell(false, i) == ability && Uw1Runes(i).Count > 0) list.Add(i);
+            for (int i = 0; i < SpellCount(uw2); i++)
+                if (OfSpell(uw2, i) == ability && Runes(uw2, i).Count > 0) list.Add(i);
             return list;
         }
 
@@ -146,7 +193,7 @@ namespace UwEditor.Core.Randomizer
         public static string CastRequirement(GameSession s, int spell)
         {
             var terms = new List<string> { "item:rune_bag" };
-            foreach (int r in Uw1Runes(spell)) terms.Add(RuneToken(s, r));
+            foreach (int r in Runes(s.IsUw2, spell)) terms.Add(RuneToken(s, r));
             return string.Join(" & ", terms.Distinct());
         }
 
@@ -173,7 +220,6 @@ namespace UwEditor.Core.Randomizer
         public static List<AbilitySource> Find(GameSession s, Func<int, LevelModel> level, ZoneSet zs)
         {
             var list = new List<AbilitySource>();
-            if (s.IsUw2) return list;
             foreach (var slot in s.LevelSlots())
             {
                 if (!slot.Present) continue;
@@ -200,6 +246,7 @@ namespace UwEditor.Core.Randomizer
         {
             int item = o.Item;
             if (item >= 0x140 && item < 0x180) yield break;        // MAJOR_RECT: decode_obj_spell skips it
+            if (s.IsUw2 && item == 0x120) yield break;             // a spell object counts through the wand that holds it
             // a spell object (0x120, MAJOR_SPEC minor 2 class 0) inside a non-quantity object: a charged spell
             if (!o.IsQuantity && o.Link > 0)
             {
@@ -211,7 +258,7 @@ namespace UwEditor.Core.Randomizer
                     if (Flag11(sp))
                     {
                         if ((link >> 6) != 0) break;
-                        string ab = OfSpell(false, link & 0x3F);
+                        string ab = OfSpell(s.IsUw2, link & 0x3F);
                         if (ab != null) yield return new AbilitySource { Ability = ab, Kind = item >= 0x98 && item <= 0x9B ? "wand" : "charged", Permanent = false, Spell = SpellTables.Name(s, link & 0x3F), Charges = sp.Quality };
                     }
                     else if (Wearable(item))
@@ -227,13 +274,14 @@ namespace UwEditor.Core.Randomizer
                 int link = o.Link & 0x1FF;
                 if (Flag11(o))
                 {
-                    if ((link >> 6) == 0 && item != 0x13B)      // the map opens the map screen instead (UseBook)
+                    if ((link >> 6) == 0 && item != (s.IsUw2 ? 0x13A : 0x13B))      // the map opens the map screen instead (UseBook)
                     {
                         int spell = link & 0x3F;
-                        string ab = OfSpell(false, spell);
+                        string ab = OfSpell(s.IsUw2, spell);
                         if (ab != null)
                         {
-                            string kind = item >= 0x130 && item < 0x140 ? "scroll" : item >= 0xB0 && item < 0xC0 ? "potion" : "used";
+                            // UW2's potions are 0xE1-0xE7 (obj/USEITEMS.C UseFood: drunk, so used up)
+                            string kind = item >= 0x130 && item < 0x140 ? "scroll" : (item >= 0xB0 && item < 0xC0) || (s.IsUw2 && item >= 0xE1 && item <= 0xE7) ? "potion" : "used";
                             yield return new AbilitySource { Ability = ab, Kind = kind, Permanent = kind == "used", Spell = SpellTables.Name(s, spell) };
                         }
                     }
@@ -245,7 +293,7 @@ namespace UwEditor.Core.Randomizer
                     yield break;
                 }
             }
-            if (item == 0x2F && !(o.IsQuantity && o.Enchanted && o.Link >= 0x200 && !Flag11(o)))
+            if (!s.IsUw2 && item == 0x2F && !(o.IsQuantity && o.Enchanted && o.Link >= 0x200 && !Flag11(o)))
                 yield return new AbilitySource { Ability = "lava", Kind = "boots", Permanent = true, Worn = true, Spell = "dragon skin boots" };
         }
     }

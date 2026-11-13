@@ -95,9 +95,10 @@ namespace UwEditor.Core.Randomizer
         /// head clears its bottom, and is stopped by its side or its underside otherwise.
         /// from and to (of <see cref="Surfaces"/>) choose the surface to leave and the one to
         /// land on where a square has several (a bridge and the floor under it); null is the
-        /// floor to leave, and anything to land on.
+        /// floor to leave, and anything to land on. spell: null tries the plain jumps and then
+        /// those with the jump spell; false only the plain ones; true only those with the spell.
         /// </summary>
-        public static JumpTrace Try(LevelModel m, int x0, int y0, int x1, int y1, NavOptions opt = null, IList<Hitbox> boxes = null, JumpSurface from = null, JumpSurface to = null, Func<int, string> name = null)
+        public static JumpTrace Try(LevelModel m, int x0, int y0, int x1, int y1, NavOptions opt = null, IList<Hitbox> boxes = null, JumpSurface from = null, JumpSurface to = null, Func<int, string> name = null, bool? spell = null)
         {
             opt = opt ?? new NavOptions();
             boxes = boxes ?? new List<Hitbox>();
@@ -136,6 +137,7 @@ namespace UwEditor.Core.Randomizer
             {
                 var kind = (pass & 1) == 0 ? JumpKind.Standing : JumpKind.Sprint;
                 bool leap = pass >= 2;
+                if (spell.HasValue && spell.Value != leap) continue;
                 if (kind == JumpKind.Sprint && !canSprint) continue;
                 // from the edge (the centre a little past it: the back corners are still on), then from further back
                 for (double back = 0; back <= 1.0001; back += 0.125)
@@ -152,12 +154,13 @@ namespace UwEditor.Core.Randomizer
                         return t;
                     }
                     if (there) t.Text = string.Format("{0} comes down on {1} of ({2}, {3}), not on {4}", JumpName(kind), t.On, x1, y1, to);
-                    // the plain jump from the edge is the one shown when nothing lands
-                    if (!leap && back == 0) shown = t;
+                    // the plain jump from the edge is the one shown when nothing lands (with only the spell's asked for, the spell's)
+                    if (back == 0 && (!leap || spell == true)) shown = t;
                 }
             }
-            shown.Text = string.Format("Does not reach {0}({1}, {2}): {3}{4}. The jump spell does not help either.", to != null ? to + " of " : "", x1, y1, shown.Text,
-                canSprint ? "" : string.Format(" (no room for a sprint: {0:0.#} of {1:0.#} tiles of run-up)", room, JumpModel.RunUp(dt)));
+            shown.Text = string.Format("Does not reach {0}({1}, {2}){5}: {3}{4}.{6}", to != null ? to + " of " : "", x1, y1, shown.Text,
+                canSprint ? "" : string.Format(" (no room for a sprint: {0:0.#} of {1:0.#} tiles of run-up)", room, JumpModel.RunUp(dt)),
+                spell == true ? " with the jump spell" : "", spell == null ? " The jump spell does not help either." : "");
             return shown;
         }
 

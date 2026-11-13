@@ -109,6 +109,8 @@ namespace UwEditor.Core.Randomizer
         /// <summary>Phase D: the count fact (kind "count") this object adds to, with Grants empty; the solver adds Quantity once the placement is reached.</summary>
         public string Counts = "";
         public int Quantity;
+        /// <summary>The tokens of Requires that getting this uses up (a fact's usesUp: food handed over); not saved. Null: none.</summary>
+        public List<string> UsesUp;
     }
 
     /// <summary>

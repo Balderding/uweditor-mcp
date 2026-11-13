@@ -43,6 +43,8 @@ namespace UwEditor.Core.Randomizer
         /// <summary>trade: the token whose placements get the requirement.</summary>
         public string Token = "";
         public string Requires = "";
+        /// <summary>craft, trade, flag: the tokens of Requires the step uses up (food handed over): each use needs a source of its own.</summary>
+        public readonly List<string> UsesUp = new List<string>();
         /// <summary>nomana: the token that lifts it.</summary>
         public string Until = "";
         public int Level;
@@ -161,13 +163,14 @@ namespace UwEditor.Core.Randomizer
             return set;
         }
 
-        /// <summary>The facts shipped with the editor (every embedded uw1-*.json; only UW1 has any), or an empty set.</summary>
+        /// <summary>The facts shipped with the editor for a game (every embedded uw1-*.json or uw2-*.json, the game's -facts.json first), or an empty set.</summary>
         public static FactSet Shipped(bool uw2)
         {
-            if (uw2) return new FactSet { Game = "UW2" };
             var asm = typeof(FactSet).Assembly;
-            var names = asm.GetManifestResourceNames().Where(IsFactsName).OrderBy(n => n == "uw1-facts.json" ? 0 : 1).ThenBy(n => n, StringComparer.Ordinal).ToList();
+            string first = uw2 ? "uw2-facts.json" : "uw1-facts.json";
+            var names = asm.GetManifestResourceNames().Where(n => IsFactsName(n, uw2)).OrderBy(n => n == first ? 0 : 1).ThenBy(n => n, StringComparer.Ordinal).ToList();
             var all = new FactSet();
+            if (uw2) all.Game = "UW2";
             foreach (var name in names)
             {
                 using (var st = asm.GetManifestResourceStream(name))
@@ -185,10 +188,10 @@ namespace UwEditor.Core.Randomizer
             return all;
         }
 
-        /// <summary>A shipped facts file name: uw1-NAME.json.</summary>
-        public static bool IsFactsName(string name)
+        /// <summary>A shipped facts file name: uw1-NAME.json (uw2-NAME.json for UW2).</summary>
+        public static bool IsFactsName(string name, bool uw2 = false)
         {
-            return name.StartsWith("uw1-", StringComparison.Ordinal) && name.EndsWith(".json", StringComparison.Ordinal) && name.IndexOf('/') < 0 && !name.Contains("zones");
+            return name.StartsWith(uw2 ? "uw2-" : "uw1-", StringComparison.Ordinal) && name.EndsWith(".json", StringComparison.Ordinal) && name.IndexOf('/') < 0 && !name.Contains("zones");
         }
 
         /// <summary>Files that could not be read (reported by <see cref="Check"/>).</summary>
@@ -301,6 +304,7 @@ namespace UwEditor.Core.Randomizer
                     if (f.FromLevel == 0 && f.To != null && n?["level"] != null && n?["object"] == null && n?["x"] == null) f.FromLevel = f.Level;
                     if (f.From != null && f.From.Level > 0 && f.FromLevel == 0 && !f.From.HasTile && !f.From.HasObject) f.FromLevel = f.From.Level;
                 }
+                if (n?["usesUp"] is JsonArray uu) foreach (var x in uu) if (x != null && x.GetValueKind() == JsonValueKind.String) f.UsesUp.Add(Requirement.Normalize((string)x));
                 if (f.Kind == "goal" && f.To == null) f.To = f.TopSpot;
                 if (f.Kind == "count")
                 {

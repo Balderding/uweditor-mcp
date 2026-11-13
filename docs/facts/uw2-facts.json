@@ -1,0 +1,77 @@
+{
+  "format": "uw2-facts",
+  "version": 1,
+  "game": "UW2",
+  "notes": "Facts the automatic zones cannot read from UW2's levels alone, in the format of uw1-facts.json (see its notes). Every docs/facts/uw2-*.json is read, this file first. The castle plot (X clock 1) is a count in the solver: a fact that grants plotset:V sets it to V, one that grants plotstep:NAME adds one, and plot:N in a requirement asks for the highest set plus the steps to reach N. The levels' own set variable traps are read automatically (the plot's 1, 2 and 3 on levels 3, 9 and 14, the steps of the gems picked up on levels 26 and 48); the steps below come from conversations and the schedules. Not here yet: key gem 4 fused into the gem (obj/USEITEMS.C UseKeyGem), what moves the plot from 10 to 11, and the end of the plot (13 to 16).",
+  "facts": [
+    {
+      "id": "plot_miranda_tower",
+      "kind": "flag",
+      "grants": "plotstep:miranda_tower",
+      "level": 1,
+      "object": 249,
+      "requires": "plot:3",
+      "notes": "Talking to Miranda with the castle plot at 3 (set on level 14, the Prison Tower) moves it to 4: the gem then shows three facets.",
+      "source": "conversation 136 (Miranda): if (x_clock(1, 10001) == 3) x_clock(1, x_clock(1, 10001) + 1)"
+    },
+    {
+      "id": "altara_dagger",
+      "kind": "flag",
+      "grants": "item:jewelled_dagger",
+      "level": 17,
+      "object": 243,
+      "requires": "free",
+      "notes": "Altara in Killorn Keep hands over her jewelled dagger (item 10) when first spoken to in earnest, to kill the listener under the castle with. With the dagger held, a timer on level 4 opens the wall at (58, 12) into the listener's lair (trigger #763, inventory trap #764).",
+      "source": "conversation 45 (Altara): she_retrieves_a_dagger, take_from_npc(10)",
+      "confidence": "probable"
+    },
+    {
+      "id": "plot_listener",
+      "kind": "flag",
+      "grants": "plotstep:listener",
+      "level": 4,
+      "object": 201,
+      "requires": "item:jewelled_dagger",
+      "notes": "Killing the listener (whoami 0x91, in the sewers under the castle) with Altara's dagger adds one to the castle plot; any other weapon leaves it with 1 hit point.",
+      "source": "event/WORLDEV.C (case 0x91: using_altaras_dagger, xclock[XC_CASTLE]++); combat/COMBAT.C using_altaras_dagger"
+    },
+    {
+      "id": "plot_miranda_7",
+      "kind": "flag",
+      "grants": "plotstep:miranda_7",
+      "level": 1,
+      "object": 249,
+      "requires": "plot:7",
+      "notes": "Miranda's news at castle plot 7 (\"Well, it seems Nystul had something to say to thee\") moves the plot to 8: the gem then shows six facets.",
+      "source": "conversation 136 (Miranda): the news table's entry 7 runs well_it_seems_nystul, x_clock(1, x_clock(1, 10001) + 1)"
+    },
+    {
+      "id": "plot_schedule_6",
+      "kind": "craft",
+      "grants": "plotstep:schedule_6",
+      "requires": "plot:6",
+      "notes": "The castle plot's schedule moves the plot from 6 to 7 by itself.",
+      "source": "SCD.ARK block 1, time 6: if X clock 1 is 6, X clock 1 := 7"
+    },
+    {
+      "id": "plot_zoranthus",
+      "kind": "flag",
+      "grants": "plotstep:zoranthus",
+      "level": 58,
+      "object": 227,
+      "requires": "free",
+      "notes": "Meeting Zoranthus for the first time adds one to the castle plot.",
+      "source": "conversation 96 (Zoranthus): if (met_before == 0) x_clock(1, x_clock(1, 10001) + 1)"
+    },
+    {
+      "id": "plot_miranda_11",
+      "kind": "flag",
+      "grants": "plotstep:miranda_11",
+      "level": 1,
+      "object": 249,
+      "requires": "plot:11",
+      "notes": "Talking to Miranda with the castle plot at 11 moves it to 12.",
+      "source": "conversation 136 (Miranda): if (x_clock(1, 10001) == 11) x_clock(1, x_clock(1, 10001) + 1)"
+    }
+  ]
+}

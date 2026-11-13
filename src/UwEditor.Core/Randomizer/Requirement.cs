@@ -58,6 +58,8 @@ namespace UwEditor.Core.Randomizer
 		bool HasToken(string token);
 		bool ZoneReachable(int zone);
 		int TalismanCount();
+		/// <summary>UW2's castle plot as the tokens have it (Requirement.PlotClock); 0 where there is none.</summary>
+		int PlotClock() { return 0; }
 		SolverOptions Options { get; }
 	}
 
@@ -75,6 +77,7 @@ namespace UwEditor.Core.Randomizer
 			"               with ability sources and Magic on also the Open spell, a pick of skill 45, lock picking on or off)",
 			"item:NAME      hold the named item (granted by a placement: medallion, crystal, lava_boots ...)",
 			"talismans:N    hold at least N different talismans (each talisman grants talisman:<name>)",
+			"plot:N         UW2: the castle plot (X clock 1) has reached N: the highest plotset:V granted plus the plotstep:NAME tokens granted",
 			"flag:NAME      a quest or event flag (granted by a placement, e.g. gazer_dead)",
 			"npc:NAME       the NPC can be talked to / is at the gate (granted by a placement)",
 			"spell:NAME     levitate (also fly), waterwalk, jump, reveal, lava, gate_travel: allowed by the option, or granted by a placement;",
@@ -99,6 +102,22 @@ namespace UwEditor.Core.Randomizer
 		{
 			if (z <= 0) return true;
 			return o.SearchRetry ? o.SearchSkill - z + 30 > 15 : o.SearchSkill >= z;
+		}
+
+		/// <summary>
+		/// UW2's castle plot from the tokens held: the highest value a trap or a fact sets it to
+		/// (plotset:V) plus every step that adds one (plotstep:NAME). The steps are taken to come
+		/// after the sets, as they do in the game's own order.
+		/// </summary>
+		public static int PlotClock(IEnumerable<string> tokens)
+		{
+			int set = 0, steps = 0, v;
+			foreach (var t in tokens)
+			{
+				if (t.StartsWith("plotstep:")) steps++;
+				else if (t.StartsWith("plotset:") && int.TryParse(t.Substring(8), out v) && v > set) set = v;
+			}
+			return set + steps;
 		}
 
 		/// <summary>The chance in 31 that skill_check(value, target) passes (&gt; 0): value - target + rand() % 31 &gt; 15.</summary>
@@ -163,6 +182,8 @@ namespace UwEditor.Core.Randomizer
 						return int.TryParse(tail, out n) && (ctx is INowContext now ? now.ZoneNow(n) : ctx.ZoneReachable(n));
 					case "option":
 						return o.OptionsOn != null && o.OptionsOn.Contains(tail);
+					case "plot":
+						return int.TryParse(tail, out n) && ctx.PlotClock() >= n;
 					case "talismans":
 						return int.TryParse(tail, out n) && ctx.TalismanCount() >= n;
 					case "spell":

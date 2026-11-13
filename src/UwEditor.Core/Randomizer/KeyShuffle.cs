@@ -148,6 +148,8 @@ namespace UwEditor.Core.Randomizer
         public TimelineResult CheckBuild;
         /// <summary>The spheres of the original game (the same options) and of the shuffled one.</summary>
         public int SpheresBefore, SpheresAfter;
+        /// <summary>The step-by-step solution of the shuffled levels (from Check), as the spoiler log gives it; null when no shuffle was found.</summary>
+        public Walkthrough Walkthrough;
         public readonly StringBuilder Log = new StringBuilder();
         /// <summary>Each level's block as Apply left it: Undo only puts back a level not edited since.</summary>
         public readonly Dictionary<int, byte[]> Applied = new Dictionary<int, byte[]>();
@@ -1078,6 +1080,45 @@ namespace UwEditor.Core.Randomizer
                     b.AppendLine(string.Format("  {0} -> {1} (was {2})", m.Item.Name, Named(names, m.Place), NamedWas(names, m.Item)));
                 if (others.Count > 400) b.AppendLine("  …");
             }
+            WriteWalkthrough(s, r);
+        }
+
+        /// <summary>
+        /// The walkthrough at the end of the log: one way through the shuffled levels, from the
+        /// fresh solve that proved the seed (Check), with the reason for every step.
+        /// </summary>
+        static void WriteWalkthrough(GameSession s, KeyShuffleResult r)
+        {
+            var b = r.Log;
+            b.AppendLine();
+            // the levels as shuffled, to name the parts of a level and find the triggers' squares
+            var models = new Dictionary<int, LevelModel>();
+            Func<int, LevelModel> level = l =>
+            {
+                LevelModel m;
+                if (models.TryGetValue(l, out m)) return m;
+                byte[] d, tex;
+                if (!r.After.TryGetValue(l, out d) && !r.Before.TryGetValue(l, out d)) return null;
+                r.Textures.TryGetValue(l, out tex);
+                models[l] = m = LevelModel.FromBytes(s, l, d, tex);
+                return m;
+            };
+            try { r.Walkthrough = Walkthrough.Build(r.CheckBuild, r.Check, r.Options.Names, level); }
+            catch (Exception ex) { b.AppendLine("WALKTHROUGH: it could not be made (" + ex.Message + ")."); return; }
+            var wt = r.Walkthrough;
+            b.AppendLine("WALKTHROUGH (one way to finish this seed, from the solve that proved it)");
+            b.AppendLine("  The steps go in the order the logic reaches things (by sphere); only what the goal needs is listed.");
+            b.AppendLine("  Each step says what to do, then why it can be done then: what it needs, which of the alternatives is used,");
+            b.AppendLine("  and the earlier step that gave it. A logic option used is named (bashing, lock picking, the Search skill).");
+            b.AppendLine("  Ways that need nothing are not steps: the zones walked through are listed \"on the way\" before the next step.");
+            b.AppendLine("  Where a step is done in another zone than the one the step before left you in, the way there is given first");
+            b.AppendLine("  (kind of way, square, [what it needs] > the zone it leads to), over ways open by then. NO WAY FOUND marks a step");
+            b.AppendLine("  the logic reaches but you cannot get to from where you are: an oversight to look at.");
+            foreach (var d in wt.Doubts.Distinct()) b.AppendLine("  Could not justify: " + d);
+            foreach (var d in wt.NoWay) b.AppendLine("  No way: " + d);
+            foreach (var l in wt.Lines()) b.AppendLine(l);
+            var rev = wt.ReverseLines();
+            if (rev.Count > 0) { b.AppendLine(); foreach (var l in rev) b.AppendLine(l); }
         }
     }
 }
