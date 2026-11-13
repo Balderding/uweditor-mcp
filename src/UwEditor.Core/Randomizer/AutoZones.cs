@@ -89,7 +89,8 @@ namespace UwEditor.Core.Randomizer
                 SortedSet<int> set;
                 if (neighbours.TryGetValue(i, out set) && set.Count > 0) comp[i] = comp[set.Min];
             }
-            var zs = new ZoneSet(s.Profile.LevelSlots) { Game = s.IsUw2 ? "UW2" : "UW1", Source = given != null ? "the zoning given (Underworld Editor)" : "automatic zones (Underworld Editor), Phase A" };
+            // UW2's zones are numbered a level (its 80 levels need more than 254); a zoning given keeps its own way
+            var zs = new ZoneSet(s.Profile.LevelSlots) { PerLevel = given != null ? given.PerLevel : s.IsUw2, Game = s.IsUw2 ? "UW2" : "UW1", Source = given != null ? "the zoning given (Underworld Editor)" : "automatic zones (Underworld Editor), Phase A" };
             for (int l = 1; l <= zs.Levels; l++)
                 if (g.RegionAt[l - 1] != null) { var m = level(l); zs.InitLevel(l, (x, y) => !m.Tiles[x, y].IsSolid); }
             if (given != null)
@@ -109,19 +110,40 @@ namespace UwEditor.Core.Randomizer
                 var bySize = groups.Values.OrderByDescending(l => l.Sum(r => g.Regions[r].Tiles.Count)).ThenBy(l => l.Min()).ToList();
                 var keep = new HashSet<List<int>>(bySize.Take(ZoneSet.MaxZone - 1));
                 int next = 2;
+                var nextOn = new Dictionary<int, int>();
                 foreach (var grp in ordered)
                 {
+                    if (zs.PerLevel)
+                    {
+                        // a zone a level: the group's regions of each level are a zone of that level (the ways between them become links)
+                        foreach (var part in grp.GroupBy(r => g.Regions[r].Level).OrderBy(p => p.Key))
+                        {
+                            int number;
+                            nextOn.TryGetValue(part.Key, out number);
+                            if (number == 0) number = 2;
+                            if (number > ZoneSet.MaxZone) { res.Unzoned += part.Count(); continue; }
+                            nextOn[part.Key] = number + 1;
+                            int pid = zs.Global(part.Key, number);
+                            foreach (int r in part)
+                            {
+                                g.Regions[r].Zone = pid;
+                                foreach (int t in g.Regions[r].Tiles) zs.SetZone(part.Key, t % 64, t / 64, pid);
+                            }
+                            zs.EnsureZone(pid);
+                        }
+                        continue;
+                    }
                     if (!keep.Contains(grp)) { res.Unzoned += grp.Count; continue; }
                     int id = next++;
                     foreach (int r in grp)
                     {
                         g.Regions[r].Zone = id;
-                        foreach (int t in g.Regions[r].Tiles) zs.SetZone(g.Regions[r].Level, t % 64, t / 64, (byte)id);
+                        foreach (int t in g.Regions[r].Tiles) zs.SetZone(g.Regions[r].Level, t % 64, t / 64, id);
                     }
                     zs.EnsureZone(id);
                 }
             }
-            if (res.Unzoned > 0) res.Warnings.Add(string.Format("More zones than ids (254): {0} small regions are left unassigned.", res.Unzoned));
+            if (res.Unzoned > 0) res.Warnings.Add(string.Format("More zones than ids (254{1}): {0} small regions are left unassigned.", res.Unzoned, zs.PerLevel ? " a level" : ""));
             // links between zones
             var linkBy = new Dictionary<string, ZoneLink>();
             var linkCount = new Dictionary<ZoneLink, int>();
@@ -191,6 +213,12 @@ namespace UwEditor.Core.Randomizer
                     hand++;
                 }
                 if (hand > 0) res.Warnings.Add(string.Format("{0} link(s) drawn by hand were added to those the levels give.", hand));
+            }
+            // the decks' zones (a tile's map holds only its floor's)
+            foreach (var d in g.Decks)
+            {
+                int dz = d.Region >= 0 ? g.Regions[d.Region].Zone : 0;
+                if (dz > ZoneSet.Unassigned) zs.Decks.Add(new ZoneDeck { Level = d.Level, X = d.X, Y = d.Y, Top = d.Top, Zone = dz });
             }
             // placements
             var items = KeyItems.Find(s, level, zs);
@@ -265,14 +293,24 @@ namespace UwEditor.Core.Randomizer
                 if (zone[i] > ZoneSet.Unassigned || g.Regions[i].KeepApart) continue;
                 int z;
                 if (!groupZone.TryGetValue(comp[i], out z)) groupZone[comp[i]] = z = Majority(members[comp[i]].SelectMany(j => givenOf(g.Regions[j])));
-                zone[i] = z;
+                // a zone of another level cannot hold this region (zones numbered a level): it gets one made here
+                zone[i] = given.OnLevel(g.Regions[i].Level, z) ? z : 0;
             }
             // ids for the zones made here: never one the zoning has
             var taken = new HashSet<int>(given.Zones.Select(z => z.Id));
-            foreach (var t in given.Tiles) if (t != null) foreach (byte b in t) taken.Add(b);
+            for (int l = 1; l <= given.Levels; l++) foreach (int id in given.CountsOnLevel(l).Keys) taken.Add(id);
             int nextId = 2;
-            Func<int> fresh = () =>
+            Func<int, int> fresh = level =>
             {
+                if (given.PerLevel)
+                {
+                    for (int k = 2; k <= ZoneSet.MaxZone; k++)
+                    {
+                        int id = given.Global(level, k);
+                        if (taken.Add(id)) { res.FreshZones++; return id; }
+                    }
+                    return 0;
+                }
                 while (nextId <= ZoneSet.MaxZone && taken.Contains(nextId)) nextId++;
                 if (nextId > ZoneSet.MaxZone) return 0;
                 taken.Add(nextId);
@@ -286,14 +324,15 @@ namespace UwEditor.Core.Randomizer
                 if (!g.Regions[i].KeepApart) continue;
                 int m = Majority(givenOf(g.Regions[i]));
                 if (m > ZoneSet.Unassigned && !normal.Contains(m) && doorway.Add(m)) zone[i] = m;
-                else zone[i] = fresh();
+                else zone[i] = fresh(g.Regions[i].Level);
             }
             var freshOfGroup = new Dictionary<int, int>();
             for (int i = 0; i < n; i++)
             {
                 if (zone[i] > ZoneSet.Unassigned) continue;
                 int z;
-                if (!freshOfGroup.TryGetValue(comp[i], out z)) freshOfGroup[comp[i]] = z = fresh();
+                int fkey = given.PerLevel ? comp[i] * 256 + g.Regions[i].Level : comp[i];
+                if (!freshOfGroup.TryGetValue(fkey, out z)) freshOfGroup[fkey] = z = fresh(g.Regions[i].Level);
                 zone[i] = z;
             }
             var made = new HashSet<int>();
@@ -302,7 +341,7 @@ namespace UwEditor.Core.Randomizer
                 var r = g.Regions[i];
                 r.Zone = zone[i];
                 if (zone[i] <= ZoneSet.Unassigned) { res.Unzoned++; continue; }
-                foreach (int t in r.Tiles) zs.SetZone(r.Level, t % 64, t / 64, (byte)zone[i]);
+                foreach (int t in r.Tiles) zs.SetZone(r.Level, t % 64, t / 64, zone[i]);
                 zs.EnsureZone(zone[i]);
                 if (!given.Zones.Any(z => z.Id == zone[i])) made.Add(zone[i]);
             }
@@ -643,6 +682,13 @@ namespace UwEditor.Core.Randomizer
             sb.AppendLine();
             sb.AppendLine("COUNTS");
             sb.AppendLine(string.Format("  Regions: {0} ({1} door tiles, {2} lava, {3} with water, {4} with no-magic tiles).", g.Regions.Count, g.Regions.Count(r => r.IsDoor), g.Regions.Count(r => r.Lava), g.Regions.Count(r => r.WaterTiles > 0), g.Regions.Count(r => r.NoMagicTiles > 0)));
+            if (g.Decks.Count > 0 || g.Regions.Any(r => r.IsBarrier))
+            {
+                sb.AppendLine(string.Format("  Decks (bridges, a second floor over their tiles): {0}, in {1} regions ({2} regions of bridge only). Squares closed by an object: {3}.",
+                    g.Decks.Count, g.Decks.Select(d => d.Region).Distinct().Count(), g.Regions.Count(r => r.Tiles.Count == 0 && r.Decks.Count > 0), g.Regions.Count(r => r.IsBarrier)));
+                foreach (var b in g.Regions.Where(r => r.IsBarrier))
+                    sb.AppendLine(string.Format("    L{0} ({1}, {2}): {3}{4}", b.Level, b.X, b.Y, b.DoorNotes, g.Edges.Any(e => e.Kind == "reach" && e.Level == b.Level && e.X == b.X && e.Y == b.Y && e.To != b.Id) ? "; a dead end behind it, reached with Telekinesis" : ""));
+            }
             sb.AppendLine("  Region edges: " + g.Edges.Count + " (" + string.Join(", ", g.Edges.GroupBy(e => e.Kind).OrderByDescending(x => x.Count()).Select(x => x.Key + " " + x.Count())) + ").");
             for (int l = 1; l <= g.Levels; l++)
             {

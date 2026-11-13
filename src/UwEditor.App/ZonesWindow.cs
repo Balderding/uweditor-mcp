@@ -477,7 +477,7 @@ namespace UwEditor.App
         {
             filling = true;
             var counts = new Dictionary<int, int>();
-            foreach (var t in z.Set.Tiles) if (t != null) foreach (var b in t) { int c; counts.TryGetValue(b, out c); counts[b] = c + 1; }
+            for (int l = 1; l <= z.Set.Levels; l++) foreach (var kv in z.Set.CountsOnLevel(l)) { int c; counts.TryGetValue(kv.Key, out c); counts[kv.Key] = c + kv.Value; }
             int startZone = StartZone();
             var goalZones = new HashSet<int>(Ends().Select(e => (int)z.Set.ZoneAt(e.Level, e.X, e.Y)).Where(v => v > ZoneSet.Unassigned));
             var fresh = new List<ZoneRow>();
@@ -530,8 +530,8 @@ namespace UwEditor.App
         {
             Try(() =>
             {
-                var zone = z.AddZone(nameBox.Text != null && nameBox.Text.Trim().Length > 0 && z.Set.GetZone(z.CurrentZone)?.Name != nameBox.Text ? nameBox.Text : null);
-                status.Text = "Zone " + zone.Id + " added; it is now the zone being painted.";
+                var zone = z.AddZone(nameBox.Text != null && nameBox.Text.Trim().Length > 0 && z.Set.GetZone(z.CurrentZone)?.Name != nameBox.Text ? nameBox.Text : null, main.ViewModel.Level != null ? main.ViewModel.Level.Level : 0);
+                status.Text = "Zone " + z.Set.Label(zone.Id) + " added; it is now the zone being painted.";
             });
         }
 
@@ -543,7 +543,7 @@ namespace UwEditor.App
             string r = await MessageWindow.Ask(this, "Remove a zone", string.Format("Remove zone {0} \"{1}\"? Its {2} tiles become unassigned, and its {3} links and its grants are removed.", cur.Id, cur.Name, tiles, links), "Remove", "Cancel");
             if (r != "Remove") return;
             z.RemoveZone(cur.Id);
-            status.Text = "Zone " + cur.Id + " removed. Undo painting brings back its tiles, but not its links.";
+            status.Text = "Zone " + z.Set.Label(cur.Id) + " removed. Undo painting brings back its tiles, but not its links.";
         }
 
         void FillSelected()

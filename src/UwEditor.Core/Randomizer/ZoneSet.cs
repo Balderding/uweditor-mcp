@@ -90,6 +90,15 @@ namespace UwEditor.Core.Randomizer
     }
 
     /// <summary>What a zone gives: a key, an item, a flag, an NPC to talk to.</summary>
+    /// <summary>A deck (a bridge over a tile) and the zone it lies in.</summary>
+    public sealed class ZoneDeck
+    {
+        public int Level, X, Y;
+        /// <summary>The deck's top in height units (8 a floor step).</summary>
+        public int Top;
+        public int Zone;
+    }
+
     public class Placement
     {
         public int Zone;
@@ -119,7 +128,27 @@ namespace UwEditor.Core.Randomizer
         public string Source = "";
         public int StartZone = 2;
         public int GoalZone = 0;
+        /// <summary>
+        /// Each level's map: one byte a tile (0 rock, 1 open and not given a zone, 2-255 a zone),
+        /// so a level can be painted by hand or as a picture. With <see cref="PerLevel"/> the byte
+        /// is the zone's number on that level; without, it is the zone's id.
+        /// </summary>
         public byte[][] Tiles;
+        /// <summary>
+        /// Zone ids are a level and a number: id = level * 256 + number (2-255), so each level has
+        /// 254 zones of its own and no zone lies on two levels (UW2, whose 80 levels need more than
+        /// 254 zones). Off: one numbering for the whole game, ids 2-255 (UW1's zone files).
+        /// </summary>
+        public bool PerLevel;
+
+        /// <summary>The zone id a tile's byte stands for on a level.</summary>
+        public int Global(int level1, int number) { return PerLevel && number > Unassigned ? level1 * 256 + number : number; }
+        /// <summary>The byte a zone id is on its level's map.</summary>
+        public int Number(int id) { return PerLevel && id > Unassigned ? id & 255 : id; }
+        /// <summary>Whether a zone id may lie on a level: always without PerLevel, else only on its own.</summary>
+        public bool OnLevel(int level1, int id) { return !PerLevel || id <= Unassigned || id >> 8 == level1; }
+        /// <summary>A zone id as shown: the number, or "L5:12" with PerLevel.</summary>
+        public string Label(int id) { return PerLevel && id > 255 ? "L" + (id >> 8) + ":" + (id & 255) : id.ToString(); }
         public List<Zone> Zones = new List<Zone>();
         public List<ZoneLink> Links = new List<ZoneLink>();
         public List<Placement> Placements = new List<Placement>();
@@ -137,24 +166,22 @@ namespace UwEditor.Core.Randomizer
             var z = GetZone(id);
             if (z == null)
             {
-                z = new Zone { Id = id, Name = id == Unassigned ? "Open, not assigned yet" : "Zone " + id };
+                z = new Zone { Id = id, Name = id == Unassigned ? "Open, not assigned yet" : "Zone " + Label(id) };
                 Zones.Add(z);
                 Zones.Sort((a, b) => a.Id.CompareTo(b.Id));
             }
             return z;
         }
 
-        public int NextZoneId()
+        /// <summary>A free zone id, or -1: with PerLevel one of the level given (each level has its own 254).</summary>
+        public int NextZoneId(int level1 = 0)
         {
-            for (int i = 2; i <= MaxZone; i++) if (GetZone(i) == null && !Used(i)) return i;
+            if (PerLevel && (level1 < 1 || level1 > Levels)) return -1;
+            for (int i = 2; i <= MaxZone; i++) { int id = Global(level1, i); if (GetZone(id) == null && !Used(id)) return id; }
             return -1;
         }
 
-        bool Used(int id)
-        {
-            foreach (var t in Tiles) if (t != null) foreach (var b in t) if (b == id) return true;
-            return false;
-        }
+        bool Used(int id) { return TileCount(id) > 0; }
 
         public int NextLinkId()
         {
@@ -163,19 +190,51 @@ namespace UwEditor.Core.Randomizer
             return m + 1;
         }
 
-        public byte ZoneAt(int level1, int x, int y)
+        /// <summary>
+        /// The zones of the decks (bridges): a tile's map holds one zone, its floor's, and a deck
+        /// over it may lie in another. Kept beside the tile map and in the file ("decks").
+        /// </summary>
+        public readonly List<ZoneDeck> Decks = new List<ZoneDeck>();
+
+        /// <summary>The zone of the deck with its top at this height on a tile, or 0.</summary>
+        public int DeckZone(int level1, int x, int y, int top)
+        {
+            foreach (var d in Decks) if (d.Level == level1 && d.X == x && d.Y == y && Math.Abs(d.Top - top) <= 2) return d.Zone;
+            return 0;
+        }
+
+        /// <summary>The zone of what stands or lies at height z (height units) on a tile: the highest deck at or under it, else the tile's own zone (or the nearest).</summary>
+        public int ZoneOf(int level1, int x, int y, int z)
+        {
+            ZoneDeck best = null;
+            foreach (var d in Decks) if (d.Level == level1 && d.X == x && d.Y == y && d.Top <= z + 2 && (best == null || d.Top > best.Top)) best = d;
+            return best != null ? best.Zone : NearestZone(level1, x, y);
+        }
+
+        /// <summary>The zone of an object: where the thing it lies in (or it itself) stands.</summary>
+        public int ZoneOf(int level1, LevelModel m, ObjectInfo o)
+        {
+            if (Decks.Count == 0 || m == null) return NearestZone(level1, o.TileX, o.TileY);
+            var top = o;
+            for (int guard = 0; top.Parent >= 0 && top.Parent < m.Objects.Length && guard < 64; guard++) top = m.Objects[top.Parent];
+            return ZoneOf(level1, o.TileX, o.TileY, top.Z);
+        }
+
+        /// <summary>The zone id of a tile (0 rock, 1 open and not given a zone).</summary>
+        public int ZoneAt(int level1, int x, int y)
         {
             if (level1 < 1 || level1 > Levels) return 0;
             var t = Tiles[level1 - 1];
             if (t == null || x < 0 || y < 0 || x >= Side || y >= Side) return 0;
-            return t[y * Side + x];
+            return Global(level1, t[y * Side + x]);
         }
 
-        public void SetZone(int level1, int x, int y, byte zone)
+        /// <summary>Gives a tile a zone id (with PerLevel only one of that level: another is refused).</summary>
+        public void SetZone(int level1, int x, int y, int zone)
         {
-            if (level1 < 1 || level1 > Levels || x < 0 || y < 0 || x >= Side || y >= Side) return;
+            if (level1 < 1 || level1 > Levels || x < 0 || y < 0 || x >= Side || y >= Side || !OnLevel(level1, zone)) return;
             if (Tiles[level1 - 1] == null) Tiles[level1 - 1] = new byte[Side * Side];
-            Tiles[level1 - 1][y * Side + x] = zone;
+            Tiles[level1 - 1][y * Side + x] = (byte)Number(zone);
         }
 
         /// <summary>The zone of the nearest zoned tile within a few squares (an object in a wall, a lever), or 0.</summary>
@@ -200,14 +259,20 @@ namespace UwEditor.Core.Randomizer
             var d = new Dictionary<int, int>();
             var t = level1 >= 1 && level1 <= Levels ? Tiles[level1 - 1] : null;
             if (t == null) return d;
-            foreach (var b in t) { int c; d.TryGetValue(b, out c); d[b] = c + 1; }
+            foreach (var b in t) { int id = Global(level1, b), c; d.TryGetValue(id, out c); d[id] = c + 1; }
             return d;
         }
 
         public int TileCount(int zone)
         {
             int n = 0;
-            foreach (var t in Tiles) if (t != null) foreach (var b in t) if (b == zone) n++;
+            for (int l = 0; l < Levels; l++)
+            {
+                var t = Tiles[l];
+                if (t == null || !OnLevel(l + 1, zone)) continue;
+                int number = Number(zone);
+                foreach (var b in t) if (b == number) n++;
+            }
             return n;
         }
 
@@ -228,6 +293,7 @@ namespace UwEditor.Core.Randomizer
         public ZoneSet SplitByLevel(out string note)
         {
             var c = FromJson(ToJson(), Levels);
+            if (PerLevel) { note = ""; return c; }      // no zone lies on two levels
             var taken = new HashSet<int>(c.Zones.Select(z => z.Id));
             foreach (var t in c.Tiles) if (t != null) foreach (byte b in t) taken.Add(b);
             int next = 2, split = 0, made = 0, whole = 0;
@@ -269,8 +335,9 @@ namespace UwEditor.Core.Randomizer
             var r = new List<int>();
             for (int l = 0; l < Levels; l++)
             {
-                if (Tiles[l] == null) continue;
-                foreach (var b in Tiles[l]) if (b == zone) { r.Add(l + 1); break; }
+                if (Tiles[l] == null || !OnLevel(l + 1, zone)) continue;
+                int number = Number(zone);
+                foreach (var b in Tiles[l]) if (b == number) { r.Add(l + 1); break; }
             }
             return r;
         }
@@ -279,10 +346,11 @@ namespace UwEditor.Core.Randomizer
         /// Flood fill from (x, y) over the connected tiles (4-neighbour) that have the same id as
         /// that tile, with a new id. Rock is never filled. Returns the number of tiles changed.
         /// </summary>
-        public int Fill(int level1, int x, int y, byte zone)
+        public int Fill(int level1, int x, int y, int zoneId)
         {
             var t = level1 >= 1 && level1 <= Levels ? Tiles[level1 - 1] : null;
-            if (t == null || x < 0 || y < 0 || x >= Side || y >= Side) return 0;
+            if (t == null || x < 0 || y < 0 || x >= Side || y >= Side || !OnLevel(level1, zoneId)) return 0;
+            byte zone = (byte)Number(zoneId);
             byte from = t[y * Side + x];
             if (from == zone || from == Solid) return 0;
             int n = 0;
@@ -304,10 +372,11 @@ namespace UwEditor.Core.Randomizer
         }
 
         /// <summary>Fills with zone the tiles the movement rules reach from (x, y) within its zone (<see cref="ZoneFlood.Reach"/>).</summary>
-        public int Fill(int level1, int x, int y, byte zone, ZoneFlood rules)
+        public int Fill(int level1, int x, int y, int zoneId, ZoneFlood rules)
         {
             var t = level1 >= 1 && level1 <= Levels ? Tiles[level1 - 1] : null;
-            if (t == null || x < 0 || y < 0 || x >= Side || y >= Side) return 0;
+            if (t == null || x < 0 || y < 0 || x >= Side || y >= Side || !OnLevel(level1, zoneId)) return 0;
+            byte zone = (byte)Number(zoneId);
             byte from = t[y * Side + x];
             if (from == zone || from == Solid) return 0;
             var reach = rules.Reach(t, x, y);
@@ -345,6 +414,8 @@ namespace UwEditor.Core.Randomizer
             if (id == Unassigned) return 0xFFFF00FFu;
             if (id == Solid) return 0xFF000000u;
             var g = Glasbey.Colors;
+            // a level's zones take the same colours on every level (id = level * 256 + number)
+            if (id > 255) id &= 255;
             return g[(id - 2 + g.Length) % g.Length];
         }
 
@@ -415,6 +486,9 @@ namespace UwEditor.Core.Randomizer
                 });
             foreach (var p in (root["placements"] as JsonArray) ?? new JsonArray())
                 zs.Placements.Add(new Placement { Zone = I(p, "zone", 0), Grants = S(p, "grants"), Requires = S(p, "requires"), Notes = S(p, "notes"), Source = S(p, "source"), Counts = S(p, "counts"), Quantity = I(p, "quantity", 0) });
+            zs.PerLevel = B(root, "perLevel");
+            foreach (var d in (root["decks"] as JsonArray) ?? new JsonArray())
+                zs.Decks.Add(new ZoneDeck { Level = I(d, "level", 0), X = I(d, "x", 0), Y = I(d, "y", 0), Top = I(d, "top", 0), Zone = I(d, "zone", 0) });
             if (root["openSources"] is JsonObject os) foreach (var kv in os) zs.OpenSources[kv.Key] = kv.Value == null ? "" : kv.Value.ToString();
             if (root["importance"] is JsonObject im) foreach (var kv in im) { try { zs.Importance[kv.Key] = (bool)kv.Value; } catch (Exception) { } }
             if (tl != null)
@@ -475,6 +549,13 @@ namespace UwEditor.Core.Randomizer
                 places.Add(d);
             }
             root["placements"] = places;
+            if (PerLevel) root["perLevel"] = true;
+            if (Decks.Count > 0)
+            {
+                var decks = new JsonArray();
+                foreach (var d in Decks) decks.Add(new JsonObject { ["level"] = d.Level, ["x"] = d.X, ["y"] = d.Y, ["top"] = d.Top, ["zone"] = d.Zone });
+                root["decks"] = decks;
+            }
             var open = new JsonObject();
             foreach (var kv in OpenSources) open[kv.Key] = kv.Value;
             root["openSources"] = open;
@@ -548,7 +629,7 @@ namespace UwEditor.Core.Randomizer
             }
             else return "Not a PNG or BMP file.";
             Tiles[level1 - 1] = t;
-            foreach (var b in t) if (b > Unassigned) EnsureZone(b);
+            foreach (var b in t) if (b > Unassigned) EnsureZone(Global(level1, b));
             return null;
         }
 
@@ -557,7 +638,7 @@ namespace UwEditor.Core.Randomizer
         {
             var t = Tiles[level1 - 1] ?? new byte[Side * Side];
             var pal = new uint[256];
-            for (int i = 0; i < 256; i++) pal[i] = ColorOf(i);
+            for (int i = 0; i < 256; i++) pal[i] = ColorOf(Global(level1, i));
             var idx = new int[Side * Side];
             for (int p = 0; p < idx.Length; p++) idx[p] = t[(Side - 1 - p / Side) * Side + p % Side];
             return UwEditor.Core.Graphics.Png.EncodeIndexed(Side, Side, idx, pal);

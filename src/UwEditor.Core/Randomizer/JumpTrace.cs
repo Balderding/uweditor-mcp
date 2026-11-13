@@ -35,6 +35,8 @@ namespace UwEditor.Core.Randomizer
         public int EndX = -1, EndY = -1;
         /// <summary>What it came down on (null when it hit something): the floor or an object's top.</summary>
         public JumpSurface On;
+        /// <summary>What the head met on the way up (the ceiling, an object's underside), cutting the jump there; null when nothing.</summary>
+        public string Bumped;
         /// <summary>What happened, as a sentence.</summary>
         public string Text = "";
 
@@ -64,7 +66,7 @@ namespace UwEditor.Core.Randomizer
             if (m == null || !Open(m, x, y)) return list;
             if (boxes != null)
                 foreach (var b in boxes)
-                    if (b.Solid && Covers(b, x + 0.5, y + 0.5) && !list.Any(s => Math.Abs(s.Top - b.Top / 8.0) < 0.2))
+                    if (b.Solid && b.Top + 23 <= 128 && Covers(b, x + 0.5, y + 0.5) && !list.Any(s => Math.Abs(s.Top - b.Top / 8.0) < 0.2))
                         list.Add(new JumpSurface { Top = b.Top / 8.0, Object = b.Index, Item = b.Item, Name = "the " + (name != null ? name(b.Item) : "object") + " #" + b.Index });
             list.Add(new JumpSurface { Top = m.FloorAt(x, y, 0.5, 0.5) / LevelGeometry.Step });
             return list.OrderByDescending(s => s.Top).ToList();
@@ -86,7 +88,9 @@ namespace UwEditor.Core.Randomizer
         /// up to where it ends. The rules are JumpModel's and the game's (MOTION.C set_targz,
         /// get_pcoll): a floor above the feet is a wall, except that on the way up the feet
         /// snap onto one within a level; on the way down the player lands on the highest floor
-        /// under his footprint (the centre and four corners, a quarter tile out). An object in
+        /// under his footprint (the centre and four corners, a quarter tile out). Where the head
+        /// (23 height units over the feet) meets the ceiling or an object's underside the rise
+        /// stops and he bounces down (JumpFlight). An object in
         /// boxes is a box: the player lands on its top if it is solid, passes under it when his
         /// head clears its bottom, and is stopped by its side or its underside otherwise.
         /// from and to (of <see cref="Surfaces"/>) choose the surface to leave and the one to
@@ -143,8 +147,8 @@ namespace UwEditor.Core.Randomizer
                     t.Lands = there && (to == null || (to.Object < 0 ? t.On.Object < 0 : t.On.Object >= 0 && Math.Abs(t.On.Top - to.Top) < 0.2));
                     if (t.Lands)
                     {
-                        t.Text = string.Format("Lands on {0} of ({1}, {2}): {3}{4}{5}.", t.On, x1, y1, kind == JumpKind.Sprint ? "a sprint jump" : "a standing long jump", leap ? " with the jump spell" : "",
-                            back > 0 ? string.Format(", taken {0:0.##} tile back from the edge", back) : "");
+                        t.Text = string.Format("Lands on {0} of ({1}, {2}): {3}{4}{5}{6}.", t.On, x1, y1, kind == JumpKind.Sprint ? "a sprint jump" : "a standing long jump", leap ? " with the jump spell" : "",
+                            back > 0 ? string.Format(", taken {0:0.##} tile back from the edge", back) : "", t.Bumped != null ? ", the head meeting " + t.Bumped + " on the way up" : "");
                         return t;
                     }
                     if (there) t.Text = string.Format("{0} comes down on {1} of ({2}, {3}), not on {4}", JumpName(kind), t.On, x1, y1, to);
@@ -186,23 +190,27 @@ namespace UwEditor.Core.Randomizer
             }
         }
 
-        static JumpTrace Fly(World w, int x1, int y1, double dx, double dy, double start, JumpKind kind, bool leap, int dt)
+        static JumpTrace Fly(World w, int x1, int y1, double dx, double dy, double start, JumpKind kind, bool leap, int dt, double cap = double.PositiveInfinity, string bumped = null)
         {
             var m = w.M;
             int x0 = w.X0, y0 = w.Y0;
-            var t = new JumpTrace { FromX = x0, FromY = y0, ToX = x1, ToY = y1, Kind = kind, Leap = leap };
+            var t = new JumpTrace { FromX = x0, FromY = y0, ToX = x1, ToY = y1, Kind = kind, Leap = leap, Bumped = bumped };
             double sx = x0 + 0.5 + dx * start, sy = y0 + 0.5 + dy * start;
             // the take-off height: the object's top, or the floor under the centre (the first square's edge when the centre is already past it)
             double h0 = w.FromBox >= 0 ? w.FromTop
                 : m.FloorAt(x0, y0, Math.Min(1, Math.Max(0, sx - x0)), Math.Min(1, Math.Max(0, sy - y0))) / LevelGeometry.Step;
             int floor = (int)Math.Ceiling(h0 - 1e-9);
-            double top = JumpModel.PeakAt(kind, leap, floor, dt);
+            var flight = new JumpFlight(kind, leap, floor, dt, cap);
+            double top = flight.PeakAt;
             string name = JumpName(kind);
             double r = JumpModel.Radius;
             for (double x = 0; x < 16; x += Step)
             {
                 double px = sx + dx * x, py = sy + dy * x;
-                double feet = h0 + JumpModel.Height(x, kind, leap, floor, dt), next = h0 + JumpModel.Height(x + Step, kind, leap, floor, dt);
+                double feet = h0 + flight.Height(x), next = h0 + flight.Height(x + Step), before = h0 + flight.Height(Math.Max(0, x - Step));
+                // the head against the ceiling: the jump is flown again, cut under it
+                if (feet + PlayerHeight > 16 && 16 - PlayerHeight - h0 - 0.05 < cap - 1e-6)
+                    return Fly(w, x1, y1, dx, dy, start, kind, leap, dt, 16 - PlayerHeight - h0 - 0.05, "the ceiling");
                 var here = new Vector3((float)px, (float)(feet * LevelGeometry.Step), (float)py);
                 t.Path.Add(here);
                 t.End = here;
@@ -244,6 +252,8 @@ namespace UwEditor.Core.Randomizer
                             continue;
                         }
                         if (feet + PlayerHeight <= sBottom) continue;          // over the head: he passes under it
+                        if (k >= 0 && x <= top && before + PlayerHeight <= sBottom + 1e-9 && sBottom - PlayerHeight - h0 - 0.05 < cap - 1e-6)
+                            return Fly(w, x1, y1, dx, dy, start, kind, leap, dt, sBottom - PlayerHeight - h0 - 0.05, "the underside of " + s.Name);      // the head comes up under it: flown again, cut there
                         if (rising && solid && sTop - feet <= JumpModel.WalkStep)
                         {
                             // within a step, going up: the feet snap onto it

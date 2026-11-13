@@ -1719,6 +1719,10 @@ of the file, so edits made in both are never written over each other.
   file has. Characters the game cannot hold are refused: code 0 and codes of 128 and up, `|`
   (it ends a string), and strings over 511 characters. After saving, the
   [checks](#the-accent-table) list letters the fonts cannot show yet.
+- **Export all as JSON…** writes every block to one file: its number (also in hex), the
+  editor's description and its strings as the window shows them, unsaved edits included.
+  Accented letters are written as letters. The file is for reading and searching; there is
+  no import.
 
 ## 3D models
 
@@ -2098,6 +2102,14 @@ which runs from (2, 2) to (21, 22).
 that can be walked without meeting a requirement. Every tile has a zone id: 0 is rock, 1 is
 open but not in a zone yet (magenta in the view), and 2–255 are the zones. The file is
 `uw1-zones.json` (or `uw2-zones.json`) in `DATA`, the same format the Unity editor uses.
+
+In **Ultima Underworld 2** the zones are numbered a level: each level has its own zones 2–255,
+because 80 levels need more than 254 zones. A zone is shown as its level and number
+(`L5:12`), and no zone lies on two levels: the ways between levels are links. Each level's
+map is still one number a tile, so a level is painted here, or exported as a picture and
+painted elsewhere, exactly as in Ultima Underworld 1. **Add zone** makes a zone of the level
+open in the view, and the brush paints a zone only on its own level. The file carries
+`"perLevel": true`; a UW1 file has one numbering for the whole game, as before.
 **Load the UW1 example** starts from Karl's UW1 zoning, built from his painted maps and
 notes: 91 zones, 139 links and 50 grants.
 
@@ -2223,10 +2235,28 @@ The editor reads every level and groups its open tiles into **regions**: areas i
 player can walk anywhere and back. Two touching tiles are in one region when the step
 between them, measured at their touching edges (so slopes count), is one a jump gets onto,
 both ways: 3 floor steps from a floor of height 10 or lower, 2 from height 11 and 1 from 12
-up, because the game cuts the jump on high floors. Ceilings are ignored: no area of Ultima
-Underworld is cut off by a low ceiling. A tile holding a door is a region of its own, so the
+up, because the game cuts the jump on high floors. The player's head counts: he is 23
+height units tall (a floor step is 8) under a ceiling at 128, so a jump is cut where his head
+meets the ceiling or the underside of an object, and nobody stands on a floor of height 14
+or 15, or under an object lower than his height. A tile holding a door is a region of its own, so the
 door can be a requirement. Water joins regions (the player swims), but lava tiles only join
 other lava. Tiles with the no-magic bit are marked.
+
+A **bridge** is a second floor over its tile (a deck). The player walks and jumps onto it by
+the same rules as onto a floor, so a bridge joins the ledges it meets, and the floor under it
+stays a separate place: a tile with a bridge can be in two regions. Where a bridge leaves no
+headroom (less than the player's height), nobody stands on the floor under it. An item is in
+the region of what it lies on, the bridge or the floor. A bridge laid against the ceiling is
+not counted.
+
+A **barrier** is a square an object closes for good: a force field or a grating (an object
+with a collision box as wide as a door's, across the player's body, that cannot be stood on).
+Nothing walks through it. A dead end behind it, and the barrier's own square, are reached
+from the other side with Telekinesis only (`spell:telekinesis`): the things there can be
+taken and the switches used from afar. The line of sight is not checked. The report lists
+every barrier. The key shuffle puts nothing on a barrier's square or on the four squares
+beside it, and what lies there stays (the object stands across the edge of its square, so
+either side may be the closed one).
 
 Between regions the editor makes **edges**, each one way or both ways, each with a
 requirement:
@@ -2492,7 +2522,7 @@ It works in steps:
   **Jumps** below). **Diagonals too** also tries the diagonals; a diagonal tile is 1.4 long,
   and the tiles beside the line must be clear too. A **door** edge needs what the door's lock needs
   (key, picking, bashing), or the lever that opens it. Walking into lava needs
-  the lava ability, `spell:lava` (below). Ceilings are ignored.
+  the lava ability, `spell:lava` (below).
 - **Teleports.** Every trigger the player sets off whose chain reaches a teleport trap makes
   a one-way edge to the square it lands on. Those that change level are **stairs**. When the
   stairs go both ways, there are two edges.
@@ -2537,6 +2567,12 @@ and the forward speed.
   shorter jumps: a sprint jump is 3.8 tiles at tick 4 and 3.0 at 64 (about 4 frames a
   second, the longest the game allows). Tick 16 is the default. Set it higher to be more
   cautious; at 64 a jump climbs only 2 steps (5 with the spell).
+- **The head.** Where the head meets the ceiling or the underside of a bridge, the rise
+  stops and the player bounces down: a third of his upward speed turned round, two thirds of
+  his forward speed left. The jump is lower and shorter for it. The jump spell from a floor
+  of height 8 or more always meets the ceiling; from height 10 it climbs 4 steps, not 6.
+  The editor takes the low place to hold for the whole jump, so it never gives more than
+  the game does. **Try Jump** shows it: the status line says what the head met.
 
 The options come in two groups. **Autozone movement** says how tiles become regions and
 regions zones (the jumps' tick length and margin, gap jumps, the level cut, dead ends, the start). **Player logic (the

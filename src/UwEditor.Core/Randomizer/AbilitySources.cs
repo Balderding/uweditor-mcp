@@ -187,7 +187,7 @@ namespace UwEditor.Core.Randomizer
                     {
                         src.Level = slot.Level; src.Index = o.Index; src.Item = o.Item; src.TileX = o.TileX; src.TileY = o.TileY;
                         src.Name = o.Name;
-                        src.Zone = zs == null ? 0 : zs.NearestZone(slot.Level, o.TileX, o.TileY);
+                        src.Zone = zs == null ? 0 : zs.ZoneOf(slot.Level, m, o);
                         if (o.Parent >= 0) src.Holder = m.Objects[o.Parent].ToString();
                         list.Add(src);
                     }

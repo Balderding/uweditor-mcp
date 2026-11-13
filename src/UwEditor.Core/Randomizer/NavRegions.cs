@@ -70,8 +70,12 @@ namespace UwEditor.Core.Randomizer
     {
         public int Id;
         public int Level;
-        /// <summary>The tiles, as y * 64 + x.</summary>
+        /// <summary>The tiles whose floor is in it, as y * 64 + x.</summary>
         public readonly List<int> Tiles = new List<int>();
+        /// <summary>The decks in it (bridges over other tiles' floors): a region may have only these.</summary>
+        public readonly List<NavDeck> Decks = new List<NavDeck>();
+        /// <summary>A square an object closes for good (DoorKind "barrier"): a force field, a grating.</summary>
+        public bool IsBarrier;
         /// <summary>A door tile: its own node; its requirement is on every edge that touches it.</summary>
         public bool IsDoor;
         public int DoorIndex = -1;
@@ -87,12 +91,32 @@ namespace UwEditor.Core.Randomizer
         public int MinHeight = 99, MaxHeight = -1;
         /// <summary>The automatic zone it ended in (0 until zones are made).</summary>
         public int Zone;
-        public int X { get { return Tiles.Count == 0 ? -1 : Tiles[0] % 64; } }
-        public int Y { get { return Tiles.Count == 0 ? -1 : Tiles[0] / 64; } }
+        public int X { get { return Tiles.Count == 0 ? (Decks.Count == 0 ? -1 : Decks[0].X) : Tiles[0] % 64; } }
+        public int Y { get { return Tiles.Count == 0 ? (Decks.Count == 0 ? -1 : Decks[0].Y) : Tiles[0] / 64; } }
         public override string ToString()
         {
-            return string.Format("R{0} L{1} ({2}, {3}) {4} tiles{5}{6}{7}", Id, Level, X, Y, Tiles.Count, IsDoor ? " door #" + DoorIndex : "", Lava ? " lava" : WaterTiles > 0 ? " water " + WaterTiles : "", NoMagicTiles > 0 ? " no-magic " + NoMagicTiles : "");
+            return string.Format("R{0} L{1} ({2}, {3}) {4} tiles{5}{6}{7}{8}", Id, Level, X, Y, Tiles.Count, Decks.Count > 0 ? " " + Decks.Count + " decks" : "", IsDoor ? " door #" + DoorIndex : "", Lava ? " lava" : WaterTiles > 0 ? " water " + WaterTiles : "", NoMagicTiles > 0 ? " no-magic " + NoMagicTiles : "");
         }
+    }
+
+    /// <summary>
+    /// The top of a solid object the player walks on above a tile's floor: a bridge (COMOBJ's
+    /// Solid flag and radius 4, the whole tile; motion/COLLIDE.C obj_coll_check, MOTION.C
+    /// get_pcoll). A tile may have several, at different heights, and its floor under them.
+    /// </summary>
+    public sealed class NavDeck
+    {
+        public int Level, X, Y;
+        /// <summary>The top and the underside in height units (8 a floor step).</summary>
+        public int Top, Bottom;
+        /// <summary>The object.</summary>
+        public int Object;
+        /// <summary>The region it belongs to: the ledges it joins, or one of its own.</summary>
+        public int Region = -1;
+        /// <summary>The top in floor steps, to the nearest.</summary>
+        public int Step { get { return (Top + 4) / 8; } }
+        internal int Node;
+        public override string ToString() { return string.Format("L{0} ({1}, {2}) deck at {3} (#{4}), R{5}", Level, X, Y, Top, Object, Region); }
     }
 
     /// <summary>A one-way way from one region to another, with what it needs (the requirement language; region:N stands for a region that must be reached).</summary>
@@ -179,7 +203,12 @@ namespace UwEditor.Core.Randomizer
     /// 11, 1 from 12 up, at the default tick length); a drop is free; a climb above that needs
     /// the jump spell (6, 4 and 2), and above that levitation; a gap is jumped where the flight
     /// clears every tile under it and comes down on the far floor, higher or lower, with a sprint
-    /// jump where there is room to run up, else the standing long jump. Ceilings are ignored (UW1
+    /// jump where there is room to run up, else the standing long jump. A solid object that covers
+    /// its tile (a bridge) is a deck: a second floor over the tile's own, walked and jumped onto by
+    /// the same rules, with the floor under it kept apart (and closed when the deck leaves no
+    /// headroom). An object that closes a square (a force field, a grating: a box of radius 3 or
+    /// more across the player's body, not solid) is a barrier: nothing passes, and what lies
+    /// behind it in a dead end is reached only with Telekinesis. Ceilings are ignored (UW1
     /// has no area cut off by a low one). Water joins regions (UW1 swimming is normal movement,
     /// motion/PHYSICS.C parse_player_terr) but is counted for waterwalk; lava regions stand apart
     /// and entering one needs hazard:lava.
@@ -194,6 +223,9 @@ namespace UwEditor.Core.Randomizer
         public readonly List<NavMechanism> Mechanisms = new List<NavMechanism>();
         /// <summary>Per level (0-based), the region id of each tile (y * 64 + x), -1 for rock or none.</summary>
         public int[][] RegionAt;
+        /// <summary>The decks of every level (bridges), with their regions.</summary>
+        public readonly List<NavDeck> Decks = new List<NavDeck>();
+        Dictionary<int, List<NavDeck>>[] decksAt;
         /// <summary>Things worth saying that are not edges (triggers the player cannot set off, conditions met).</summary>
         public readonly List<string> Notes = new List<string>();
         /// <summary>Doors closed behind the player by a trigger he cannot avoid (with ClosersOneWay).</summary>
@@ -205,6 +237,33 @@ namespace UwEditor.Core.Randomizer
         {
             if (level1 < 1 || level1 > Levels || RegionAt[level1 - 1] == null || x < 0 || y < 0 || x > 63 || y > 63) return -1;
             return RegionAt[level1 - 1][y * 64 + x];
+        }
+
+        /// <summary>The decks over a tile, lowest first (null: none).</summary>
+        public List<NavDeck> DecksAt(int level1, int x, int y)
+        {
+            List<NavDeck> l;
+            if (level1 < 1 || level1 > Levels || decksAt == null || decksAt[level1 - 1] == null || x < 0 || y < 0 || x > 63 || y > 63) return null;
+            return decksAt[level1 - 1].TryGetValue(y * 64 + x, out l) ? l : null;
+        }
+
+        /// <summary>The region of what stands or lies at height z (height units) on a tile: the highest deck at or under it, else the tile's floor.</summary>
+        public int RegionOf(int level1, int x, int y, int z)
+        {
+            var l = DecksAt(level1, x, y);
+            if (l != null) for (int i = l.Count - 1; i >= 0; i--) if (l[i].Top <= z + 2) return l[i].Region;
+            return RegionOf(level1, x, y);
+        }
+
+        /// <summary>Whether a square is a barrier's or touches one (north, east, south or west): nothing is put there by the shuffles (Karl: for safety, the object stands across the edge).</summary>
+        public bool NearBarrier(int level1, int x, int y)
+        {
+            for (int d = -1; d < 4; d++)
+            {
+                int r = d < 0 ? RegionOf(level1, x, y) : RegionOf(level1, x + Dx[d], y + Dy[d]);
+                if (r >= 0 && Regions[r].IsBarrier) return true;
+            }
+            return false;
         }
 
         /// <summary>The region at (x, y), or the nearest non-door region within radius (Chebyshev rings, as the game's teleport searches a 9 by 9 box: event/WORLDEV.C do_teleport).</summary>
@@ -230,6 +289,8 @@ namespace UwEditor.Core.Randomizer
         {
             var g = new NavGraph { Options = options ?? new NavOptions(), Levels = s.Profile.LevelSlots };
             g.RegionAt = new int[g.Levels][];
+            g.decksAt = new Dictionary<int, List<NavDeck>>[g.Levels];
+            g.comobj = ComObjOf(s);
             TerrainTable terrain = null;
             try { terrain = TerrainTable.Load(s); } catch (Exception) { }
             var models = new Dictionary<int, LevelModel>();
@@ -245,15 +306,116 @@ namespace UwEditor.Core.Randomizer
             foreach (var kv in models) lv[kv.Key] = g.BuildRegions(s, kv.Value, terrain);
             foreach (var kv in models) g.BuildEdges(lv[kv.Key]);
             foreach (var kv in models) g.ReadTriggers(s, lv[kv.Key], lv);
+            foreach (var kv in models) g.ReachPastBarriers(lv[kv.Key]);
             g.ApplyDoorRequirements(lv);
             if (g.Options.ClosersOneWay) g.OneWayClosers(s, lv);
             g.Merge();
             return g;
         }
 
+        byte[] comobj;
+        static readonly System.Runtime.CompilerServices.ConditionalWeakTable<GameSession, byte[]> comobjOf = new System.Runtime.CompilerServices.ConditionalWeakTable<GameSession, byte[]>();
+
+        /// <summary>COMOBJ.DAT of a game, read once (the graph is built again for every change of a level).</summary>
+        static byte[] ComObjOf(GameSession s)
+        {
+            byte[] c;
+            lock (comobjOf)
+            {
+                if (!comobjOf.TryGetValue(s, out c)) { c = Hitboxes.ReadComObj(s) ?? new byte[0]; comobjOf.Add(s, c); }
+            }
+            return c.Length == 0 ? null : c;
+        }
+
+        /// <summary>Something to stand on in a tile: its floor (Deck null) or a deck.</summary>
+        struct Surf
+        {
+            public int Tile;
+            public NavDeck Deck;
+            public int Node { get { return Deck == null ? Tile : Deck.Node; } }
+        }
+
         /// <summary>What a level's tiles are, for the walk rules.</summary>
         sealed class LevelNav
         {
+            /// <summary>The decks over each tile, lowest first.</summary>
+            public Dictionary<int, List<NavDeck>> Decks = new Dictionary<int, List<NavDeck>>();
+            public List<NavDeck> AllDecks = new List<NavDeck>();
+            /// <summary>A floor with a deck too low over it to stand under.</summary>
+            public bool[] Low = new bool[64 * 64];
+            /// <summary>The object that closes the square for good, or 0.</summary>
+            public int[] Barrier = new int[64 * 64];
+            public string[] BarrierName = new string[64 * 64];
+            /// <summary>The region of each surface: the floors by tile, then the decks.</summary>
+            public int[] RegionOfNode;
+            public bool Closed(int k) { return Door[k] || Barrier[k] != 0; }
+            /// <summary>The undersides of the objects over each tile that the head may meet (boxes of radius 3 and more: bridges, also those laid as a ceiling, gratings high up), in height units.</summary>
+            public Dictionary<int, List<int>> Overhead = new Dictionary<int, List<int>>();
+
+            /// <summary>What is over a tile above a height: the lowest underside above it, or the ceiling (128), in height units.</summary>
+            public int Ceiling(int k, int above)
+            {
+                int c = 128;
+                List<int> l;
+                if (Overhead.TryGetValue(k, out l)) foreach (int b in l) if (b > above && b < c) c = b;
+                return c;
+            }
+
+            /// <summary>The highest the feet may get above a floor of this level on a tile, in floor levels (a little under, to be safe).</summary>
+            public double Cap(int k, int floor) { return (Ceiling(k, floor * 8) - PlayerHeight) / 8.0 - floor - 0.05; }
+
+            public IEnumerable<Surf> Surfs(int x, int y)
+            {
+                if (!Open(x, y)) yield break;
+                int k = y * 64 + x;
+                yield return new Surf { Tile = k };
+                List<NavDeck> l;
+                if (Decks.TryGetValue(k, out l)) foreach (var d in l) yield return new Surf { Tile = k, Deck = d };
+            }
+
+            /// <summary>Whether a surface is open towards dir, and its height in floor steps along that edge.</summary>
+            public bool Edge(Surf s, int dir, out int lo, out int hi)
+            {
+                if (s.Deck != null) { lo = hi = s.Deck.Step; return true; }
+                var t = M.Tiles[s.Tile % 64, s.Tile / 64];
+                lo = hi = 0;
+                if (!ZoneFlood.IsSideOpen(t.Type, dir)) return false;
+                ZoneFlood.EdgeHeights(t, dir, out lo, out hi);
+                return true;
+            }
+
+            /// <summary>Room to stand on a surface: no deck within the player's height over it.</summary>
+            public bool Clear(Surf s)
+            {
+                if (s.Deck == null) return !Low[s.Tile];
+                foreach (var c in Decks[s.Tile]) if (c != s.Deck && c.Top > s.Deck.Top && c.Bottom < s.Deck.Top + PlayerHeight) return false;
+                return true;
+            }
+
+            /// <summary>
+            /// Going from a over its edge towards dir onto b, a surface of the next tile: the climb
+            /// (negative going down) and the floor it starts from. False when a side is closed,
+            /// there is no room to stand on b, or another deck of b's tile is met first: one at or
+            /// under a's height and above b (the player comes onto that one), or one across his body.
+            /// </summary>
+            public bool Step(Surf a, Surf b, int dir, out int rise, out int floor)
+            {
+                rise = floor = 0;
+                int alo, ahi, blo, bhi;
+                if (!Edge(a, dir, out alo, out ahi) || !Edge(b, (dir + 2) & 3, out blo, out bhi)) return false;
+                rise = blo - ahi; floor = ahi;
+                if (!Clear(b)) return false;
+                List<NavDeck> l;
+                if (Decks.TryGetValue(b.Tile, out l))
+                    foreach (var c in l)
+                    {
+                        if (c == b.Deck) continue;
+                        if (c.Step > bhi && c.Step <= ahi) return false;
+                        if (c.Step > ahi && c.Bottom < ahi * 8 + PlayerHeight && (b.Deck == null || b.Deck.Top < c.Top)) return false;
+                    }
+                return true;
+            }
+
             public LevelModel M;
             public int Level;
             public bool[] Door = new bool[64 * 64];
@@ -263,6 +425,62 @@ namespace UwEditor.Core.Randomizer
             /// <summary>Terms that open each door tile besides its lock (levers, triggers), by tile.</summary>
             public Dictionary<int, List<string>> DoorOpeners = new Dictionary<int, List<string>>();
             public bool Open(int x, int y) { return x >= 0 && y >= 0 && x < 64 && y < 64 && !M.Tiles[x, y].IsSolid; }
+        }
+
+        /// <summary>The player's height in height units (COMOBJ.DAT item 0x7F, both games).</summary>
+        public const int PlayerHeight = 23;
+
+        /// <summary>
+        /// The decks and barriers of a level, from its objects' collision boxes. A deck: solid
+        /// and the whole tile, its top more than a walking step above the floor (lower, it is
+        /// part of the floor). A barrier: not solid, radius 3 or more (a door's size), across the
+        /// body of a player standing on the floor; doors are not counted here.
+        /// </summary>
+        void ReadBoxes(LevelNav n)
+        {
+            var m = n.M;
+            if (comobj == null) return;
+            foreach (var h in Hitboxes.Of(m, comobj))
+            {
+                if (h.Creature || h.TileX < 0 || h.TileX > 63 || h.TileY < 0 || h.TileY > 63 || !n.Open(h.TileX, h.TileY)) continue;
+                if (h.Item >= 0x140 && h.Item <= 0x14F) continue;
+                int k = h.TileY * 64 + h.TileX;
+                int fl = LevelGeometry.CornerHeights(m.Tiles[h.TileX, h.TileY]).Max() * 8;
+                if (h.Radius >= 3 && h.Bottom > fl)
+                {
+                    List<int> ov;
+                    if (!n.Overhead.TryGetValue(k, out ov)) n.Overhead[k] = ov = new List<int>();
+                    ov.Add(h.Bottom);
+                    // the whole tile under it without the player's height: nobody stands on the floor
+                    if (h.Radius == 4 && h.Bottom < fl + PlayerHeight && h.Top > fl + 8) n.Low[k] = true;
+                }
+                if (h.Solid && h.Radius == 4)
+                {
+                    if (h.Top <= fl + 8) continue;
+                    if (h.Top + PlayerHeight > 128) continue;         // against the ceiling (a bridge laid as a ceiling): nobody stands on it
+                    List<NavDeck> l;
+                    if (!n.Decks.TryGetValue(k, out l)) n.Decks[k] = l = new List<NavDeck>();
+                    if (l.Any(d => Math.Abs(d.Top - h.Top) <= 2)) continue;       // two bridges laid on one another
+                    var deck = new NavDeck { Level = m.Level, X = h.TileX, Y = h.TileY, Top = h.Top, Bottom = h.Bottom, Object = h.Index };
+                    l.Add(deck);
+                    if (h.Bottom < fl + PlayerHeight) n.Low[k] = true;
+                }
+                else if (!h.Solid && h.Radius >= 3 && h.Bottom < fl + PlayerHeight && h.Top > fl + 8 && !n.Door[k] && n.Barrier[k] == 0)
+                {
+                    n.Barrier[k] = h.Index;
+                    n.BarrierName[k] = m.Objects[h.Index].Name;
+                }
+            }
+            // a floor too near the ceiling to stand on (get_pcoll refuses a step onto a floor whose top and the mover's height pass 127)
+            for (int y = 0; y < 64; y++)
+                for (int x = 0; x < 64; x++)
+                    if (n.Open(x, y) && LevelGeometry.CornerHeights(m.Tiles[x, y]).Min() * 8 + PlayerHeight > 127) n.Low[y * 64 + x] = true;
+            foreach (var l in n.Decks.Values)
+            {
+                l.Sort((a, b) => a.Top.CompareTo(b.Top));
+                foreach (var d in l) { d.Node = 64 * 64 + n.AllDecks.Count; n.AllDecks.Add(d); }
+            }
+            decksAt[m.Level - 1] = n.Decks;
         }
 
         LevelNav BuildRegions(GameSession s, LevelModel m, TerrainTable terrain)
@@ -286,29 +504,33 @@ namespace UwEditor.Core.Randomizer
                     n.Water[y * 64 + x] = c == 1;
                     n.Lava[y * 64 + x] = c == 2;
                 }
-            // union of the two-way steps
-            var parent = new int[64 * 64];
+            ReadBoxes(n);
+            // union of the two-way steps, over the floors and the decks
+            var parent = new int[64 * 64 + n.AllDecks.Count];
             for (int i = 0; i < parent.Length; i++) parent[i] = i;
             Func<int, int> find = null;
             find = i => { while (parent[i] != i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; };
             for (int y = 0; y < 64; y++)
                 for (int x = 0; x < 64; x++)
-                {
-                    int a = y * 64 + x;
-                    if (!n.Open(x, y) || n.Door[a]) continue;
-                    for (int d = 0; d < 2; d++)     // north and east cover every pair once
+                    foreach (var sa in n.Surfs(x, y))
                     {
-                        int nx = x + Dx[d], ny = y + Dy[d];
-                        if (!n.Open(nx, ny)) continue;
-                        int b = ny * 64 + nx;
-                        if (n.Door[b] || n.Lava[a] != n.Lava[b]) continue;
-                        int up, down, fa, fb;
-                        if (!Rise(m, x, y, d, out up, out fa) || !Rise(m, nx, ny, (d + 2) & 3, out down, out fb)) continue;
-                        if (up <= Options.Climb(fa, false) && down <= Options.Climb(fb, false)) parent[find(a)] = find(b);
+                        int a = sa.Tile;
+                        if (sa.Deck == null && (n.Closed(a) || n.Low[a])) continue;
+                        for (int d = 0; d < 2; d++)     // north and east cover every pair once
+                            foreach (var sb in n.Surfs(x + Dx[d], y + Dy[d]))
+                            {
+                                int b = sb.Tile;
+                                if (sb.Deck == null && (n.Closed(b) || n.Low[b])) continue;
+                                if ((sa.Deck == null && n.Lava[a]) != (sb.Deck == null && n.Lava[b])) continue;
+                                int up, down, fa, fb;
+                                if (!n.Step(sa, sb, d, out up, out fa) || !n.Step(sb, sa, (d + 2) & 3, out down, out fb)) continue;
+                                if (up <= ClimbFrom(n, sa, fa, false) && down <= ClimbFrom(n, sb, fb, false)) parent[find(sa.Node)] = find(sb.Node);
+                            }
                     }
-                }
             var at = new int[64 * 64];
             for (int i = 0; i < at.Length; i++) at[i] = -1;
+            n.RegionOfNode = new int[parent.Length];
+            for (int i = 0; i < parent.Length; i++) n.RegionOfNode[i] = -1;
             var byRoot = new Dictionary<int, NavRegion>();
             for (int y = 0; y < 64; y++)
                 for (int x = 0; x < 64; x++)
@@ -325,6 +547,13 @@ namespace UwEditor.Core.Randomizer
                         r.DoorNotes = notes;
                         Regions.Add(r);
                     }
+                    else if (n.Barrier[k] != 0)
+                    {
+                        // closed for good: a door that nothing opens, a zone of its own
+                        r = new NavRegion { Id = Regions.Count, Level = m.Level, IsDoor = true, IsBarrier = true, KeepApart = true, DoorIndex = n.Barrier[k], DoorKind = "barrier", DoorRequires = BarrierToken };
+                        r.DoorNotes = string.Format("{0} #{1} closes the square", n.BarrierName[k], n.Barrier[k]);
+                        Regions.Add(r);
+                    }
                     else if (!byRoot.TryGetValue(find(k), out r))
                     {
                         r = new NavRegion { Id = Regions.Count, Level = m.Level, Lava = n.Lava[k] };
@@ -333,6 +562,7 @@ namespace UwEditor.Core.Randomizer
                     }
                     r.Tiles.Add(k);
                     at[k] = r.Id;
+                    n.RegionOfNode[k] = r.Id;
                     var t = m.Tiles[x, y];
                     if (n.Water[k]) r.WaterTiles++;
                     if (n.Lava[k]) r.LavaTiles++;
@@ -341,9 +571,28 @@ namespace UwEditor.Core.Randomizer
                     r.MinHeight = Math.Min(r.MinHeight, t.Height);
                     r.MaxHeight = Math.Max(r.MaxHeight, t.Height + (t.Type >= TileType.SlopeUpN ? 1 : 0));
                 }
+            foreach (var d in n.AllDecks)
+            {
+                NavRegion r;
+                if (!byRoot.TryGetValue(find(d.Node), out r))
+                {
+                    r = new NavRegion { Id = Regions.Count, Level = m.Level };
+                    Regions.Add(r);
+                    byRoot[find(d.Node)] = r;
+                }
+                r.Decks.Add(d);
+                d.Region = r.Id;
+                n.RegionOfNode[d.Node] = r.Id;
+                r.MinHeight = Math.Min(r.MinHeight, d.Step);
+                r.MaxHeight = Math.Max(r.MaxHeight, d.Step);
+                Decks.Add(d);
+            }
             RegionAt[m.Level - 1] = at;
             return n;
         }
+
+        /// <summary>What a barrier's square asks for: a token nothing grants.</summary>
+        public const string BarrierToken = "blocked";
 
         /// <summary>Whether (x, y) is open towards dir, the climb from its edge into the neighbour (negative going down), and the floor the climb starts from.</summary>
         static bool Rise(LevelModel m, int x, int y, int dir, out int rise, out int floor)
@@ -363,12 +612,31 @@ namespace UwEditor.Core.Randomizer
         }
 
         /// <summary>The geometric part of a step: free, a drop, the jump spell or levitation.</summary>
-        string ClimbRequirement(int rise, int floor, out string kind)
+        string ClimbRequirement(LevelNav n, Surf from, int rise, int floor, out string kind)
         {
             // a drop: deeper than a jump from the bottom gets back up
-            if (rise <= Options.Climb(floor, false)) { kind = rise < 0 && -rise > Options.Climb(floor + rise, false) ? "drop" : "walk"; return "free"; }
+            if (rise <= ClimbFrom(n, from, floor, false)) { kind = rise < 0 && -rise > Options.Climb(floor + rise, false) ? "drop" : "walk"; return "free"; }
             kind = "climb";
-            return rise <= Options.Climb(floor, true) ? "spell:jump" : "spell:levitate";
+            return rise <= ClimbFrom(n, from, floor, true) ? "spell:jump" : "spell:levitate";
+        }
+
+        readonly Dictionary<long, int> climbs = new Dictionary<long, int>();
+
+        /// <summary>
+        /// The highest step a jump from a surface gets onto, with nothing or with the jump spell:
+        /// the jump from that floor's height, cut where the head meets the ceiling or an
+        /// object's underside over the tile (JumpFlight).
+        /// </summary>
+        int ClimbFrom(LevelNav n, Surf from, int floor, bool spell)
+        {
+            int ceiling = n.Ceiling(from.Tile, floor * 8);
+            long key = (long)ceiling << 16 | (uint)(floor << 1 | (spell ? 1 : 0));
+            int c;
+            if (climbs.TryGetValue(key, out c)) return c;
+            int dt = Math.Max(1, Math.Min(64, Options.TickLength));
+            c = new JumpFlight(JumpKind.Standing, spell, floor, dt, (ceiling - PlayerHeight) / 8.0 - floor - 0.05).Climb;
+            climbs[key] = c;
+            return c;
         }
 
         void AddEdge(NavEdge e) { Edges.Add(e); }
@@ -376,37 +644,77 @@ namespace UwEditor.Core.Randomizer
         void BuildEdges(LevelNav n)
         {
             var m = n.M;
-            var at = RegionAt[m.Level - 1];
             for (int y = 0; y < 64; y++)
                 for (int x = 0; x < 64; x++)
-                {
-                    int a = y * 64 + x;
-                    if (at[a] < 0) continue;
-                    for (int d = 0; d < 4; d++)
+                    foreach (var sa in n.Surfs(x, y))
                     {
-                        int nx = x + Dx[d], ny = y + Dy[d];
-                        if (!n.Open(nx, ny)) continue;
-                        int b = ny * 64 + nx;
-                        if (at[b] == at[a]) continue;
-                        int rise, back, floor, backFloor;
-                        if (!Rise(m, x, y, d, out rise, out floor) || !Rise(m, nx, ny, (d + 2) & 3, out back, out backFloor)) continue;
-                        string kind;
-                        var req = new List<string>();
-                        string geo = ClimbRequirement(rise, floor, out kind);
-                        req.Add(geo);
-                        var ra = Regions[at[a]];
-                        var rb = Regions[at[b]];
-                        if (rb.IsDoor || ra.IsDoor)
-                        {
-                            var door = rb.IsDoor ? rb : ra;
-                            if (kind == "walk") kind = door.DoorKind;
-                            req.Add("door:" + door.Id);     // replaced by the door's requirement once the levers are known
-                        }
-                        if (n.Lava[b] && !n.Lava[a]) req.Add("hazard:lava");
-                        AddEdge(new NavEdge { From = at[a], To = at[b], Kind = kind, Requires = ZoneLink.JoinAnd(req), Level = m.Level, X = x, Y = y, Fall = kind == "drop" ? -rise : 0 });
+                        int a = sa.Tile, ra0 = n.RegionOfNode[sa.Node];
+                        if (ra0 < 0) continue;
+                        for (int d = 0; d < 4; d++)
+                            foreach (var sb in n.Surfs(x + Dx[d], y + Dy[d]))
+                            {
+                                int b = sb.Tile, rb0 = n.RegionOfNode[sb.Node];
+                                if (rb0 < 0 || rb0 == ra0) continue;
+                                int rise, floor;
+                                if (!n.Step(sa, sb, d, out rise, out floor)) continue;
+                                // the floor under a low deck: nobody stands there
+                                if (sa.Deck == null && n.Low[a]) continue;
+                                string kind;
+                                var req = new List<string>();
+                                string geo = ClimbRequirement(n, sa, rise, floor, out kind);
+                                req.Add(geo);
+                                var ra = Regions[ra0];
+                                var rb = Regions[rb0];
+                                if (rb.IsDoor || ra.IsDoor)
+                                {
+                                    var door = rb.IsDoor ? rb : ra;
+                                    if (kind == "walk") kind = door.DoorKind;
+                                    req.Add("door:" + door.Id);     // replaced by the door's requirement once the levers are known
+                                }
+                                bool lavaB = sb.Deck == null && n.Lava[b], lavaA = sa.Deck == null && n.Lava[a];
+                                if (lavaB && !lavaA) req.Add("hazard:lava");
+                                AddEdge(new NavEdge { From = ra0, To = rb0, Kind = kind, Requires = ZoneLink.JoinAnd(req), Level = m.Level, X = x, Y = y, Fall = kind == "drop" ? -rise : 0 });
+                            }
                     }
-                }
             if (Options.GapJumps) GapJumps(n);
+        }
+
+        /// <summary>
+        /// What lies behind a barrier in a dead end (a region, or the barrier's own square, with
+        /// no way on but through the barrier) is reached from the other side with Telekinesis:
+        /// its things are taken and its switches used from afar (game/PLAYDATA.C: PickDist 0),
+        /// though nobody walks there. Karl: UW2 level 34 (30, 50), the things behind the grating.
+        /// The line of sight is not checked.
+        /// </summary>
+        void ReachPastBarriers(LevelNav n)
+        {
+            var outOf = new Dictionary<int, HashSet<int>>();
+            foreach (var e in Edges)
+            {
+                HashSet<int> l;
+                if (!outOf.TryGetValue(e.From, out l)) outOf[e.From] = l = new HashSet<int>();
+                l.Add(e.To);
+            }
+            var add = new List<NavEdge>();
+            foreach (var bar in Regions.Where(r => r.IsBarrier && r.Level == n.Level).ToList())
+            {
+                HashSet<int> beside;
+                if (!outOf.TryGetValue(bar.Id, out beside)) continue;
+                // the dead ends: nothing leads out of them but the barrier
+                var pockets = beside.Where(p => !Regions[p].IsDoor && Regions[p].Tiles.Count > 0 && (!outOf.ContainsKey(p) || outOf[p].All(t => t == bar.Id))).ToList();
+                var open = beside.Where(p => !pockets.Contains(p) && !Regions[p].IsBarrier).ToList();
+                if (open.Count == 0) continue;
+                foreach (int from in open)
+                {
+                    foreach (int p in pockets.Concat(new[] { bar.Id }))
+                        add.Add(new NavEdge
+                        {
+                            From = from, To = p, Kind = "reach", Requires = "spell:telekinesis", Level = n.Level, X = bar.X, Y = bar.Y,
+                            Notes = string.Format("past {0}: reached from afar only", bar.DoorNotes),
+                        });
+                }
+            }
+            Edges.AddRange(add);
         }
 
         /// <summary>
@@ -423,7 +731,6 @@ namespace UwEditor.Core.Randomizer
         void GapJumps(LevelNav n)
         {
             var m = n.M;
-            var at = RegionAt[m.Level - 1];
             var free = new HashSet<long>();
             foreach (var e in Edges) if (e.Level == m.Level && e.Requires == "free") free.Add((long)e.From << 32 | (uint)e.To);
             var dirs = new List<int[]> { new[] { 0, 1 }, new[] { 1, 0 }, new[] { 0, -1 }, new[] { -1, 0 } };
@@ -434,94 +741,143 @@ namespace UwEditor.Core.Randomizer
             var best = new Dictionary<long, NavEdge>();
             for (int y = 0; y < 64; y++)
                 for (int x = 0; x < 64; x++)
-                {
-                    int a = y * 64 + x;
-                    if (at[a] < 0 || Regions[at[a]].IsDoor) continue;
-                    var ta = m.Tiles[x, y];
-                    foreach (var d in dirs)
+                    foreach (var sa in n.Surfs(x, y))
                     {
-                        bool diag = d[0] != 0 && d[1] != 0;
-                        int card = d[1] > 0 ? 0 : d[0] > 0 ? 1 : d[1] < 0 ? 2 : 3;
-                        int nearLo, nearHi;
-                        if (diag) { nearLo = LevelGeometry.CornerHeights(ta).Min(); nearHi = LevelGeometry.CornerHeights(ta).Max(); if (ta.Type != TileType.Open && ta.Type < TileType.SlopeUpN) continue; }
-                        else { if (!ZoneFlood.IsSideOpen(ta.Type, card)) continue; ZoneFlood.EdgeHeights(ta, card, out nearLo, out nearHi); }
-                        // nothing to jump over: the next tile is not lower
-                        int fx = x + d[0], fy = y + d[1];
-                        if (!n.Open(fx, fy) || LevelGeometry.CornerHeights(m.Tiles[fx, fy]).Max() >= nearLo) continue;
-                        double len = diag ? 1.4142 : 1;
-                        // the run-up: this tile and the tiles straight behind it in the same region
-                        double room = len;
-                        for (int k = 1; room < runUp; k++)
+                        int a = y * 64 + x, from = n.RegionOfNode[sa.Node];
+                        if (from < 0 || Regions[from].IsDoor || (sa.Deck == null && n.Low[a])) continue;
+                        var ta = m.Tiles[x, y];
+                        foreach (var d in dirs)
                         {
-                            int bx = x - d[0] * k, by = y - d[1] * k;
-                            if (bx < 0 || by < 0 || bx > 63 || by > 63 || at[by * 64 + bx] != at[a]) break;
-                            room += len;
-                        }
-                        for (int pass = 0; pass < 4; pass++)
-                        {
-                            var kind = (pass & 1) == 0 ? JumpKind.Standing : JumpKind.Sprint;
-                            bool leap = pass >= 2;
-                            if (kind == JumpKind.Sprint && room < runUp) continue;
-                            // the take-off floor: its low side for the heights, its high side for the cut of the jump on high floors
-                            double top = JumpModel.PeakAt(kind, leap, nearHi, dt);
-                            int climb = JumpModel.Climb(leap, nearHi, dt);
-                            for (int k = 1; k <= 14; k++)
+                            bool diag = d[0] != 0 && d[1] != 0;
+                            int card = d[1] > 0 ? 0 : d[0] > 0 ? 1 : d[1] < 0 ? 2 : 3;
+                            int nearLo, nearHi;
+                            if (sa.Deck != null) nearLo = nearHi = sa.Deck.Step;
+                            else if (diag) { nearLo = LevelGeometry.CornerHeights(ta).Min(); nearHi = LevelGeometry.CornerHeights(ta).Max(); if (ta.Type != TileType.Open && ta.Type < TileType.SlopeUpN) continue; }
+                            else { if (!ZoneFlood.IsSideOpen(ta.Type, card)) continue; ZoneFlood.EdgeHeights(ta, card, out nearLo, out nearHi); }
+                            // nothing to jump over: the next tile is not all lower (or over the head)
+                            int fx = x + d[0], fy = y + d[1];
+                            if (!Under(n, fx, fy, nearLo - 0.01, nearLo - 0.01, nearLo - 0.01)) continue;
+                            double len = diag ? 1.4142 : 1;
+                            // the run-up: this tile and the tiles straight behind it with a surface of the same region
+                            double room = len;
+                            for (int k = 1; room < runUp; k++)
                             {
-                                int tx = x + d[0] * k, ty = y + d[1] * k;
-                                if (!n.Open(tx, ty)) break;
-                                int tk = ty * 64 + tx;
-                                if (n.Door[tk]) break;
-                                var tt = m.Tiles[tx, ty];
-                                if (diag ? tt.Type != TileType.Open && tt.Type < TileType.SlopeUpN : !ZoneFlood.IsSideOpen(tt.Type, (card + 2) & 3)) break;
-                                double start = (k - 1) * len;                     // the gap so far
-                                if (diag)
+                                int bx = x - d[0] * k, by = y - d[1] * k;
+                                if (!n.Surfs(bx, by).Any(sb => n.RegionOfNode[sb.Node] == from)) break;
+                                room += len;
+                            }
+                            for (int pass = 0; pass < 4; pass++)
+                            {
+                                var kind = (pass & 1) == 0 ? JumpKind.Standing : JumpKind.Sprint;
+                                bool leap = pass >= 2;
+                                if (kind == JumpKind.Sprint && room < runUp) continue;
+                                // the take-off floor: its low side for the heights, its high side for the cut of the jump on high floors.
+                                // The head: the flight is cut under the lowest thing it would meet, the ceiling or an object's underside,
+                                // over the take-off tile and each tile it comes to (taken to hold from the take-off on: never more than the game gives)
+                                double cap = n.Cap(a, nearLo);
+                                if (cap < 0) break;
+                                var flight = new JumpFlight(kind, leap, nearHi, dt, cap);
+                                double top = flight.PeakAt, peak = nearLo + flight.Peak;
+                                int climb = flight.Climb;
+                                Func<double, double> feet = xx => nearLo + flight.Height(xx);
+                                for (int k = 1; k <= 14; k++)
                                 {
-                                    // the footprint also crosses the two tiles beside the corner it goes through
-                                    double sa = Math.Max(0, start - len / 2 - JumpModel.Radius - t0), sb = start + len / 2 + JumpModel.Radius - t0;
-                                    if (!Below(n, tx, ty - d[1], nearLo, sa, sb, kind, leap, nearHi, dt) || !Below(n, tx - d[0], ty, nearLo, sa, sb, kind, leap, nearHi, dt)) break;
-                                }
-                                if (k > 1)
-                                {
-                                    // landing here: the front corners over this floor, the feet not under it
-                                    int farLo, farHi;
-                                    if (diag) farLo = farHi = LevelGeometry.CornerHeights(tt).Max();
-                                    else ZoneFlood.EdgeHeights(tt, (card + 2) & 3, out farLo, out farHi);
-                                    int dh = farHi - nearLo;
-                                    double arrive = Math.Max(0, start - 2 * JumpModel.Radius + margin);
-                                    bool lands = arrive <= top ? dh <= climb : JumpModel.Height(arrive, kind, leap, nearHi, dt) >= dh;
-                                    int from = at[a], to = at[tk];
-                                    if (lands && to >= 0 && to != from && !free.Contains((long)from << 32 | (uint)to))
+                                    int tx = x + d[0] * k, ty = y + d[1] * k;
+                                    if (!n.Open(tx, ty)) break;
+                                    int tk = ty * 64 + tx;
+                                    if (n.Closed(tk)) break;
                                     {
-                                        string req = leap ? "spell:jump" : "free";
-                                        if (n.Lava[tk] && !n.Lava[a]) req = req == "free" ? "hazard:lava" : req + " & hazard:lava";
-                                        long key = (long)from << 32 | (uint)to;
-                                        NavEdge old;
-                                        if (!best.TryGetValue(key, out old) || (old.Requires.Contains("spell:jump") && !leap))
-                                            best[key] = new NavEdge
-                                            {
-                                                From = from, To = to, Kind = "jump", Requires = req, Level = m.Level, X = x, Y = y,
-                                                Notes = string.Format("{0} over {1} tile{2} to ({3}, {4}){5}{6}", kind == JumpKind.Sprint ? "sprint jump" : "standing long jump", k - 1, k == 2 ? "" : "s", tx, ty,
-                                                    dh == 0 ? "" : dh > 0 ? ", " + dh + " up" : ", " + -dh + " down", diag ? ", diagonal" : ""),
-                                            };
-                                        else if (old.X != x || old.Y != y || !old.Notes.Contains("(" + tx + ", " + ty + ")")) old.Count++;
+                                        // what is over this tile, if the feet's highest point while over it would bring the head to it
+                                        double ua = Math.Max(0, (k - 1) * len - JumpModel.Radius - t0), ub = k * len + JumpModel.Radius - t0;
+                                        double most = ua <= top && top <= ub ? peak : Math.Max(feet(ua), feet(ub));
+                                        double capHere = n.Cap(tk, nearLo);
+                                        if (most - nearLo > capHere)
+                                        {
+                                            if (capHere < 0) break;
+                                            cap = capHere;
+                                            flight = new JumpFlight(kind, leap, nearHi, dt, cap);
+                                            top = flight.PeakAt; peak = nearLo + flight.Peak; climb = flight.Climb;
+                                        }
                                     }
+                                    var tt = m.Tiles[tx, ty];
+                                    bool sideIn = diag ? tt.Type == TileType.Open || tt.Type >= TileType.SlopeUpN : ZoneFlood.IsSideOpen(tt.Type, (card + 2) & 3);
+                                    double start = (k - 1) * len;                     // the gap so far
+                                    if (diag)
+                                    {
+                                        // the footprint also crosses the two tiles beside the corner it goes through
+                                        double sa0 = Math.Max(0, start - len / 2 - JumpModel.Radius - t0), sb0 = start + len / 2 + JumpModel.Radius - t0;
+                                        double hi0 = sa0 <= top && top <= sb0 ? peak : Math.Max(feet(sa0), feet(sb0));
+                                        if (!Under(n, tx, ty - d[1], feet(sa0), feet(sb0), hi0) || !Under(n, tx - d[0], ty, feet(sa0), feet(sb0), hi0)) break;
+                                    }
+                                    if (k > 1)
+                                    {
+                                        // landing here, on its floor or on a deck: the front corners over it, the feet not under it
+                                        double arrive = Math.Max(0, start - 2 * JumpModel.Radius + margin);
+                                        foreach (var sb in n.Surfs(tx, ty))
+                                        {
+                                            double far;
+                                            if (sb.Deck != null) far = sb.Deck.Top / 8.0;
+                                            else
+                                            {
+                                                if (!sideIn || n.Low[tk]) continue;
+                                                int farLo, farHi;
+                                                if (diag) farLo = farHi = LevelGeometry.CornerHeights(tt).Max();
+                                                else ZoneFlood.EdgeHeights(tt, (card + 2) & 3, out farLo, out farHi);
+                                                far = farHi;
+                                            }
+                                            if (!n.Clear(sb)) continue;
+                                            double dh = far - nearLo;
+                                            bool rising = arrive <= top;
+                                            bool lands = rising ? dh <= climb : feet(arrive) >= far;
+                                            if (!lands) continue;
+                                            // the decks over it must be over the head on arrival (else he comes onto them, or into them)
+                                            double standing = rising ? Math.Max(far, nearLo) : feet(arrive);
+                                            List<NavDeck> over;
+                                            if (n.Decks.TryGetValue(tk, out over) && over.Any(c => c != sb.Deck && c.Top / 8.0 > far && c.Bottom < standing * 8 + PlayerHeight)) continue;
+                                            int to = n.RegionOfNode[sb.Node];
+                                            if (to < 0 || to == from || free.Contains((long)from << 32 | (uint)to)) continue;
+                                            string req = leap ? "spell:jump" : "free";
+                                            if (sb.Deck == null && n.Lava[tk] && !(sa.Deck == null && n.Lava[a])) req = req == "free" ? "hazard:lava" : req + " & hazard:lava";
+                                            long key = (long)from << 32 | (uint)to;
+                                            NavEdge old;
+                                            int idh = (int)Math.Round(dh);
+                                            if (!best.TryGetValue(key, out old) || (old.Requires.Contains("spell:jump") && !leap))
+                                                best[key] = new NavEdge
+                                                {
+                                                    From = from, To = to, Kind = "jump", Requires = req, Level = m.Level, X = x, Y = y,
+                                                    Notes = string.Format("{0} over {1} tile{2} to ({3}, {4}){5}{6}{7}{8}", kind == JumpKind.Sprint ? "sprint jump" : "standing long jump", k - 1, k == 2 ? "" : "s", tx, ty,
+                                                        idh == 0 ? "" : idh > 0 ? ", " + idh + " up" : ", " + -idh + " down", diag ? ", diagonal" : "", sa.Deck != null ? ", from a deck" : "", sb.Deck != null ? ", onto a deck" : ""),
+                                                };
+                                            else if (old.X != x || old.Y != y || !old.Notes.Contains("(" + tx + ", " + ty + ")")) old.Count++;
+                                        }
+                                    }
+                                    // flying on over it
+                                    if (!sideIn || (!diag && !ZoneFlood.IsSideOpen(tt.Type, card))) break;
+                                    double xa = Math.Max(0, start - JumpModel.Radius - t0), xb = start + len + JumpModel.Radius - t0;
+                                    if (!Under(n, tx, ty, feet(xa), feet(xb), xa <= top && top <= xb ? peak : Math.Max(feet(xa), feet(xb)))) break;
                                 }
-                                // flying on over it
-                                if (!diag && !ZoneFlood.IsSideOpen(tt.Type, card)) break;
-                                if (!Below(n, tx, ty, nearLo, Math.Max(0, start - JumpModel.Radius - t0), start + len + JumpModel.Radius - t0, kind, leap, nearHi, dt)) break;
                             }
                         }
                     }
-                }
             Edges.AddRange(best.Values);
         }
 
-        /// <summary>Whether a tile lies below the feet of a jump while the footprint is over it: from xa to xb tiles on from the take-off (a curve that only bends down is lowest at one of the ends).</summary>
-        static bool Below(LevelNav n, int x, int y, int takeOff, double xa, double xb, JumpKind kind, bool leap, int floor, int dt)
+        /// <summary>
+        /// Whether a tile lets a jump over it: its floor below the feet while the footprint is
+        /// over it (feet at the two ends; a curve that only bends down is lowest at one of them),
+        /// and each deck either below the feet too or over the head all the way (highest: the
+        /// feet's highest point there).
+        /// </summary>
+        static bool Under(LevelNav n, int x, int y, double feetA, double feetB, double highest)
         {
-            if (!n.Open(x, y) || n.Door[y * 64 + x]) return false;
-            int dh = LevelGeometry.CornerHeights(n.M.Tiles[x, y]).Max() - takeOff;
-            return dh < JumpModel.Height(xa, kind, leap, floor, dt) && dh < JumpModel.Height(xb, kind, leap, floor, dt);
+            if (!n.Open(x, y) || n.Closed(y * 64 + x)) return false;
+            double low = Math.Min(feetA, feetB);
+            if (LevelGeometry.CornerHeights(n.M.Tiles[x, y]).Max() >= low) return false;
+            List<NavDeck> l;
+            if (n.Decks.TryGetValue(y * 64 + x, out l))
+                foreach (var c in l)
+                    if (!(c.Top / 8.0 < low || c.Bottom >= highest * 8 + PlayerHeight)) return false;
+            return true;
         }
 
         // ---------------------------------------------------------------- triggers

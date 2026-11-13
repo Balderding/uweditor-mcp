@@ -118,7 +118,7 @@ namespace UwEditor.Core.Randomizer
                     {
                         Level = slot.Level, Index = o.Index, Item = o.Item, Name = ObjectTexts.NpcName(s, o) ?? NamedItems.Of(s.Kind, o.Item) ?? o.Name,
                         Kind = kind, Token = token, TileX = o.TileX, TileY = o.TileY, Marked = marked && mark,
-                        Zone = zs.NearestZone(slot.Level, o.TileX, o.TileY),
+                        Zone = zs.ZoneOf(slot.Level, m, o),
                     };
                     if (o.Parent >= 0) k.Holder = m.Objects[o.Parent].ToString();
                     list.Add(k);

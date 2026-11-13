@@ -410,7 +410,7 @@ namespace UwEditor.Core.Randomizer
             readonly HashSet<string> cuts = new HashSet<string>();
             /// <summary>Zones that are only a door kept apart (a closer's doorway): the player passes them, he never stays in them.</summary>
             readonly HashSet<int> doorways = new HashSet<int>();
-            int nextFresh = 1000;
+            int nextFresh = 1000000;        // above every zone id (a level's are level * 256 + number)
             /// <summary>Phase D (the key item shuffle): the placements a run uses instead of the zone set's, and where the new ones lie (level, x, y).</summary>
             List<Placement> placements;
             readonly Dictionary<Placement, int[]> extraSpot = new Dictionary<Placement, int[]>();
@@ -755,9 +755,8 @@ namespace UwEditor.Core.Randomizer
                 {
                     Dictionary<int, int> c;
                     if (!counts.TryGetValue(comp[i], out c)) counts[comp[i]] = c = new Dictionary<int, int>();
-                    foreach (int t in g.Regions[i].Tiles)
+                    foreach (int z in BaseZones(st.Level, g.Regions[i]))
                     {
-                        int z = zs.ZoneAt(st.Level, t % 64, t / 64);
                         int k; tiles.TryGetValue(comp[i], out k); tiles[comp[i]] = k + 1;
                         if (z <= ZoneSet.Unassigned) continue;
                         int v; c.TryGetValue(z, out v); c[z] = v + 1;
@@ -778,7 +777,7 @@ namespace UwEditor.Core.Randomizer
                     var top = counts[grp].OrderByDescending(kv => kv.Value).ThenBy(kv => kv.Key).Select(kv => kv.Key).FirstOrDefault();
                     var mine = Enumerable.Range(0, n).Where(i => comp[i] == grp).ToList();
                     // the same part gets the same id in every state: keyed by the level, its main base zone and its first tile of that zone
-                    int first = mine.SelectMany(i => g.Regions[i].Tiles).Where(t => top <= ZoneSet.Unassigned || zs.ZoneAt(st.Level, t % 64, t / 64) == top).DefaultIfEmpty(-1).Min();
+                    int first = mine.SelectMany(i => Spots(st.Level, g.Regions[i])).Where(t => top <= ZoneSet.Unassigned || t.Value == top).Select(t => t.Key).DefaultIfEmpty(-1).Min();
                     string fk = st.Level + "|" + top + "|" + first;
                     int id;
                     if (!freshIds.TryGetValue(fk, out id)) freshIds[fk] = id = nextFresh++;
@@ -812,11 +811,20 @@ namespace UwEditor.Core.Randomizer
             /// A fix would split only the parts that had a free way between them before the change and
             /// have none after it, so that zones painted apart on purpose stay as painted.
             /// </summary>
+            /// <summary>The squares of a region with the base zone each lies in: its floor tiles by the zones' map, its decks by the zones' deck list.</summary>
+            IEnumerable<KeyValuePair<int, int>> Spots(int level, NavRegion r)
+            {
+                foreach (int t in r.Tiles) yield return new KeyValuePair<int, int>(t, zs.ZoneAt(level, t % 64, t / 64));
+                foreach (var d in r.Decks) yield return new KeyValuePair<int, int>(d.Y * 64 + d.X, zs.DeckZone(level, d.X, d.Y, d.Top));
+            }
+
+            IEnumerable<int> BaseZones(int level, NavRegion r) { return Spots(level, r).Select(t => t.Value); }
+
             void GroupGiven(LevelState st, int[] comp)
             {
                 var g = st.Graph;
                 int n = g.Regions.Count;
-                Func<int, IEnumerable<int>> baseOf = i => g.Regions[i].Tiles.Select(t => (int)zs.ZoneAt(st.Level, t % 64, t / 64));
+                Func<int, IEnumerable<int>> baseOf = i => BaseZones(st.Level, g.Regions[i]);
                 st.Zone = new int[n];
                 for (int i = 0; i < n; i++) st.Zone[i] = AutoZones.Majority(baseOf(i));
                 var members = Enumerable.Range(0, n).GroupBy(i => comp[i]).ToDictionary(x => x.Key, x => x.ToList());
@@ -828,7 +836,7 @@ namespace UwEditor.Core.Randomizer
                     if (z <= ZoneSet.Unassigned)
                     {
                         // the same new area gets the same id in every state: keyed by the level and its first tile
-                        int first = open.SelectMany(i => g.Regions[i].Tiles).DefaultIfEmpty(-1).Min();
+                        int first = open.SelectMany(i => Spots(st.Level, g.Regions[i])).Select(t => t.Key).DefaultIfEmpty(-1).Min();
                         string fk = st.Level + "|0|" + first;
                         if (!freshIds.TryGetValue(fk, out z)) freshIds[fk] = z = nextFresh++;
                         st.NewNames[z] = string.Format("L{0} new area at ({1}, {2})", st.Level, first % 64, first / 64);

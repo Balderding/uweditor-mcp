@@ -60,9 +60,11 @@ namespace UwEditor.App
 
         ZoneSet New()
         {
-            var zs = new ZoneSet(Session.Profile.LevelSlots) { Game = Session.IsUw2 ? "UW2" : "UW1", Source = "made in Underworld Editor" };
-            zs.EnsureZone(2).Name = "Start";
-            zs.StartZone = 2;
+            // UW2's zones are numbered a level (each level has its own 2-255): its 80 levels need more than 254
+            var zs = new ZoneSet(Session.Profile.LevelSlots) { PerLevel = Session.IsUw2, Game = Session.IsUw2 ? "UW2" : "UW1", Source = "made in Underworld Editor" };
+            int first = zs.Global(1, 2);
+            zs.EnsureZone(first).Name = "Start";
+            zs.StartZone = first;
             return zs;
         }
 
@@ -72,7 +74,7 @@ namespace UwEditor.App
         public bool HasZones { get { return Set.Tiles.Any(t => t != null && t.Any(b => b > ZoneSet.Unassigned)); } }
 
         /// <summary>The zone ids with tiles.</summary>
-        public int ZoneCount { get { var seen = new HashSet<int>(); foreach (var t in Set.Tiles) if (t != null) foreach (var b in t) if (b > ZoneSet.Unassigned) seen.Add(b); return seen.Count; } }
+        public int ZoneCount { get { var seen = new HashSet<int>(); for (int l = 1; l <= Set.Levels; l++) foreach (int id in Set.CountsOnLevel(l).Keys) if (id > ZoneSet.Unassigned) seen.Add(id); return seen.Count; } }
 
         /// <summary>A copy of the zoning as it is now (unsaved changes included).</summary>
         public ZoneSet CopyOfSet() { return ZoneSet.FromJson(Set.ToJson(), Session.Profile.LevelSlots); }
@@ -171,12 +173,14 @@ namespace UwEditor.App
 
         // ---- zones
 
-        public Zone AddZone(string name = null)
+        /// <summary>A new zone; with zones numbered a level (UW2), a zone of the level given.</summary>
+        public Zone AddZone(string name = null, int level1 = 0)
         {
-            int id = Set.NextZoneId();
-            if (id < 0) throw new InvalidOperationException("All 254 zone ids (2–255) are in use.");
+            if (Set.PerLevel && (level1 < 1 || level1 > Set.Levels)) throw new InvalidOperationException("Open the level the zone is for first: each level has its own zones.");
+            int id = Set.NextZoneId(level1);
+            if (id < 0) throw new InvalidOperationException(Set.PerLevel ? "All 254 zone numbers (2–255) of level " + level1 + " are in use." : "All 254 zone ids (2–255) are in use.");
             var z = Set.EnsureZone(id);
-            z.Name = string.IsNullOrWhiteSpace(name) ? "Zone " + id : name.Trim();
+            z.Name = string.IsNullOrWhiteSpace(name) ? "Zone " + Set.Label(id) : name.Trim();
             z.Status = "unfinished";
             current = id;
             Raise("zones");
@@ -255,8 +259,9 @@ namespace UwEditor.App
             EnsureLevel(level1);
             if (start) Snapshot();
             if (Set.ZoneAt(level1, x, y) == ZoneSet.Solid || Set.ZoneAt(level1, x, y) == current) return false;
+            if (!Set.OnLevel(level1, current)) return false;        // a zone of another level (zones numbered a level)
             Set.EnsureZone(current);
-            Set.SetZone(level1, x, y, (byte)current);
+            Set.SetZone(level1, x, y, current);
             Raise("tiles");
             return true;
         }
@@ -270,7 +275,7 @@ namespace UwEditor.App
             EnsureLevel(level1);
             Snapshot();
             Set.EnsureZone(zone);
-            int n = Set.Fill(level1, x, y, (byte)zone, new ZoneFlood(level(level1), MaxClimb));
+            int n = Set.Fill(level1, x, y, zone, new ZoneFlood(level(level1), MaxClimb));
             if (n == 0) undo.RemoveAt(undo.Count - 1);
             else Raise("tiles");
             return n;

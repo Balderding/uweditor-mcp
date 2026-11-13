@@ -436,7 +436,7 @@ namespace UwEditor.Core.Randomizer
                     var so = new ShuffleObject
                     {
                         Level = level, Index = o.Index, Item = o.Item, Name = s.Names.Get(o.Item), X = o.TileX, Y = o.TileY,
-                        Category = cat ?? "filler", Record = RecordOf(o), Zone = t.Set.NearestZone(level, o.TileX, o.TileY),
+                        Category = cat ?? "filler", Record = RecordOf(o), Zone = t.Set.ZoneOf(level, m, o),
                     };
                     so.Gives.AddRange(gives);
                     List<Placement> inside;
@@ -461,6 +461,7 @@ namespace UwEditor.Core.Randomizer
                     so.Key = cat != null && gives.Any(p => IsNeeded(needed, p, t));
                     string factId;
                     if (cat != null && !opt.Move.Contains(cat)) so.Stays = "its category does not move";
+                    else if (t.Abilities != null && t.Abilities.Auto.Graph.NearBarrier(level, o.TileX, o.TileY)) so.Stays = "on or beside a square an object closes (a force field, a grating): nothing is put there";
                     else if (template) so.Stays = "a create trap's template (the trap makes it)";
                     else if (trap) so.Stays = "inside a trap";
                     else if (named.Contains(o.Index)) so.Stays = "a trap or trigger names it";
@@ -762,6 +763,8 @@ namespace UwEditor.Core.Randomizer
                 {
                     int z = t.Set.ZoneAt(level, x, y);
                     if (z <= ZoneSet.Unassigned || !zones.Contains(z)) return false;
+                    // nor on or beside a square an object closes for good
+                    if (graph.NearBarrier(level, x, y)) return false;
                     int reg = graph.RegionOf(level, x, y);
                     return reg < 0 || !graph.Regions[reg].Folded;
                 });

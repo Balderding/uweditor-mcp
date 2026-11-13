@@ -295,7 +295,7 @@ namespace UwEditor.App
                     for (int y = 0; y < 64; y++)
                         for (int x = 0; x < 64; x++)
                         {
-                            int id = t[y * 64 + x];
+                            int id = zoning.Set.Global(level.Level, t[y * 64 + x]);
                             if (id == ZoneSet.Solid || level.Tiles[x, y].IsSolid) continue;
                             uint c = zoning.Set.ColorOf(id);
                             float alpha = id == ZoneSet.Unassigned ? 0.6f : id == zoning.CurrentZone ? 0.55f : 0.38f;

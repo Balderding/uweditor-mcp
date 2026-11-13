@@ -116,4 +116,69 @@ namespace UwEditor.Core.Randomizer
             return dist / 65536.0;
         }
     }
+
+    /// <summary>
+    /// One jump with the head counted: the player is 23 height units tall, and where his head
+    /// meets the ceiling (128) or the underside of an object the rise stops (motion/MOTION.C
+    /// set_targz: rising, the target is the underside less the mover's height) and he bounces
+    /// off it (do_zbounce: the vertical speed turns round at a third, bounce 5 of 15, and the
+    /// forward speed drops to two thirds). Cap is the highest the feet may get, in floor levels
+    /// above the take-off; the flight is JumpModel's up to there and the bounce's path after.
+    /// The cap is taken to hold from the take-off on, also where the low place lies further
+    /// along: that never gives more than the game does.
+    /// </summary>
+    public sealed class JumpFlight
+    {
+        public readonly JumpKind Kind;
+        public readonly bool Leap;
+        public readonly int Floor, Dt;
+        /// <summary>The highest the feet may get above the take-off (infinity: nothing overhead).</summary>
+        public readonly double Cap;
+        /// <summary>Where the head meets what is overhead, in tiles from the take-off (infinity: never).</summary>
+        public readonly double BumpAt = double.PositiveInfinity;
+        readonly double slope, c;
+
+        /// <summary>The player's height in floor levels (COMOBJ.DAT item 0x7F: 23 height units).</summary>
+        public const double PlayerLevels = 23 / 8.0;
+
+        public JumpFlight(JumpKind kind, bool leap, int floor, int dt, double cap = double.PositiveInfinity)
+        {
+            Kind = kind; Leap = leap; Floor = floor; Dt = dt; Cap = cap;
+            double top = JumpModel.PeakAt(kind, leap, floor, dt);
+            if (cap >= JumpModel.Height(top, kind, leap, floor, dt)) return;
+            if (cap <= 0) { BumpAt = 0; }
+            else
+            {
+                // the feet rise all the way to the peak: halve the way to where they are at the cap
+                double lo = 0, hi = top;
+                for (int i = 0; i < 40; i++) { double mid = (lo + hi) / 2; if (JumpModel.Height(mid, kind, leap, floor, dt) < cap) lo = mid; else hi = mid; }
+                BumpAt = lo;
+            }
+            double e = 1e-4;
+            slope = Math.Max(0, (JumpModel.Height(BumpAt + e, kind, leap, floor, dt) - JumpModel.Height(BumpAt, kind, leap, floor, dt)) / e);
+            double u = JumpModel.Speed(kind) - 1;
+            c = 131072 * (leap ? 2 : 4) / (u * u);
+        }
+
+        /// <summary>Whether the head meets something on the way up.</summary>
+        public bool Bumps { get { return !double.IsPositiveInfinity(BumpAt); } }
+
+        /// <summary>Where the feet are highest, in tiles from the take-off.</summary>
+        public double PeakAt { get { return Bumps ? BumpAt : JumpModel.PeakAt(Kind, Leap, Floor, Dt); } }
+
+        /// <summary>The highest the feet get, in levels above the take-off.</summary>
+        public double Peak { get { return Bumps ? Math.Max(0, Math.Min(Cap, JumpModel.Height(BumpAt, Kind, Leap, Floor, Dt))) : JumpModel.Height(JumpModel.PeakAt(Kind, Leap, Floor, Dt), Kind, Leap, Floor, Dt); } }
+
+        /// <summary>The highest step the jump gets onto (the feet snap onto a floor within a level above them on the way up).</summary>
+        public int Climb { get { return Math.Max(JumpModel.WalkStep, (int)Math.Floor(Peak + 1)); } }
+
+        /// <summary>The feet's height in levels above the take-off floor, x tiles on.</summary>
+        public double Height(double x)
+        {
+            if (x <= BumpAt) return JumpModel.Height(x, Kind, Leap, Floor, Dt);
+            // after the bounce: down at a third of the speed he came up with, forward at two thirds (so each tile takes 1.5 times as long)
+            double d = x - BumpAt;
+            return Peak - slope / 3 * 1.5 * d - c * 2.25 * d * d;
+        }
+    }
 }

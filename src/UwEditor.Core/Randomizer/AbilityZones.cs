@@ -533,7 +533,7 @@ namespace UwEditor.Core.Randomizer
                 foreach (var o in m.Objects)
                 {
                     if (o.Free || o.TileX < 0) continue;
-                    int z = zs.NearestZone(slot.Level, o.TileX, o.TileY);
+                    int z = zs.ZoneOf(slot.Level, m, o);
                     string where = string.Format("#{0} {1}{2}, level {3} ({4}, {5})", o.Index, o.Name, o.Parent >= 0 ? " in " + m.Objects[o.Parent] : "", slot.Level, o.TileX, o.TileY);
                     string tok = NavGraph.ItemToken(s, o.Item);
                     if (wanted.Contains(tok)) Add(zs, z, tok, "", where, "levels", true);
@@ -576,7 +576,7 @@ namespace UwEditor.Core.Randomizer
                             try { m = level(f.Level); } catch (Exception) { }
                             var o = m != null && f.Object >= 0 && f.Object < m.Objects.Length ? m.Objects[f.Object] : null;
                             if (o == null || o.Free || o.TileX < 0) { res.Warnings.Add("Facts: " + f.Id + ": no object #" + f.Object + " on L" + f.Level + "."); break; }
-                            Add(zs, zs.NearestZone(f.Level, o.TileX, o.TileY), f.Grants, f.Requires, f.Notes + " (#" + o.Index + " " + o.Name + ")", "facts: " + f.Id);
+                            Add(zs, zs.ZoneOf(f.Level, m, o), f.Grants, f.Requires, f.Notes + " (#" + o.Index + " " + o.Name + ")", "facts: " + f.Id);
                             break;
                         }
                 }
