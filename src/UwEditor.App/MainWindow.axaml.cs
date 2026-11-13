@@ -872,6 +872,7 @@ namespace UwEditor.App
                 case Key.Escape:
                     View.CancelDrag();
                     if (pick != null || carrying != null || objectPick != null) { pick = null; carrying = null; objectPick = null; vm.EditStatus = "Cancelled."; }
+                    else if (jumpFromX >= 0) { ClearJump(); UpdateMarkers(); vm.EditStatus = "Try Jump: click the square to jump from, then the square to land on."; }
                     else { ClearMulti(); vm.ClearSelection(); }
                     break;
                 case Key.Delete: DeleteSelected(); break;

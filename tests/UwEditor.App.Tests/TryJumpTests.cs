@@ -1,0 +1,80 @@
+using Avalonia.Controls;
+using Avalonia.Headless.XUnit;
+using UwEditor.Core;
+using UwEditor.Core.Tests;
+using Xunit;
+
+namespace UwEditor.App.Tests
+{
+    /// <summary>The Try Jump tool: two clicks, the flight drawn, the status line.</summary>
+    public class TryJumpTests
+    {
+        [AvaloniaFact]
+        public void Two_clicks_draw_the_flight_and_say_what_happened()
+        {
+            string g = GameData.Game("UW"); if (g == null) return;
+            var w = Ui.Open(g);
+            w.AskBeforeDiscarding = false;
+            var vm = w.ViewModel;
+            var view = w.FindControl<LevelView>("View");
+            vm.LoadLevel(5);
+            Ui.Pump();
+            Assert.Equal("Try Jump", vm.Tools[MainWindow.TryJumpTool]);
+            int lines = view.LineFloats;
+            vm.ToolIndex = MainWindow.TryJumpTool;
+            Ui.Pump();
+            Assert.Contains("Try Jump", vm.EditStatus);
+            w.TryJumpAt(16, 25);
+            Ui.Pump();
+            Assert.Null(w.ShownJump);
+            Assert.Contains("from (16, 25)", vm.EditStatus);
+            Assert.True(view.LineFloats > lines, "the first square is outlined");
+            int one = view.LineFloats;
+            w.TryJumpAt(16, 27);
+            Ui.Pump();
+            Assert.NotNull(w.ShownJump);
+            Assert.True(w.ShownJump.Lands, w.ShownJump.Text);
+            Assert.Contains("Lands on the floor at height 8 of (16, 27)", vm.EditStatus);
+            Assert.True(view.LineFloats > one + 14 * 20, "the flight is drawn");
+            // a third click starts again; another tool clears it
+            w.TryJumpAt(16, 25);
+            Ui.Pump();
+            Assert.Null(w.ShownJump);
+            vm.ToolIndex = 0;
+            Ui.Pump();
+            Assert.Equal(lines, view.LineFloats);
+            w.Close();
+        }
+
+        [AvaloniaFact]
+        public void A_click_on_the_landing_square_again_takes_its_next_surface()
+        {
+            string g = GameData.Game("UW2"); if (g == null) return;
+            var w = Ui.Open(g);
+            w.AskBeforeDiscarding = false;
+            var vm = w.ViewModel;
+            vm.LoadLevel(65);
+            Ui.Pump();
+            vm.ToolIndex = MainWindow.TryJumpTool;
+            w.TryJumpAt(29, 30);
+            // the click hits the bridge's top (height 10): the jump spell is needed
+            w.TryJumpAt(32, 27, 10);
+            Ui.Pump();
+            Assert.True(w.ShownJump.Lands, w.ShownJump.Text);
+            Assert.True(w.ShownJump.Leap);
+            Assert.Contains("bridge", vm.EditStatus);
+            Assert.Contains("2 places to land", vm.EditStatus);
+            // again: the floor under it, with a plain jump
+            w.TryJumpAt(32, 27, 10);
+            Ui.Pump();
+            Assert.True(w.ShownJump.Lands, w.ShownJump.Text);
+            Assert.False(w.ShownJump.Leap);
+            Assert.Equal(-1, w.ShownJump.On.Object);
+            // and round to the bridge again
+            w.TryJumpAt(32, 27, 10);
+            Ui.Pump();
+            Assert.True(w.ShownJump.Leap);
+            w.Close();
+        }
+    }
+}

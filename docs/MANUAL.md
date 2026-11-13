@@ -233,6 +233,25 @@ The toolbar above the view chooses the tool:
     each one's fine position, so on a slope they sit at different heights. Objects from 0x160
     on keep their height: pillars, bridges, writing and pictures on walls, switches, levers,
     traps and triggers.
+- **Try Jump:** click the square to jump from, then the square to land on. The editor
+  follows the jump as the game works it out and draws the flight over the level: **green**
+  with a ring where the player comes down on the second square, **red** with a cross and an
+  arrow where the jump ends when he does not (it hits rock or the side of a higher floor,
+  or comes down short). The status line says which jump it was (the standing long jump or
+  the sprint jump, with or without the jump spell), or why it failed. A third click starts
+  again, Esc clears it. The jump starts at the first square's edge towards the second, or up
+  to a tile further back when that would carry too far. It uses the tick length and margin
+  of the Automatic zones window when that is open (see **Jumps** under Automatic zones).
+  - **Objects in the way:** an object with a collision box (a bridge, a pillar, a table, a
+    closed door, a force field) is a box to the jump, as in the game. The player lands on its
+    top if it is solid (of the shipped objects only the bridge is), passes under it when his
+    head clears its underside, and is stopped by its side or underside otherwise. Creatures,
+    open doors, and the levers, switches and buttons on walls are left out.
+  - **Several places to land:** a square with a bridge has two (or more): the bridge's top
+    and the floor under it. The click takes the one nearest to where it hit, so in the 3D view
+    click the bridge or the floor. Click the landing square again to take the next one down
+    (and round to the top again); the status line lists them. The first square works the same
+    way: click the bridge to jump from it. The square chosen is outlined at that height.
 - **Ctrl+wheel** raises or lowers the floor under the mouse, together with the objects on it
   (traps and triggers stay where they are: their height is a setting).
 - The messages about what was just done show over the top of the view, so a long one never

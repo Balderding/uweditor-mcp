@@ -22,6 +22,8 @@ namespace UwEditor.Core
         public int Bottom, Top;
         public int TileX, TileY;
         /// <summary>It overlaps another box (Hitboxes.Overlaps).</summary>
+        /// <summary>COMOBJ's Solid flag: the player may stand on its top (motion/MOTION.C get_pcoll).</summary>
+        public bool Solid;
         public bool Overlapping;
 
         /// <summary>The box's corners in fine units: the whole tile for radius 4, else the middle ± the radius (less one for a creature when a creature is the other one).</summary>
@@ -88,6 +90,7 @@ namespace UwEditor.Core
                     Index = o.Index, Item = o.Item, Creature = creature, TileX = o.TileX, TileY = o.TileY,
                     FineX = o.TileX * 8 + o.FineX, FineY = o.TileY * 8 + o.FineY,
                     Radius = Field(comobj, o.Item, "Radius"), Bottom = o.Z, Top = o.Z + Math.Max(1, height),
+                    Solid = Field(comobj, o.Item, "Solid") == 1,
                 });
             }
             return list;

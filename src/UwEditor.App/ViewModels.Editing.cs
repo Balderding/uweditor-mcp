@@ -207,7 +207,7 @@ namespace UwEditor.App
 
         int toolIndex, paintMode, paintSlot, paintType = 1;
         decimal? paintHeight = 4;
-        public static readonly string[] ToolNames = { "Select", "Move", "Paint" };
+        public static readonly string[] ToolNames = { "Select", "Move", "Paint", "Try Jump" };
         public string[] Tools { get { return ToolNames; } }
         public int ToolIndex { get { return toolIndex; } set { if (value >= 0 && Set(ref toolIndex, value)) { ToolChanged?.Invoke(); Raise(nameof(IsPainting)); } } }
         public event Action ToolChanged;

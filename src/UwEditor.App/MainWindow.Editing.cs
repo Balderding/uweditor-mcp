@@ -37,7 +37,11 @@ namespace UwEditor.App
             {
                 View.Tool = vm.ToolIndex == 1 ? ViewTool.Move : vm.ToolIndex == 2 ? ViewTool.Paint : ViewTool.Select;
                 carrying = null;
-                if (vm.ToolIndex == 1) vm.EditStatus = "Move: select an object (or click an arrow), then click the square to put it on.";
+                bool hadJump = jumpFromX >= 0;
+                ClearJump();
+                if (hadJump || vm.ToolIndex == TryJumpTool) UpdateMarkers();
+                if (vm.ToolIndex == TryJumpTool) vm.EditStatus = "Try Jump: click the square to jump from, then the square to land on.";
+                else if (vm.ToolIndex == 1) vm.EditStatus = "Move: select an object (or click an arrow), then click the square to put it on.";
                 else if (vm.ToolIndex == 2) vm.EditStatus = "Paint: drag over tiles. Ctrl+wheel raises or lowers a floor.";
                 else vm.EditStatus = "";
             };
@@ -239,6 +243,7 @@ namespace UwEditor.App
 
         void OnDoublePicked(PickResult hit)
         {
+            if (vm.ToolIndex == TryJumpTool) { EditClick(hit); return; }      // two quick clicks are two squares
             if (!hit.Hit) return;
             vm.Select(hit.Object, hit.Tile % 64, hit.Tile / 64, true);
             if (vm.SelectedNode != null) ObjectTree.ScrollIntoView(vm.SelectedNode);
@@ -265,6 +270,7 @@ namespace UwEditor.App
                 }
                 return true;
             }
+            if (vm.ToolIndex == TryJumpTool) { JumpClick(level, tx, ty, hit.Hit ? hit.Point.Y / LevelGeometry.Step : double.NaN); return true; }
             string arrow = ArrowAt(View.LastClick);
             if (carrying != null)
             {
@@ -354,6 +360,7 @@ namespace UwEditor.App
                 LevelScene.Line(lines, new Vector3(t.X + 0.5f, y, t.Y + 0.5f), new Vector3(t.X + 0.5f, y + 1.2f, t.Y + 0.5f), c);
             }
             if (vm.ShowFacing) AddFacingArrows(lines, level);
+            AddJump(lines, tris, level);
             AddZoneOverlay(tris);
             AddLightFlagOverlay(tris);
             return tris;

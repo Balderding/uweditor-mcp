@@ -266,7 +266,7 @@
       <Border DockPanel.Dock="Top" Classes="toolbar" IsVisible="{Binding HasGame}">
         <WrapPanel>
           <ComboBox x:Name="ToolBox" ItemsSource="{Binding Tools}" SelectedIndex="{Binding ToolIndex}" Width="96" Margin="0,0,6,0"
-                    ToolTip.Tip="Select: click to pick. Move: click a tile to move the selected object there. Paint: drag over tiles to paint them with the brush; Ctrl+click a tile to take the brush from it (its template, textures, type or height)." />
+                    ToolTip.Tip="Select: click to pick. Move: click a tile to move the selected object there. Paint: drag over tiles to paint them with the brush; Ctrl+click a tile to take the brush from it (its template, textures, type or height). Try Jump: click the square to jump from, then the square to land on; the flight is drawn green if the player lands there, red up to where it ends if not." />
           <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding IsPainting}" Margin="0,0,6,0">
             <ComboBox x:Name="PaintModeBox" ItemsSource="{Binding PaintModes}" SelectedIndex="{Binding PaintMode}" Width="140" />
             <ComboBox x:Name="SlotBox" ItemsSource="{Binding Slots}" SelectedIndex="{Binding PaintSlot}" IsVisible="{Binding PaintsTexture}" Width="170">
