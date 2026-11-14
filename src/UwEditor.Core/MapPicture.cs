@@ -44,7 +44,8 @@ namespace UwEditor.Core
                             double fx = (px + 0.5) / cell, fy = (py + 0.5) / cell;
                             if (t.IsSolid || !OpenAt(t.Type, fx, fy)) { img.Pixels[k] = 22; img.Pixels[k + 1] = 22; img.Pixels[k + 2] = 26; img.Pixels[k + 3] = 255; continue; }
                             byte r = 120, gg = 110, b = 100;
-                            if (tex != null) { int s = ((cell - 1 - py) * cell + px) * 4; r = tex.Pixels[s]; gg = tex.Pixels[s + 1]; b = tex.Pixels[s + 2]; }
+                            // py counts from the tile's south edge, where the floor texture's top row lies (LevelGeometry.FloorTextureRow)
+                            if (tex != null) { int s = (Math.Min(cell - 1, (int)(LevelGeometry.FloorTextureRow((py + 0.5f) / cell, false) * cell)) * cell + px) * 4; r = tex.Pixels[s]; gg = tex.Pixels[s + 1]; b = tex.Pixels[s + 2]; }
                             img.Pixels[k] = (byte)(r * shade); img.Pixels[k + 1] = (byte)(gg * shade); img.Pixels[k + 2] = (byte)(b * shade); img.Pixels[k + 3] = 255;
                         }
                 }

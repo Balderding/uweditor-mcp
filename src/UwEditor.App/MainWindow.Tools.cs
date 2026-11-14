@@ -218,5 +218,37 @@ namespace UwEditor.App
             Frame();
             Activate();
         }
+
+        void OnChainNext(object sender, RoutedEventArgs e) { StepChain(true, sender as Avalonia.Controls.Control); }
+        void OnChainPrevious(object sender, RoutedEventArgs e) { StepChain(false, sender as Avalonia.Controls.Control); }
+
+        /// <summary>
+        /// The properties panel's Previous and Next: selects and frames the object one step back
+        /// or forward in the selected object's chain. When several objects are a step away and
+        /// none is named (which below 0), a menu on the button offers them; without a button the
+        /// first is taken. Returns the object stepped to, or null (the end, or the menu shown).
+        /// </summary>
+        public UwEditor.Core.ObjectInfo StepChain(bool forward, Avalonia.Controls.Control anchor = null, int which = -1)
+        {
+            var list = forward ? vm.ChainNext : vm.ChainPrevious;
+            if (which < 0 && list.Count > 1 && anchor != null)
+            {
+                var menu = new Avalonia.Controls.ContextMenu();
+                for (int i = 0; i < list.Count; i++)
+                {
+                    int k = i;
+                    var item = new Avalonia.Controls.MenuItem { Header = new Avalonia.Controls.TextBlock { Text = list[i].ToString() } };
+                    item.Click += (s, e) => StepChain(forward, null, k);
+                    menu.Items.Add(item);
+                }
+                menu.Open(anchor);
+                return null;
+            }
+            var to = vm.StepChain(forward, Math.Max(0, which));
+            if (to == null) return null;
+            if (vm.SelectedNode != null) ObjectTree.ScrollIntoView(vm.SelectedNode);
+            Frame();
+            return to;
+        }
     }
 }

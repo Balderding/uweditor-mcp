@@ -12,7 +12,7 @@ namespace UwEditor.Core.Tests
         static string Temp() { return Path.Combine(Path.GetTempPath(), "uwedit-play-" + Guid.NewGuid().ToString("N")); }
 
         [Fact]
-        public void A_new_game_play_test_patches_the_copys_executable_and_carries_the_edits()
+        public void A_play_test_on_level_1_is_a_saved_game_too_and_carries_the_edits()
         {
             string g = GameData.Game("UW"); if (g == null) return;
             using (var c = new EditingTests.Copy(g, "SAVE1"))
@@ -28,12 +28,19 @@ namespace UwEditor.Core.Tests
                 try
                 {
                     var plan = PlayTest.Prepare(s, edits, null, 1, open.x, open.y, to);
-                    Assert.Null(plan.Slot);
+                    // no new game: the copy's executable is the game's own, and the player stands in the copy's saved game
+                    Assert.Equal("SAVE1", plan.Slot);
+                    Assert.Contains("Restore saved game 1", plan.Note);
                     Assert.Equal(exeBefore, File.ReadAllBytes(s.ExePath));                 // the game itself untouched
+                    Assert.Equal(exeBefore, File.ReadAllBytes(Path.Combine(to, Path.GetFileName(s.ExePath))));
+                    var pd = PlayerDat.Parse(File.ReadAllBytes(Path.Combine(to, "SAVE1", "PLAYER.DAT")), GameKind.UW1);
+                    Assert.Equal(1, pd.SavedLevel);
+                    Assert.Equal(open.x, pd.TileX);
+                    Assert.Equal(open.y, pd.TileY);
                     var copy = GameSession.Open(to);
-                    Assert.Equal(open.x, (int)copy.NewGameStart.X);
-                    Assert.Equal(open.y, (int)copy.NewGameStart.Y);
                     Assert.Equal(e.Data, copy.LevArk.Read(copy.Profile.LevelBlock(1)));
+                    var save = GameSession.Open(Path.Combine(to, "SAVE1"));
+                    Assert.Equal(e.Data, save.LevArk.Read(save.Profile.LevelBlock(1)));
                     Assert.False(Directory.EnumerateFiles(to, "*.BKP", SearchOption.AllDirectories).Any());
                     // again: the marked folder is cleared and made again
                     PlayTest.Prepare(s, edits, null, 1, open.x, open.y, to);

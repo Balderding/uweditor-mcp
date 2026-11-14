@@ -64,8 +64,8 @@ namespace UltimateEditor.Games
 				case 0x196: return "Proximity trap (condition): continues when who is within x..x+quality, y..y+owner of the target square (towards +x and +y only) and on the right side of the trap's height; otherwise runs the alternative chain.";
 				case 0x197: return "Pit trap: a tile at height 0 fills to height fine x + 8 * fine y with floor owner (above 15 makes it solid); any other tile drops to height 0 with floor quality.";
 				case 0x198: return "Bridge trap: owner >> 4 = 1 lays bridges (0x164, at the trap's z and heading, flags owner & 15), 2 removes them, over quality squares from the target square; heading 0 +y, 2 +x, 4 -y, 6 -x (rounded down to even and written back into the trap).";
-				case 0x19E: return "Flam rune: a rune of fire left on the floor.";
-				case 0x19F: return "Tym rune: a rune of stasis left on the floor.";
+				case 0x19E: return "Flam rune: a rune of fire left on the floor (the Rune of Flame spell makes one). It needs no trigger: whoever touches it sets it off, taking 3d4 + 4 fire damage, and the rune goes up in an explosion (obj/USEITEMS.C UseRune).";
+				case 0x19F: return "Tym rune: a rune of stasis left on the floor (the Rune of Stasis spell makes one). It needs no trigger: whoever touches it sets it off and is paralysed for a while, and the rune goes (obj/USEITEMS.C UseRune).";
 			}
 			if ((id >= 0x1A0 && id <= 0x1AC) || (id >= 0x1B0 && id <= 0x1BC))
 				return "Trigger: fires its linked trap at square (quality, owner), where the trap chain runs (not where the trigger lies), for its mode (OBJECTS.DAT's trigger table; 0x1AD-0x1AF and 0x1BD-0x1BF are move triggers). The player sets it off with flag 11 (a look trigger with z above 0 needs a Search check against z); creatures with the enchanted bit (the MAJOR_RECT test looks at the trigger itself and never applies); objects and nobody (scheduled triggers, conversations' gronk_door, auto-closing doors, hack 18) with flag 9. Pressure and timer triggers always act as the player. Only 0x1Bx triggers can be found and disarmed. Without flag 10 the trap chain is deleted after it runs, even if it did nothing.";

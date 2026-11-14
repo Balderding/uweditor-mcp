@@ -539,6 +539,8 @@ namespace UwEditor.Core.Randomizer
                     if (wanted.Contains(tok)) Add(zs, z, tok, "", where, "levels", true);
                     // any food pays Marrowsuck: items 0xB0-0xBF (major 2 minor 3, conv/CONVERSE.C find_barter 1011)
                     if (wanted.Contains("item:food") && o.Item >= 0xB0 && o.Item < 0xC0 && o.Item != 0xBF) Add(zs, z, "item:food", "", where + " (food)", "levels", true);
+                    // UW2's dream plant (item 0x114: eaten, the next sleep is a dream of the Ethereal Void; obj/USEITEMS.C UseFood, game/SKILLS.C dream)
+                    if (s.IsUw2 && o.Item == 0x114 && wanted.Contains("item:dream_plant")) Add(zs, z, "item:dream_plant", "", where + " (dream plant)", "levels", true);
                     // the stew recipe: a book or scroll whose text number is 0x100 or more (obj/USEITEMS.C UseBook, obj/COMBINE.C make_stew)
                     if (wanted.Contains("item:stew_recipe") && !s.IsUw2 && o.Item >= 0x130 && o.Item < 0x140 && o.Item != 0x13B && !o.Enchanted && o.IsQuantity && (o.Link & 0x1FF) >= 0x100)
                         Add(zs, z, "item:stew_recipe", "", where + " (make_stew)", "levels", true);
@@ -575,12 +577,29 @@ namespace UwEditor.Core.Randomizer
                         {
                             LevelModel m = null;
                             try { m = level(f.Level); } catch (Exception) { }
+                            if (m != null && f.Object < 0 && f.X >= 0 && f.Y >= 0)
+                            {
+                                // a square instead of an object
+                                int at = zs.NearestZone(f.Level, f.X, f.Y);
+                                if (at > ZoneSet.Unassigned) Add(zs, at, f.Grants, f.Requires, f.Notes + string.Format(" (level {0} ({1}, {2}))", f.Level, f.X, f.Y), "facts: " + f.Id, false, f.UsesUp);
+                                else res.Warnings.Add("Facts: " + f.Id + ": no zone at L" + f.Level + " (" + f.X + ", " + f.Y + ").");
+                                break;
+                            }
                             var o = m != null && f.Object >= 0 && f.Object < m.Objects.Length ? m.Objects[f.Object] : null;
                             if (o == null || o.Free || o.TileX < 0) { res.Warnings.Add("Facts: " + f.Id + ": no object #" + f.Object + " on L" + f.Level + "."); break; }
                             Add(zs, zs.ZoneOf(f.Level, m, o), f.Grants, f.Requires, f.Notes + " (#" + o.Index + " " + o.Name + ")", "facts: " + f.Id, false, f.UsesUp);
                             break;
                         }
                 }
+            }
+            // a thing that works on its own level only: the ways and grants of that level take its flag in place of the ability
+            foreach (var src in res.Sources.Where(x => x.OnlyLevel > 0))
+            {
+                string spell = "spell:" + src.Ability, either = "(" + spell + " | " + src.Token + ")";
+                foreach (var k in zs.Links)
+                    if (k.Level == src.OnlyLevel && k.Requires != null && k.Requires.Contains(spell) && !k.Requires.Contains(src.Token)) k.Requires = k.Requires.Replace(spell, either);
+                foreach (var p in zs.Placements)
+                    if (p.Requires != null && p.Requires.Contains(spell) && !p.Requires.Contains(src.Token) && zs.LevelsOf(p.Zone).All(l => l == src.OnlyLevel)) p.Requires = p.Requires.Replace(spell, either);
             }
             // NPCs the facts name must stand somewhere
             foreach (var f in facts.Facts)

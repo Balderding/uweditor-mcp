@@ -417,32 +417,79 @@ The **Run and Test** menu starts the game on what you are editing.
   game starts at once. Unsaved changes are not in the files yet, so the editor asks whether to
   save them first.
 - **Run in Underworld Exhumed** (Shift+F5) runs the native port on the game folder, with the
-  folder as the port's home too, so Journey Onward lists the folder's saved games (the one
-  being edited among them) and games saved in the port land there. The port also keeps its
-  settings file (`uw1port.cfg` / `uw2port.cfg`) and its last recordings in its home.
+  folder as the port's home too (`--data` and `--home`), so Journey Onward lists the folder's
+  saved games (the one being edited among them) and games saved in the port land in the game
+  folder, not in the port's own home (`%APPDATA%\uw1port`). The port also keeps its
+  settings file (`uw1port.cfg` / `uw2port.cfg`) and its last recordings there. Before the
+  port starts, the editor writes the settings set for it (below) into that file.
+- The port ends without a word when it cannot read its files. Before it starts, the editor
+  looks at the game folder, the folder the saved games go to and the port's own folder: if
+  one has files that are only in the cloud and not on this disk (a OneDrive folder that is
+  not kept on the device), it says which folder and which files, and does not start the
+  port. Keep the folder on this device (in OneDrive: right-click it, Always keep on this
+  device) or copy the game outside the cloud drive. If the port still ends within a few
+  seconds of its start, the editor says so, with its exit code.
 - A saved game kept outside the game folder runs from a copy instead, as saved game 1 (in
   the editor's settings folder, `Run`); games saved there stay in the copy.
 - **Programs and paths…** sets DOSBox (DOSBox, DOSBox-X or DOSBox Staging), extra DOSBox
-  arguments, and the two ports (`uw1port`, `uw2port`). An empty path lets the editor look
-  for the program itself. **Show the configuration a run uses** shows the DOSBox
-  configuration.
+  arguments, the two ports (`uw1port`, `uw2port`), their settings and extra arguments for
+  them (for example `--scale 4`). An empty path lets the editor look for the program
+  itself. **Show the configuration a run uses** shows the DOSBox configuration.
+- **Edit the settings it runs with…** (one button for each port) opens the settings the port
+  gets when the editor starts it, for Run in Underworld Exhumed and for the play test in it.
+  They are lines of `key=value`, as in the port's own settings file: `enhance`,
+  `settings-at-start`, `fullscreen`, `scale`, `aspect`, `integer`, `mouse`, `look-speed`,
+  `volume`, `mt32-roms`, `recording`. A line that starts with `#` does nothing, and at first
+  every line is commented out, so the port runs with what its settings file already has.
+  Before each start the editor writes the keys set here into `uw1port.cfg` (`uw2port.cfg`)
+  of the folder the game runs in; keys not set here stay as that file has them, and a key
+  set here wins over a change made on the port's own settings screen. **Defaults** puts the
+  commented-out list back, **Take the port's own settings** copies the lines of the port's
+  settings file, and **Save** keeps the text in the editor's settings folder
+  (`exhumed-uw1port.cfg` / `exhumed-uw2port.cfg`).
 
 ### Play test
 
-**Run and Test ▸ Play-test from the selected tile** (F5, or Play-test from here in the right-click
-menu) runs the game in DOSBox with the unsaved levels and the player on that square. It works
-on a copy of the game folder, made afresh each time in the editor's settings folder (`Play
-test`); the game folder is never touched.
-- With `DATA` open and a square on level 1, the square is patched into the copy's executable
-  as the new-game start; start a new game.
-- Anywhere else, the player needs a saved game: the open save itself or, with `DATA` open,
-  the folder's first save, which then gets `DATA`'s levels as edited. The position is written
-  to its `PLAYER.DAT`; restore that game (the editor says which).
+**Run and Test ▸ Play-test from the selected tile (DOSBox)** (F5) and **Play-test from the
+selected tile (Exhumed)** (Ctrl+Shift+F5) run the game with the unsaved levels and the
+player on that square; the right-click menu has both as **Play-test from here (DOSBox)…**
+and **Play-test from here (Exhumed)…**. The test works on a copy of the game folder, made
+afresh each time in the editor's settings folder (`Play test`); the game folder is never
+touched.
+- The player is always in a saved game of the copy, on level 1 as on any other: the open
+  save itself or, with `DATA` open, the folder's first save, which gets `DATA`'s levels as
+  edited. The position is written to its `PLAYER.DAT`; restore that game (the editor says
+  which; in the port, Journey Onward). The copy's executable is the game's own, unchanged.
+  (Before 0.1.35 a test on level 1 in DOSBox patched the square into the copy's executable
+  as the new-game start; a new game began on the usual square all the same.)
+- A player who carries no lantern gets one, full of oil: lit on a free shoulder, or unlit in
+  a free pack slot when both shoulders are taken (the editor says which). A player whose
+  shoulders and pack are full is left as he is.
+- When the folder has no saved game, the editor makes one as saved game 1 of the copy, with
+  a default character of its own. Only the character comes from the editor: the levels are
+  yours as edited, and the conversations' variables and UW2's schedules start as in a new
+  game.
 
 The editor looks for DOSBox next to the game (GOG's `DOSBOX` folder) and where it is usually
-installed; otherwise choose it in **Run and Test ▸ Programs and paths…**. It runs with the
-same configuration as Run in DOSBox, with C: on the copy. Unsaved strings and conversations
-are not in the copy.
+installed; otherwise choose it in **Run and Test ▸ Programs and paths…**. In DOSBox the test
+runs with the same configuration as Run in DOSBox, with C: on the copy. In Underworld
+Exhumed the copy is both the port's game folder and its home, so games saved during the test
+stay in the copy (the next play test clears it), and the port gets the settings and extra
+arguments set in Programs and paths. Unsaved strings and conversations are not in the copy.
+
+**Floor textures.** A floor texture lies as the game lays it: its top row along the tile's
+south edge and its left column along the west edge, so seen from above with north up a
+floor is its texture upside down. Pictures made of several floor tiles, such as UW2's
+pentagrams, join up. Ceilings have their top row to the north. (Before 0.1.34 the editor
+drew every floor mirrored north to south.)
+
+**Following a chain.** When the selected object is a lever, switch, button or pull chain, a
+trigger or a trap, **◀ Previous** and **Next ▶** under its description step along its chain
+one object at a time: Next to the trigger a control holds, the trap a trigger fires, or
+what a trap links to; Previous to whatever links to the object, or to the object that holds
+it. The object stepped to is selected and shown, and two lines under the buttons say what
+comes before and after. A button is greyed at the end of the chain; when several objects
+are one step away it shows how many and a click lists them.
 
 ### Checking in Underworld Exhumed
 
@@ -1546,6 +1593,9 @@ there.
 lies, the square its chain runs on and each trap in the chain, then the wandering-monster
 spawners (create-object traps the game runs by itself; see Trap recipes ▸ Wandering
 monsters) with what each makes and how often, and last the other traps no trigger reaches.
+UW2's flam and tym runes (items 0x19E and 0x19F) have a group of their own, **rune traps**:
+they need no trigger (whoever touches one, or a thing thrown onto it, sets it off, and the
+rune is used up), so they are not listed among the traps no trigger reaches.
 Each line explains itself; double-click one to go to it in the map.
 
 ## Fixes
@@ -2126,7 +2176,12 @@ sets it, and a fact has to say so. A trigger without the flag that lets the play
 never runs for the player (the report's notes list them). Two doors that lock each other (an
 airlock: opening one puts a lock on the other, closing it takes the lock off, as on level 10
 of the Prison Tower) are left as they are, since the lock comes and goes. A scheduled trigger waits for
-`flag:schedule_lL_X_Y`, which nothing grants until the schedules are read.
+`flag:schedule_lL_X_Y`, which the schedules grant (`SCD.ARK`): a row that fires the
+scheduled triggers of a square grants the flag on its level (on each level of its world, or
+on every level). A row of the time of day is free, since the day comes round; a row of the
+castle plot at time t needs `plot:t`; a row behind a test needs the test's state, as a trap
+does; the rows of the pit fights wait for kills nothing counts yet. A row that sets a quest
+flag or a variable counts as a set variable trap does.
 
 **Floors that move the player (UW2).** Water with a current carries the swimmer and cannot
 be swum against: a stream (the current tiles that touch) is a region of its own, entered
@@ -2144,11 +2199,52 @@ adds nothing. The report counts the streams' tiles, the ice slopes and the pads'
 damage is not counted in either game: a drop is free however deep. The Bounce spell is not
 in the logic.
 
+**Portal (UW2).** The Portal spell (Vas Ex Ylem) puts the player on the square two ahead of
+him, whatever lies between: rock, a door, a force field, a gap. He must fit there at the
+height he stands at, so the floor may be lower (he falls) but not more than a level higher.
+The automatic zones add a way needing `spell:portal` from each floor to every floor of
+another region two squares off that qualifies, so with Portal a wall one square thick or a
+locked door is no hindrance. From and onto bridges is left out. These ways are **off unless
+asked for** (`NavOptions.Portal`; no checkbox yet): the game is finished without Portal, so
+a solve that does without it holds for every player, and with it on the solve leans on it.
+
+**Controls with two states (UW2).** A lever, switch, button or pull chain with two use
+triggers, where each runs change terrain traps on the same squares and the one makes rock
+what the other makes open, is set either way as often as the player likes: it is no change
+of the world. The squares its other state opens are passed with that state's flag (got once
+the control is reached); the squares it closes stay open. The Ice Caverns' wall maze (level
+25) is set by four such controls at (38, 15) to (39, 16): set for the door at (23, 6), the
+pull chain behind it at (22, 7) sets quest flag 44, and the schedule then opens level 26's
+northern half at (33, 33). Not ruled out: a way through a square of each state of one
+control (in the shipped game there is none; a test checks it).
+
+**A barrier's square leads nowhere.** Nobody stands on a square a force field or a grating
+closes, so no way leads on from it, also not through a door beside it.
+
+**The Ethereal Void's pyramid.** The end of each coloured trial (levels 65, 66, 68 and 71)
+sends the player to the pyramid on level 69 at (49, 51); with all four done the pyramid's
+moongate leads to (32, 25), inside the walled ring under the Void gem's platform. Turned
+another colour it has, the moongate leads to that colour's room at (4, 4 + 6 x colour): the
+first colour's from the start, a trial's once the trial is done. The Void's **shifting
+gates** draw their destination at random from a table kept in the map's own squares; each
+destination of a table is a way, and that is how levels 65 and 68 are entered. All are ways
+of the automatic zones.
+
+**A pit with its way out (UW2).** Where a pit's square has a low switch that throws the
+player straight up and a higher switch that fills the pit (the Academy, level 46 (41, 52)),
+the open pit is left for free: the second switch, used in the air, puts the floor back
+under him.
+
 **Abilities in UW2.** UW2's own spells are read as UW1's are: Leaping (Uus Por) is `jump`,
 Levitate and Fly `levitate`, Water Walk `waterwalk`, Flameproof `lava`, Reveal, Open,
 Telekinesis and Gate Travel their own. Casting asks for the rune bag and the spell's runes;
 a scroll, a potion (UW2's are items 0xE1 to 0xE7) or a charged wand is a single use; a
-thing enchanted and worn works while worn.
+thing enchanted and worn works while worn. The Scintillus Academy's **telekinesis wand**
+(level 43) has no charges but is taken from the player on leaving the level, so it counts
+on level 43 only (`flag:telekinesis_on_l43`, which that level's ways take in place of the
+ability).
+The Academy's lava room on that level is a fact: crossed over its pillars, which the
+wand's reach raises and lowers by the buttons on the walls, never through the lava.
 
 The **castle plot** (X clock 1) is a count: `plot:N` in a requirement holds when the highest
 value the plot was set to (`plotset:V`) plus the steps that add one (`plotstep:NAME`) reach
@@ -2158,8 +2254,35 @@ schedule makes are in `docs/facts/uw2-facts.json`, which is shipped and read as 
 are. The **blackrock gem** on level 5 is a link to each world: the Prison Tower at once,
 Killorn Keep and the Ice Caverns from plot 4, Talorus, the Academy and the Pits from 8, the
 Tomb and the Void from 13, as the gem picks the facet it shows among the first 1, 3, 6 or 8.
-The facts do not yet hold every step of the plot: what is known brings it to 10 at most, so
-the Tomb and the Void stay closed.
+The facts bring the plot to 13, which opens all eight worlds: Miranda at 3, 7 and 11, the
+listener killed with Altara's dagger, the schedule's own step at 6, Zoranthus, the key gem of
+Talorus treated by Nystul and fused, and Patterson's death. The Void's key gem is two facts:
+it lies on a platform on level 69, and is taken awake with Levitate and either Telekinesis
+or Portal; or it is thrown down in a dream (a dream plant eaten before sleeping) into the
+ring under the platform and picked up there awake.
+
+**The end of UW2.** The facts carry the plot from 13 to 16 and name the goal, so the solve
+of UW2 reaches the end of the game:
+
+- *The djinn* (plot 14). Basilisk oil (a colourless potion on levels 3, 57, 59 and 67)
+  thrown into the filanium mud of level 26 at (58, 15); stepping into the pool (its trigger
+  is read from the level); standing in lava; Iron Flesh cast (`spell:iron_flesh`, a new
+  ability: In Vas Sanct by the runes, or a thing that casts it); and the stoppered bottle,
+  which Zoranthus hands over or which lies in the Void pyramid's room of colour 3, broken
+  on the sigil at level 69 (21, 52).
+- *The lines of power.* Altara makes the pearl-tipped rod from an amethyst rod and a black
+  eggshell once the Listener is dead; used by the Guardian's marker in each of the eight
+  worlds (levels 16, 18, 26, 33, 48, 49, 57 and 69) it cuts that world's line. The rod
+  reaches two squares: level 16's marker lies behind a force field and is cut from before it.
+- *The gems.* Each world's key gem is a fact where it lies or with the creature that
+  carries it; all eight, treated by Nystul and fused, are asked for.
+- *Nystul* (plot 15 and 16). Given Mors Gotha's book (level 17) at plot 14 with the gems
+  fused, the lines cut and Praecor Loth's horn; then the hour the gem appeared.
+- *The goal.* Nystul at plot 16 with the horn. Mors Gotha's attack is a fight the logic
+  takes as won.
+
+The fights (the goblin and the pit fighter who carry gems, Mors Gotha) and character level
+and mana for the spells are not weighed.
 **Load the UW1 example** starts from Karl's UW1 zoning, built from his painted maps and
 notes: 91 zones, 139 links and 50 grants.
 
@@ -2751,7 +2874,16 @@ both ways for free.
 picking something up) is one way: free towards the trigger, and back only with what opens the
 closed door (its new lock's key, picking, or a lever on that side). A door closed without a
 locked lock opens by hand, so it changes nothing. A change the player chooses (a lever) that
-only takes ways away is never applied. A change that opens and closes things is applied. The
+only takes ways away is never applied. The ways of a part split off a zone do not count as
+opened when the zone had them before, and squares that were no zone's and are opened take
+nothing away. A chosen change that alone only takes ways away is applied all the same when
+the level with every change has a way that the level with all but this one lacks (*opens
+with others*). Changes the player chooses that alone change no way are tried together, one
+trigger after another: one that then only takes ways away is left unapplied too (*closes
+with others* in the list of changes). That is the Academy's room of falling platforms (UW2
+level 47): each platform stepped on drops another, the player picks the order that leaves
+the ledge at (35, 38) standing, and the way on needs the key from the floor and nothing
+else. A change that opens and closes things is applied. The
 solver then works out which of the zones reached so far the player can still get to from
 where he stood when he set it off. What he holds stays his, but a zone he is cut off from is
 no longer a place to go on from until he reaches it again. Changes to the same squares are

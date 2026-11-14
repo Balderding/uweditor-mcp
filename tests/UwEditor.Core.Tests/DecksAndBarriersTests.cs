@@ -79,7 +79,7 @@ namespace UwEditor.Core.Tests
                 Assert.Equal("spell:telekinesis", reach.Requires);
             }
             // and nothing comes back out
-            Assert.DoesNotContain(g.Edges, e => e.From == behind && e.To == front);
+            Assert.DoesNotContain(g.Edges, e => e.From == behind && e.To == front && !e.Requires.Contains("spell:portal"));
             // the token is one nothing grants
             Assert.False(Requirement.TryParse(NavGraph.BarrierToken, out _).Eval(new Holding()));
         }

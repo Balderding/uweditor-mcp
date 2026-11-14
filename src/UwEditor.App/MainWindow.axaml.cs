@@ -775,7 +775,7 @@ namespace UwEditor.App
                 "  Drag a selected object  move it (to an eighth of a tile); drop it on a container to put it inside\n" +
                 "  Right click             open the right-click menu\n" +
                 "  Tab                     switch to the 2D map and back\n" +
-                "  F5                      play-test from the selected tile\n" +
+                "  F5, Ctrl+Shift+F5       play-test from the selected tile in DOSBox, in Underworld Exhumed\n" +
                 "  Ctrl+F5, Shift+F5       run in DOSBox, in Underworld Exhumed\n" +
                 "  Ctrl+S                  save the levels (and a moved player)\n" +
                 "  Ctrl+Alt+S              save all changes\n" +
@@ -831,6 +831,7 @@ namespace UwEditor.App
             if (e.Key == Key.P && ctrlShift) { ShowPlayer(); e.Handled = true; return; }
             if (e.Key == Key.R && ctrlShift) { ShowGraphics(); e.Handled = true; return; }
             if (e.Key == Key.F5 && e.KeyModifiers == KeyModifiers.None) { OnPlayTest(this, null); e.Handled = true; return; }
+            if (e.Key == Key.F5 && e.KeyModifiers == (KeyModifiers.Control | KeyModifiers.Shift)) { OnPlayTestExhumed(this, null); e.Handled = true; return; }
             if (e.Key == Key.F5 && e.KeyModifiers == KeyModifiers.Control) { _ = RunDosBox(); e.Handled = true; return; }
             if (e.Key == Key.F5 && e.KeyModifiers == KeyModifiers.Shift) { _ = RunExhumed(); e.Handled = true; return; }
             if (e.Key == Key.S && e.KeyModifiers == (KeyModifiers.Control | KeyModifiers.Alt)) { SaveAllChanges(); e.Handled = true; return; }

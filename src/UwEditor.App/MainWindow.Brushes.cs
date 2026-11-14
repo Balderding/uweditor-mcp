@@ -63,7 +63,8 @@ namespace UwEditor.App
                 foreach (var t in WalkableFrom(tx, ty)) selTiles.Add(t.X + 64 * t.Y);
                 SayMulti(); UpdateMarkers();
             }, open);
-            yield return Item("Play-test _from here…", () => _ = PlayTest(tx, ty), open);
+            yield return Item("Play-test _from here (DOSBox)…", () => _ = PlayTest(tx, ty), open);
+            yield return Item("Play-test from here (E_xhumed)…", () => _ = PlayTest(tx, ty, true), open);
             yield return Item("Trap _recipes…", () => { vm.Select(-1, tx, ty, true); ShowTrapRecipes(); }, editable);
         }
 

@@ -1029,6 +1029,7 @@ namespace UwEditor.Core.Randomizer
                         sphere = Math.Max(sphere, e.Sphere);
                         if (want > 0 && want != here)
                         {
+                            int from0 = here;
                             int cut = Math.Max(i, held + 1);
                             var hops = Route(here, want, cut, sphere) ?? Route(here, want, cut, sphere - 1);
                             if (hops == null)
@@ -1043,8 +1044,10 @@ namespace UwEditor.Core.Randomizer
                                 st.Route.Add("the way there from " + ZoneText(here) + ": " + string.Join("; ", texts));
                             }
                             here = want;
+                            // a zone the hand reaches from afar is not stood in: he stays where he reached from
+                            if (hops != null && hops.Count > 0 && hops[hops.Count - 1].Key.Kind == "reach") here = hops.Count > 1 ? hops[hops.Count - 2].Value : from0;
                         }
-                        if (e.Kind == "zone") here = e.Zone;
+                        if (e.Kind == "zone") here = e.Link != null && e.Link.Kind == "reach" && e.From > 0 ? e.From : e.Zone;
                         held = Math.Max(held, i);
                     }
                     st.EndsIn = here;

@@ -97,7 +97,8 @@
         <MenuItem Header="Run in _DOSBox" InputGesture="Ctrl+F5" Click="OnRunDosBox" IsEnabled="{Binding HasGame}" />
         <MenuItem Header="Run in Underworld _Exhumed" InputGesture="Shift+F5" Click="OnRunExhumed" IsEnabled="{Binding HasGame}" />
         <Separator />
-        <MenuItem Header="_Play-test from the selected tile" Click="OnPlayTest" InputGesture="F5" IsEnabled="{Binding HasGame}" />
+        <MenuItem Header="_Play-test from the selected tile (DOSBox)" Click="OnPlayTest" InputGesture="F5" IsEnabled="{Binding HasGame}" />
+        <MenuItem Header="Play-test from the selected tile (E_xhumed)" Click="OnPlayTestExhumed" InputGesture="Ctrl+Shift+F5" IsEnabled="{Binding HasGame}" />
         <MenuItem Header="_Check in Underworld Exhumed…" Click="OnExhumedCheck" IsEnabled="{Binding HasGame}" />
         <MenuItem Header="DOSBox _spot test…" Click="OnSpotTest" IsEnabled="{Binding HasGame}" />
         <Separator />
@@ -350,6 +351,15 @@
               <Border Background="{DynamicResource PanelAlt}" CornerRadius="4" Padding="10,8">
                 <SelectableTextBlock x:Name="TrapHelp" Text="{Binding ObjectHelp}" TextWrapping="Wrap" FontSize="12" LineHeight="17" />
               </Border>
+            </StackPanel>
+            <StackPanel IsVisible="{Binding HasChain}" Margin="0,8,0,0" Spacing="4">
+              <WrapPanel>
+                <Button x:Name="ChainPreviousButton" Content="{Binding ChainPreviousLabel}" Click="OnChainPrevious" IsEnabled="{Binding CanChainPrevious}" Margin="0,0,6,0"
+                        ToolTip.Tip="Select the object one step back in the chain: the trigger or trap that links to this one, or the lever, door or other object that holds it. When several link to it, choose one from the list." />
+                <Button x:Name="ChainNextButton" Content="{Binding ChainNextLabel}" Click="OnChainNext" IsEnabled="{Binding CanChainNext}"
+                        ToolTip.Tip="Select the object one step forward in the chain: the trigger a lever holds, the trap a trigger fires, the trap or trigger that comes after a trap. When there are several, choose one from the list." />
+              </WrapPanel>
+              <TextBlock x:Name="ChainTextBlock" Classes="muted" Text="{Binding ChainText}" TextWrapping="Wrap" FontSize="12" />
             </StackPanel>
             <ItemsControl ItemsSource="{Binding ObjectRows}" Margin="0,8,0,0">
               <ItemsControl.ItemTemplate>

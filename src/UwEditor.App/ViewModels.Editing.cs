@@ -109,8 +109,54 @@ namespace UwEditor.App
         /// <summary>Where the selected trap or trigger acts, on any level.</summary>
         public List<TrapTarget> Targets { get; private set; } = new List<TrapTarget>();
 
+        // ---- stepping along a chain (a control, its trigger, the traps)
+
+        string chainText = "";
+        /// <summary>The selected object's place in its chain: what comes before and what comes next.</summary>
+        public string ChainText { get { return chainText; } private set { Set(ref chainText, value); } }
+        /// <summary>The selected object is a control, a trigger, a trap, or something a chain step leads to or from.</summary>
+        public bool HasChain { get; private set; }
+        /// <summary>One step forward and one step back from the selected object (Triggers.ChainNext, ChainPrevious).</summary>
+        public List<ObjectInfo> ChainNext { get; private set; } = new List<ObjectInfo>();
+        public List<ObjectInfo> ChainPrevious { get; private set; } = new List<ObjectInfo>();
+        public bool CanChainNext { get { return ChainNext.Count > 0; } }
+        public bool CanChainPrevious { get { return ChainPrevious.Count > 0; } }
+        public string ChainNextLabel { get { return ChainNext.Count > 1 ? "Next (" + ChainNext.Count + ") ▶" : "Next ▶"; } }
+        public string ChainPreviousLabel { get { return ChainPrevious.Count > 1 ? "◀ Previous (" + ChainPrevious.Count + ")" : "◀ Previous"; } }
+
+        void UpdateChain(ObjectInfo o)
+        {
+            bool has = o != null && session != null && level != null && Triggers.InChain(level, o);
+            ChainNext = has ? Triggers.ChainNext(level, o) : new List<ObjectInfo>();
+            ChainPrevious = has ? Triggers.ChainPrevious(level, o) : new List<ObjectInfo>();
+            HasChain = has;
+            ChainText = has ? Triggers.ChainText(level, o) : "";
+            foreach (var n in new[] { nameof(HasChain), nameof(ChainNext), nameof(ChainPrevious), nameof(CanChainNext), nameof(CanChainPrevious), nameof(ChainNextLabel), nameof(ChainPreviousLabel) }) Raise(n);
+        }
+
+        /// <summary>
+        /// Selects the object one step forward (or back) in the selected object's chain: the
+        /// first one, or the which-th when several come next (or link to it). Returns it, or null
+        /// at the end of the chain.
+        /// </summary>
+        public ObjectInfo StepChain(bool forward, int which = 0)
+        {
+            var list = forward ? ChainNext : ChainPrevious;
+            if (level == null || which < 0 || which >= list.Count)
+            {
+                if (HasChain) EditStatus = forward ? "The chain ends here." : "Nothing links to this object: the chain starts here.";
+                return null;
+            }
+            var to = list[which];
+            int count = list.Count;
+            Select(to.Index, to.TileX, to.TileY, true);
+            EditStatus = (forward ? "Next in the chain: " : "Previous in the chain: ") + to + (count > 1 ? " (" + (which + 1) + " of " + count + ")" : "") + ".";
+            return to;
+        }
+
         void UpdateObjectHelp(ObjectInfo o)
         {
+            UpdateChain(o);
             if (o == null || session == null || !o.IsTrapOrTrigger)
             {
                 ObjectHelp = ""; IsTrapSelected = false; HasTargetSquare = false; IsTeleportSelected = false; TrapVariable = -1; Targets = new List<TrapTarget>();

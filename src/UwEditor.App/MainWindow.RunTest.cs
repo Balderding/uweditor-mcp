@@ -81,6 +81,37 @@ namespace UwEditor.App
             return path;
         }
 
+        // ---- Underworld Exhumed's settings and extra arguments
+
+        public string ExhumedArgs
+        {
+            get { return settings.ExhumedArgs ?? ""; }
+            set { settings.ExhumedArgs = value ?? ""; settings.Save(); }
+        }
+
+        /// <summary>The editor's settings for a port: a file in the settings folder that the user edits (Programs and paths).</summary>
+        public static string ExhumedSettingsPath(GameKind kind) { return Path.Combine(Settings.Folder, "exhumed-" + ExhumedConfig.FileName(kind)); }
+
+        /// <summary>The editor's settings for a port; the defaults, written to the file, when there is none yet.</summary>
+        public string ExhumedSettingsText(GameKind kind)
+        {
+            string path = ExhumedSettingsPath(kind);
+            try { if (File.Exists(path)) return File.ReadAllText(path); } catch (Exception) { }
+            string text = ExhumedConfig.Defaults(kind);
+            try { Directory.CreateDirectory(Path.GetDirectoryName(path)); File.WriteAllText(path, text); } catch (Exception) { }
+            return text;
+        }
+
+        public void SetExhumedSettingsText(GameKind kind, string text)
+        {
+            string path = ExhumedSettingsPath(kind);
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            File.WriteAllText(path, (text ?? "").Replace("\r\n", "\n"));
+        }
+
+        /// <summary>Writes the keys of the editor's settings into the port's settings file in home, before a start. Returns the file, or null when no key is set.</summary>
+        public string ApplyExhumedSettings(string home, GameKind kind) { return ExhumedConfig.Apply(home, kind, ExhumedSettingsText(kind)); }
+
         /// <summary>Before running the game on the files: unsaved work is saved, left out, or the run cancelled. True to go on.</summary>
         async Task<bool> SaveBeforeRun(string where)
         {
@@ -159,7 +190,8 @@ namespace UwEditor.App
         /// Runs the game in Underworld Exhumed on the game folder being edited: --data the game
         /// folder and --home the same folder, so Journey Onward lists its SAVE1-SAVE4 (the save
         /// being edited among them) and games saved in the port land there. The port also keeps its
-        /// settings file and recordings in its home.
+        /// settings file and recordings in its home; the editor's settings for the port (Programs
+        /// and paths) are written into that file first.
         /// </summary>
         public async Task<bool> RunExhumed()
         {
@@ -186,16 +218,38 @@ namespace UwEditor.App
                     foreach (var f in Directory.GetFiles(s.SaveFolder)) File.Copy(f, Path.Combine(slot, Path.GetFileName(f)), true);
                     note = "The saved game lies outside the game folder, so the port gets a copy as slot 1 (in " + home + ").";
                 }
-                var args = new List<string> { "--data", data, "--home", home };
+                string problem = ExhumedConfig.Problem(port, data, home, ExhumedAttributes);
+                LastRunProblem = problem;
+                if (problem != null) { await MessageWindow.Show(this, "Run in Underworld Exhumed", problem); return false; }
+                ApplyExhumedSettings(home, s.Kind);
+                var args = ExhumedConfig.Arguments(data, home, settings.ExhumedArgs);
                 LastRun = (port, args, home, note);
                 if (!RunLaunch) return true;
                 var psi = new ProcessStartInfo(port) { UseShellExecute = false, WorkingDirectory = Path.GetDirectoryName(port) ?? home };
                 foreach (var a in args) psi.ArgumentList.Add(a);
-                Process.Start(psi);
+                WatchPort(Process.Start(psi), "Run in Underworld Exhumed", data);
                 vm.EditStatus = "Underworld Exhumed started on " + data + ". " + note;
                 return true;
             }
             catch (Exception ex) { await MessageWindow.Show(this, "Run in Underworld Exhumed", "The port did not start: " + ex.Message); return false; }
+        }
+
+        /// <summary>Why the last run in Underworld Exhumed was not started (a folder of a cloud drive that is not on this disk), or null.</summary>
+        public string LastRunProblem { get; private set; }
+        /// <summary>Tests set this: the attributes of a file, in place of the disk's.</summary>
+        public Func<string, FileAttributes> ExhumedAttributes;
+
+        /// <summary>The port says nothing when it gives up at once: if it has ended a few seconds after its start, say so.</summary>
+        async void WatchPort(Process p, string title, string data)
+        {
+            if (p == null) return;
+            try
+            {
+                await Task.Delay(3000);
+                if (!p.HasExited) return;
+                await MessageWindow.Show(this, title, "Underworld Exhumed ended right after it started (exit code " + p.ExitCode + ") and gave no message. It does that when it cannot read the game's files: check that " + data + " is a whole game folder that is on this disk (not a cloud folder still to be fetched), and that the executable is the GOG release's, unchanged.");
+            }
+            catch (Exception) { }
         }
 
         // ---- File ▸ Save all changes, Restore all

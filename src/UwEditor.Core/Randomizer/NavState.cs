@@ -176,6 +176,100 @@ namespace UwEditor.Core.Randomizer
         }
 
         /// <summary>
+        /// UW2's schedules (SCD.ARK, event/SCHEDULE.C and SCDEVENT.C) as far as they change the
+        /// ways: a row that fires the scheduled triggers of a square grants that square's
+        /// schedule flag (NavGraph.ScheduleToken) on the row's level, on each level of its world,
+        /// or on every level; a row that sets a quest flag or a variable is a set like a trap's.
+        /// When a row runs: block 0 is the time of day, which comes round, so its rows are
+        /// free; block 1 is the castle plot, a row at time t needing plot:t; block 14 counts
+        /// the kills in the pits (nothing grants it yet); block 15 runs whenever something
+        /// counted changes. A test row (event 10) passes when its variable equals its value
+        /// (or differs, inverted); the disabled rows after it, up to and with the next test,
+        /// run only then, a test among them adding its own condition for the rows after it.
+        /// A test the starting state passes costs nothing. Where the player stands is not
+        /// asked: a row for a level runs once he is there.
+        /// </summary>
+        public static void ReadSchedules(IList<UltimateEditor.Games.ScdBlock> blocks, Func<int, bool> present, Dictionary<string, StateTest> tests, List<StateSet> sets, List<NavState> states)
+        {
+            var fires = new Dictionary<string, List<string>>();
+            var notes = new Dictionary<string, List<string>>();
+            for (int b = 0; b < blocks.Count; b++)
+            {
+                var rows = blocks[b].Rows;
+                var cond = new List<string>();
+                bool inBlock = false;
+                for (int i = 0; i < rows.Count; i++)
+                {
+                    var r = rows[i];
+                    int ev = r.Event;
+                    if (ev >= 0) { cond = new List<string>(); inBlock = false; }
+                    else if (!inBlock) continue;        // a disabled row no test leads to never runs
+                    int kind = Math.Abs(ev);
+                    string clock = b == 1 && r.Time > 0 && r.Time < 0xFFFF ? "plot:" + r.Time : b == 14 && r.Time > 0 && r.Time < 0xFFFF ? "flag:pit_kills_" + r.Time : "";
+                    if (kind == 10)
+                    {
+                        // one variable, or several combined: only one is read here
+                        int var = r.Word(5), count = r.Bytes[7];
+                        var t = new StateTest { First = var, Count = 0, Sum = true, Value = (short)r.Word(10), Negated = r.Bytes[9] != 0 };
+                        string c;
+                        if (count > 1) c = "flag:schedule_test_" + b + "_" + i;       // nothing grants it
+                        else if (var == PlotVariable) c = t.Negated ? "" : t.Value > 0 ? "plot:" + t.Value : "";
+                        else if (t.Holds(v => 0)) c = "";
+                        else { c = t.Token; tests[c] = t; }
+                        if (ev > 0) cond = new List<string>();
+                        if (c.Length > 0) cond.Add(c);
+                        inBlock = true;
+                        continue;
+                    }
+                    string req = ZoneLink.JoinAnd(new[] { clock }.Concat(cond).Distinct());
+                    string where = string.Format("schedule {0}, row {1}", b, i);
+                    if (kind == 5)
+                    {
+                        foreach (int level in LevelsOf(r.Level, present))
+                        {
+                            string tok = NavGraph.ScheduleToken(level, r.Bytes[5], r.Bytes[6]);
+                            List<string> l;
+                            if (!fires.TryGetValue(tok, out l)) { fires[tok] = l = new List<string>(); notes[tok] = new List<string>(); }
+                            if (!l.Contains(req)) l.Add(req);
+                            notes[tok].Add(where);
+                        }
+                    }
+                    else if (kind == 4 || kind == 9)
+                    {
+                        // a quest flag or a variable set: a set as a trap's, granted with the row
+                        string tok = string.Format("flag:schedule_row_{0}_{1}", b, i);
+                        var set = kind == 4
+                            ? new StateSet { Level = 0, Trap = b * 1000 + i, Variable = 0x100 + r.Bytes[5], Op = 2, Value = r.Bytes[6] }
+                            : new StateSet { Level = 0, Trap = b * 1000 + i, Variable = r.Word(5), Op = r.Bytes[7] & 7, Value = r.Word(8) };
+                        // the castle plot's own row (6 becomes 7) is a step the facts give: as a set it would count the steps before it twice
+                        if (set.Variable == PlotVariable) continue;
+                        set.Flags.Add(tok);
+                        sets.Add(set);
+                        states.Add(new NavState { Token = tok, Requires = req, Notes = where + ": " + set });
+                    }
+                }
+            }
+            foreach (var kv in fires.OrderBy(x => x.Key, StringComparer.Ordinal))
+            {
+                var ways = kv.Value.Distinct().ToList();
+                states.Add(new NavState
+                {
+                    Token = kv.Key,
+                    Requires = ways.Contains("free") ? "free" : ways.Count == 1 ? ways[0] : string.Join(" | ", ways.Select(w => w.Contains(" & ") ? "(" + w + ")" : w)),
+                    Notes = string.Join(", ", notes[kv.Key].Distinct().Take(6)),
+                });
+            }
+        }
+
+        /// <summary>The levels a schedule row is for: its level, the eight of its world (0xF6 + n), or every level (0xFF).</summary>
+        static IEnumerable<int> LevelsOf(int level, Func<int, bool> present)
+        {
+            if (level == 0xFF) { for (int l = 1; l <= 80; l++) if (present(l)) yield return l; }
+            else if (level >= 0xF6) { for (int l = (level - 0xF6) * 8 + 1; l <= (level - 0xF6) * 8 + 8; l++) if (present(l)) yield return l; }
+            else if (level >= 1 && level <= 80 && present(level)) yield return level;
+        }
+
+        /// <summary>
         /// The blackrock gem's facets (event/WORLDEV.C black_gem_trip's worlds[]): level, square,
         /// and the castle plot from which the gem may show the facet (black_gem_rotate picks among
         /// the first 1, 3, 6 or 8 facets with the plot under 4, under 8, under 13, or more).

@@ -95,5 +95,131 @@ namespace UwEditor.App.Tests
             p.Close();
             w.Close();
         }
+
+        static (int X, int Y) OpenTile(UwEditor.Core.LevelModel m)
+        {
+            return Enumerable.Range(0, 64 * 64).Select(i => (X: i % 64, Y: i / 64)).First(t => t.X > 1 && t.Y > 1 && t.X < 62 && t.Y < 62 && !m.Tiles[t.X, t.Y].IsSolid);
+        }
+
+        /// <summary>The editor's settings for the ports and the extra arguments, put back as they were (the tests share one settings folder).</summary>
+        static void ForgetExhumedSettings(MainWindow w)
+        {
+            w.ExhumedArgs = "";
+            foreach (var k in new[] { UltimateEditor.Games.GameKind.UW1, UltimateEditor.Games.GameKind.UW2 })
+                if (File.Exists(MainWindow.ExhumedSettingsPath(k))) File.Delete(MainWindow.ExhumedSettingsPath(k));
+        }
+
+        [AvaloniaTheory]
+        [InlineData("UW", false)]
+        [InlineData("UW", true)]
+        [InlineData("UW2", false)]
+        [InlineData("UW2", true)]
+        public void A_play_test_without_a_saved_game_uses_the_default_player_in_DOSBox_and_in_Exhumed(string game, bool exhumed)
+        {
+            string g = GameData.Game(game); if (g == null) return;
+            // a game folder with no saved game: DATA and the executable
+            string folder = Path.Combine(Path.GetTempPath(), "uwedit-nosave-" + Guid.NewGuid().ToString("N"));
+            string to = Path.Combine(Path.GetTempPath(), "uwedit-playdef-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(Path.Combine(folder, "DATA"));
+            foreach (var f in Directory.GetFiles(Path.Combine(g, "DATA"))) File.Copy(f, Path.Combine(folder, "DATA", Path.GetFileName(f)));
+            foreach (var f in Directory.GetFiles(g, "*.EXE")) File.Copy(f, Path.Combine(folder, Path.GetFileName(f)));
+            var w = Ui.Open(folder);
+            try
+            {
+                w.AskBeforeDiscarding = false;
+                w.PlayTestFolder = to;
+                w.PlayTestLaunch = false;
+                ForgetExhumedSettings(w);
+                var kind = w.ViewModel.Session.Kind;
+                w.SetExhumedSettingsText(kind, "# for the test\nenhance=skip-intro\nsettings-at-start=0\n");
+                w.ExhumedArgs = "--scale 2";
+                w.ViewModel.LoadLevel(2);
+                Ui.Pump();
+                var t = OpenTile(w.ViewModel.Level);
+                var plan = Wait(w.PlayTest(t.X, t.Y, exhumed));
+                Assert.NotNull(plan);                               // no message: the default player stands in
+                Assert.Equal("SAVE1", plan.Slot);
+                Assert.True(plan.DefaultPlayer);
+                Assert.Equal(exhumed, plan.Exhumed);
+                var pd = UltimateEditor.Games.PlayerDat.Parse(File.ReadAllBytes(Path.Combine(to, "SAVE1", "PLAYER.DAT")), kind);
+                Assert.Equal(2, pd.SavedLevel);
+                Assert.Equal(t.X, pd.TileX);
+                Assert.Equal(t.Y, pd.TileY);
+                Assert.True(File.Exists(Path.Combine(to, "SAVE1", "LEV.ARK")));
+                Assert.True(File.Exists(Path.Combine(to, "SAVE1", "BGLOBALS.DAT")));
+                Assert.False(Directory.Exists(Path.Combine(folder, "SAVE1")));       // the game folder is untouched
+                string cfg = Path.Combine(to, UwEditor.Core.ExhumedConfig.FileName(kind));
+                if (exhumed)
+                {
+                    // the port's game and home are the copy, and the editor's settings are in the copy's settings file
+                    Assert.Equal(new[] { "--data", plan.Folder, "--home", plan.Folder, "--scale", "2" }, w.LastRun.Arguments);
+                    Assert.Equal(plan.Folder, w.LastRun.Folder);
+                    var keys = UwEditor.Core.ExhumedConfig.Keys(File.ReadAllText(cfg));
+                    Assert.Equal(new[] { "enhance=skip-intro", "settings-at-start=0" }, keys.Select(k => k.Key + "=" + k.Value));
+                }
+                else Assert.False(File.Exists(cfg));
+            }
+            finally
+            {
+                ForgetExhumedSettings(w);
+                w.Close();
+                if (Directory.Exists(to)) Directory.Delete(to, true);
+                Directory.Delete(folder, true);
+            }
+        }
+
+        [AvaloniaFact]
+        public void Exhumeds_settings_are_edited_kept_and_used_by_a_run()
+        {
+            string g = GameData.Game("UW"); if (g == null) return;
+            var w = Ui.Open(g);
+            w.AskBeforeDiscarding = false;
+            w.RunLaunch = false;
+            ForgetExhumedSettings(w);
+            try
+            {
+                var kind = UltimateEditor.Games.GameKind.UW1;
+                // the defaults are written the first time they are asked for, and set nothing
+                string path = MainWindow.ExhumedSettingsPath(kind);
+                Assert.False(File.Exists(path));
+                Assert.Equal(UwEditor.Core.ExhumedConfig.Defaults(kind), w.ExhumedSettingsText(kind));
+                Assert.True(File.Exists(path));
+                Assert.StartsWith(Settings.Folder, path);
+                Assert.Null(w.ApplyExhumedSettings(Path.Combine(MainWindow.RunFolder, "nothing-set"), kind));
+                // edited in the window opened from Programs and paths, and read back
+                var p = w.ShowRunPaths();
+                var c = p.ShowExhumedSettings(kind);
+                Ui.Pump();
+                Assert.Equal(UwEditor.Core.ExhumedConfig.Defaults(kind), c.Text);
+                c.Text = "enhance=skip-intro,fast-panels\r\nvolume=70\r\n";
+                Assert.True(c.Save());
+                c.Close();
+                Ui.Pump();
+                Assert.Equal("enhance=skip-intro,fast-panels\nvolume=70\n", File.ReadAllText(path));
+                Assert.Equal("enhance=skip-intro,fast-panels\nvolume=70\n", w.ExhumedSettingsText(kind));
+                // UW2's are its own
+                Assert.Empty(UwEditor.Core.ExhumedConfig.Keys(w.ExhumedSettingsText(UltimateEditor.Games.GameKind.UW2)));
+                p.Close();
+                w.ExhumedArgs = "--no-aspect";
+                // a run on a saved game kept elsewhere: the home is a folder of the editor's, with the settings and the extra arguments
+                string save = Path.Combine(GameData.Root, "UW1Saves", "SAVE1");
+                if (File.Exists(Path.Combine(save, "PLAYER.DAT")))
+                {
+                    w.OpenSession(UwEditor.Core.GameSession.Open(save, g));
+                    Ui.Pump();
+                    Assert.True(Wait(w.RunExhumed()));
+                    var run = w.LastRun;
+                    Assert.StartsWith(MainWindow.RunFolder, run.Folder);
+                    Assert.Equal(new[] { "--data", w.ViewModel.Session.GameFolder, "--home", run.Folder, "--no-aspect" }, run.Arguments);
+                    Assert.Equal("# uw1port settings\nenhance=skip-intro,fast-panels\nvolume=70\n", File.ReadAllText(Path.Combine(run.Folder, "uw1port.cfg")));
+                    Assert.True(File.Exists(Path.Combine(run.Folder, "SAVE1", "PLAYER.DAT")));
+                }
+            }
+            finally
+            {
+                ForgetExhumedSettings(w);
+                w.Close();
+            }
+        }
     }
 }

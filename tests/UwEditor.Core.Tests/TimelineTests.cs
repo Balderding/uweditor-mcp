@@ -217,11 +217,14 @@ namespace UwEditor.Core.Tests
             }
             var opens = Assert.Single(g.Mechanisms, m => m.Flag == "flag:terrain_L4_550");
             Assert.DoesNotContain("spell:", opens.SetOff);
-            // the timeline applies the four changes and reaches the alcove after the puzzle without the pole or a spell
+            // the timeline reaches the alcove after the puzzle without the pole or a spell. The lever that opens it and the
+            // first step are applied; the two higher steps alone only set a square apart and with the rest open no way
+            // between zones, so they are left to the player
             var o = r.Options.Clone();
             o.Magic = false; o.SingleUseItems = false;
             var sv = Timeline.Solve(r, o, "no magic");
-            foreach (var f in new[] { "flag:terrain_l4_702", "flag:terrain_l4_789", "flag:terrain_l4_809", "flag:terrain_l4_550" }) Assert.Contains(f, sv.Applied);
+            foreach (var f in new[] { "flag:terrain_l4_702", "flag:terrain_l4_550" }) Assert.Contains(f, sv.Applied);
+            foreach (var f in new[] { "flag:terrain_l4_789", "flag:terrain_l4_809" }) Assert.False(r.Changes.Single(c => c.Flag == f).Applied, f);
             int alcove = ZoneAt(r, 4, 57, 27);
             Assert.True(alcove > ZoneSet.Unassigned);
             Assert.True(sv.ZoneSphere.ContainsKey(alcove));

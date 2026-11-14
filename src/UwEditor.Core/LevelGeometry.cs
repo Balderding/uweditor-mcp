@@ -159,11 +159,11 @@ namespace UwEditor.Core
                     for (int i = 1; i + 1 < poly.Length; i++)
                     {
                         int a = poly[0], b = poly[i], c = poly[i + 1];
-                        mesh.Tri(FloorV(x, y, a, h[a] * Step, floorLayer, FloorShade), FloorV(x, y, b, h[b] * Step, floorLayer, FloorShade),
-                            FloorV(x, y, c, h[c] * Step, floorLayer, FloorShade), tile, 0);
+                        mesh.Tri(FloorV(x, y, a, h[a] * Step, floorLayer, FloorShade, false), FloorV(x, y, b, h[b] * Step, floorLayer, FloorShade, false),
+                            FloorV(x, y, c, h[c] * Step, floorLayer, FloorShade, false), tile, 0);
                         if (ceiling)
-                            mesh.Tri(FloorV(x, y, a, Ceiling, ceilLayer, CeilShade), FloorV(x, y, c, Ceiling, ceilLayer, CeilShade),
-                                FloorV(x, y, b, Ceiling, ceilLayer, CeilShade), tile, 2);
+                            mesh.Tri(FloorV(x, y, a, Ceiling, ceilLayer, CeilShade, true), FloorV(x, y, c, Ceiling, ceilLayer, CeilShade, true),
+                                FloorV(x, y, b, Ceiling, ceilLayer, CeilShade, true), tile, 2);
                     }
                     // a wall index past the level's list (UW1 has 48, the field 6 bits) gets the 'missing' layer
                     int wallLayer = t.WallIndex < mesh.WallLayers ? t.WallIndex : mesh.MissingLayer;
@@ -199,11 +199,25 @@ namespace UwEditor.Core
             return mesh;
         }
 
-        /// <summary>A floor or ceiling vertex: the texture's top row to the north.</summary>
-        static LevelVertex FloorV(int x, int y, int corner, float height, int layer, float shade)
+        /// <summary>
+        /// The texture row (0 the top row, 1 the end of the bottom one) a floor or a ceiling shows
+        /// at a place northing tiles north of its tile's south edge (0 to 1). The game gives the
+        /// floor's four corners the texture's corners so that the top row lies along the tile's
+        /// SOUTH edge and the left column along its west edge, whichever way the camera faces
+        /// (3d/GRIDDB.C: grdb_elem's points NW, NE, SE, SW get qdec[3], [2], [1], [0] in txtflr,
+        /// and qudecode turns with the view's quadrant; 3d/TMAPOPS.ASM do_tmap: a corner word's
+        /// bit 0 is u at the right edge, 2 or more v at the bottom). Seen from above with north
+        /// up, a floor is therefore its texture upside down, and pictures made of several floor
+        /// tiles (UW2's pentagrams) are drawn for that. The ceiling's points go round the other
+        /// way (SW, SE, NE, NW), so its top row lies along the north edge.
+        /// </summary>
+        public static float FloorTextureRow(float northing, bool ceiling) { return ceiling ? 1f - northing : northing; }
+
+        /// <summary>A floor or ceiling vertex (FloorTextureRow: the floor's top row to the south, the ceiling's to the north). v repeats every tile.</summary>
+        static LevelVertex FloorV(int x, int y, int corner, float height, int layer, float shade, bool ceiling)
         {
             var c = CornerXY[corner];
-            return new LevelVertex(P(x, y, corner, height), x + c.X, -(y + c.Y), layer, shade);
+            return new LevelVertex(P(x, y, corner, height), x + c.X, (ceiling ? -(y + 1) : y) + FloorTextureRow(c.Y, ceiling), layer, shade);
         }
 
         /// <summary>

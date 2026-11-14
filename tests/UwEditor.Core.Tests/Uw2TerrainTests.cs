@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using UwEditor.Core.Randomizer;
 using Xunit;
@@ -22,7 +23,7 @@ namespace UwEditor.Core.Tests
             string g = GameData.Game("UW2");
             if (g == null) return null;
             var s = GameSession.Open(g);
-            return graph = NavGraph.Build(s, l => s.LoadLevel(l), new NavOptions(), null);
+            return graph = NavGraph.Build(s, l => s.LoadLevel(l), new NavOptions { Portal = true }, null);
         }
 
         [Fact]
@@ -101,6 +102,10 @@ namespace UwEditor.Core.Tests
             Assert.Equal("telekinesis", Abilities.OfSpell(true, 39));
             Assert.Equal("gate_travel", Abilities.OfSpell(true, 43));
             Assert.Equal("reveal", Abilities.OfSpell(true, 50));
+            Assert.Equal("portal", Abilities.OfSpell(true, 54));
+            Assert.Equal(new[] { "Vas", "Ex", "Ylem" }, Abilities.Runes(true, 54).Select(r => Abilities.RuneNames[r]).ToArray());
+            Assert.Contains("portal", Abilities.Names);
+            Assert.Empty(Abilities.SpellsGiving(false, "portal"));      // UW1 has no Portal
             Assert.Null(Abilities.OfSpell(true, 6));        // Bouncing is not in the logic
             Assert.Null(Abilities.OfSpell(true, 69));
             // the runes: Leaping is Uus Por, Open Ex Ylem
@@ -131,6 +136,120 @@ namespace UwEditor.Core.Tests
             var levels = t.Solve.ZoneSphere.Keys.Where(z => z < 1000000).SelectMany(z => t.Set.LevelsOf(z)).Distinct().ToList();
             foreach (int l in new[] { 44, 45, 46, 47, 48 }) Assert.Contains(l, levels);
             Assert.True(t.Solve.ZoneSphere.Count > 150, t.Solve.ZoneSphere.Count + " zones");
+        }
+
+        [Fact]
+        public void Portal_goes_two_squares_through_what_is_between()
+        {
+            var g = Graph(); if (g == null) return;
+            var ways = g.Edges.Where(e => e.Notes.StartsWith("the Portal spell")).ToList();
+            Assert.NotEmpty(ways);
+            Assert.All(ways, e => Assert.Contains("spell:portal", e.Requires));
+            Assert.All(ways, e => Assert.NotEqual(e.From, e.To));
+            // level 69: the ring under the gem's platform is walled in one square thick, so Portal from outside lands in it;
+            // the platform, twelve steps up, is not reached from the floor
+            int outside = g.RegionOf(69, 27, 28), ring = g.RegionOf(69, 29, 28), platform = g.RegionOf(69, 32, 28);
+            Assert.NotEqual(outside, ring);
+            Assert.Contains(ways, e => e.From == outside && e.To == ring);
+            Assert.Contains(ways, e => e.From == ring && e.To == outside);
+            Assert.DoesNotContain(ways, e => e.To == platform && (e.From == ring || e.From == outside));
+            // never onto a floor more than a level above the feet, and no way where the option is off
+            string game = GameData.Game("UW2");
+            var s = GameSession.Open(game);
+            var m = s.LoadLevel(69);
+            Assert.All(ways.Where(e => e.Level == 69), e =>
+            {
+                var mm = System.Text.RegularExpressions.Regex.Match(e.Notes, @"to \((\d+), (\d+)\), through");
+                int bx = int.Parse(mm.Groups[1].Value), by = int.Parse(mm.Groups[2].Value);
+                Assert.True(LevelGeometry.CornerHeights(m.Tiles[bx, by]).Max() <= LevelGeometry.CornerHeights(m.Tiles[e.X, e.Y]).Min() + 1);
+                Assert.Equal(2, System.Math.Max(System.Math.Abs(bx - e.X), System.Math.Abs(by - e.Y)));
+            });
+            // off unless asked for
+            Assert.False(new NavOptions().Portal);
+            var off = NavGraph.Build(s, l => s.LoadLevel(l), new NavOptions(), new[] { 69 });
+            Assert.DoesNotContain(off.Edges, e => e.Notes.StartsWith("the Portal spell"));
+            // UW1 has none
+            string uw1 = GameData.Game("UW");
+            if (uw1 != null)
+            {
+                var s1 = GameSession.Open(uw1);
+                Assert.DoesNotContain(NavGraph.Build(s1, l => s1.LoadLevel(l), new NavOptions(), new[] { 1 }).Edges, e => e.Requires.Contains("portal"));
+            }
+        }
+
+        [Fact]
+        public void A_two_state_control_is_set_either_way()
+        {
+            string game = GameData.Game("UW2"); if (game == null) return;
+            var s = GameSession.Open(game);
+            var m = s.LoadLevel(25);
+            var g = NavGraph.Build(s, l => l == 25 ? m : s.LoadLevel(l), new NavOptions(), new[] { 25 });
+            // the Ice Caverns' wall maze: the button, pull chain, switch and lever at (38, 15) to (39, 16), and a lever in the east
+            var tiles = g.ToggleTiles[25];
+            Assert.Equal(new[] { "27,8", "29,12", "30,7", "31,8", "33,4", "57,14" }, tiles.Select(t => t.X + "," + t.Y).OrderBy(x => x).ToArray());
+            Assert.Equal("flag:terrain_L25_1016", tiles.Single(t => t.X == 29 && t.Y == 12).Flag);     // the lever down
+            Assert.Equal("flag:terrain_L25_982", tiles.Single(t => t.X == 33 && t.Y == 4).Flag);       // the button out
+            // the level is left as it was
+            Assert.True(m.Tiles[29, 12].IsSolid);
+            Assert.True(m.Tiles[33, 4].IsSolid);
+            // each such square is a region of its own, passed with the flag of the state that opens it
+            int wall = g.RegionOf(25, 29, 12);
+            Assert.True(g.Regions[wall].IsDoor);
+            Assert.Equal("toggle", g.Regions[wall].DoorKind);
+            Assert.Contains(g.Edges, e => e.From == g.RegionOf(25, 30, 12) && e.To == wall && e.Requires.Contains("flag:terrain_L25_1016"));
+            // both states of each control are mechanisms that come and go
+            var mech = g.Mechanisms.Where(x => x.Level == 25 && x.Toggle).ToList();
+            Assert.Equal(10, mech.Count);
+            Assert.DoesNotContain(g.Mechanisms, x => x.Toggle && x.Level != 25);
+            // what is reached from the maze's landing square (30, 12) with every such square open is what some setting of the four controls reaches:
+            // no way goes through squares of both states of one control
+            var controls = tiles.Where(t => t.X < 40).GroupBy(t => t.Control).ToList();
+            Assert.Equal(4, controls.Count);
+            var closes = new Dictionary<int, int[][]> { { 983, new[] { new[] { 26, 7 } } }, { 1000, new[] { new[] { 31, 6 }, new[] { 26, 2 } } }, { 1009, new[] { new[] { 27, 6 } } }, { 1019, new[] { new[] { 34, 7 } } } };
+            System.Func<System.Func<int, int, bool>, HashSet<int>> flood = open =>
+            {
+                var seen = new HashSet<int> { 12 * 64 + 30 };
+                var q = new Queue<int>(seen);
+                while (q.Count > 0)
+                {
+                    int k = q.Dequeue(), x = k % 64, y = k / 64;
+                    foreach (var d in new[] { new[] { 1, 0 }, new[] { -1, 0 }, new[] { 0, 1 }, new[] { 0, -1 } })
+                    {
+                        int nx = x + d[0], ny = y + d[1];
+                        if (nx < 22 || nx > 36 || ny < 1 || ny > 12 || !open(nx, ny) || !seen.Add(ny * 64 + nx)) continue;
+                        q.Enqueue(ny * 64 + nx);
+                    }
+                }
+                return seen;
+            };
+            var some = new HashSet<int>();
+            for (int set = 0; set < 16; set++)
+            {
+                var rock = new HashSet<int>(); var free = new HashSet<int>();
+                for (int i = 0; i < 4; i++)
+                    if ((set >> i & 1) != 0) { foreach (var t in controls[i]) free.Add(t.Y * 64 + t.X); foreach (var c in closes[controls[i].Key]) rock.Add(c[1] * 64 + c[0]); }
+                some.UnionWith(flood((x, y) => !rock.Contains(y * 64 + x) && (free.Contains(y * 64 + x) || !m.Tiles[x, y].IsSolid)));
+            }
+            var all = flood((x, y) => !m.Tiles[x, y].IsSolid || tiles.Any(t => t.X == x && t.Y == y));
+            Assert.Equal(some.OrderBy(k => k), all.OrderBy(k => k));
+            // the door of the pull chain's room, (24, 6), is among them
+            Assert.Contains(6 * 64 + 24, some);
+        }
+
+        [Fact]
+        public void The_Academys_telekinesis_wand_works_on_its_level_only()
+        {
+            string game = GameData.Game("UW2"); if (game == null) return;
+            var s = GameSession.Open(game);
+            var t = Timeline.Build(s, l => s.LoadLevel(l), new NavOptions(), new AbilityOptions(), null, null, variants: false);
+            // level 43's wand (item 0x9B with id bit 13) is taken away on leaving the level (event/WORLDEV.C remove_TK_wand)
+            var wand = t.Abilities.Sources.Single(x => x.Level == 43 && x.Ability == "telekinesis");
+            Assert.Equal(43, wand.OnlyLevel);
+            Assert.Equal("flag:telekinesis_on_l43", wand.Token);
+            Assert.DoesNotContain(t.Set.Placements, p => p.Grants == "perm:telekinesis");
+            Assert.Contains(t.Set.Placements, p => p.Grants == "flag:telekinesis_on_l43" && t.Set.LevelsOf(p.Zone).Contains(43));
+            // no way of another level takes it
+            Assert.DoesNotContain(t.Set.Links, k => k.Level != 43 && k.Requires.Contains("telekinesis_on_l43"));
         }
 
         [Fact]

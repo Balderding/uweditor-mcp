@@ -130,6 +130,19 @@ namespace UwEditor.App
                 }
                 Nodes.Add(h);
             }
+            var runes = Triggers.RuneTraps(m);
+            if (runes.Count > 0)
+            {
+                // not among the traps no trigger reaches: they work by themselves
+                var h = new ChainNode { Header = runes.Count + " rune traps (flam and tym runes): set off by whoever touches them, the player or a creature walking onto one or an object thrown onto it, with no trigger; the rune is used up", IsExpanded = true };
+                foreach (var o in runes)
+                    h.Children.Add(new ChainNode
+                    {
+                        Header = string.Format("#{0} {1}: {2}  {3}", o.Index, o.Name, o.Item == 0x19E ? "burns whoever touches it (3d4 + 4 fire damage) and explodes" : "paralyses whoever touches it for a while", Where(o)),
+                        Icon = main.IconOf(o.Item), Item = o.Item, Level = m.Level, Index = o.Index,
+                    });
+                Nodes.Add(h);
+            }
             if (lone.Count > 0)
             {
                 var h = new ChainNode { Header = lone.Count + " traps no trigger reaches (fired by a door, a hack trap, a conversation, a schedule, or nothing)", IsExpanded = true };
@@ -144,7 +157,7 @@ namespace UwEditor.App
                 }
                 Nodes.Add(h);
             }
-            Status = string.Format("Level {0}: {1} triggers, {2} traps in their chains, {3} wandering-monster spawners, {4} other traps.", m.Level, chains.Count, chains.SelectMany(c => c.Steps).Count(o => Triggers.IsTrap(o.Item)), spawners.Count, lone.Count);
+            Status = string.Format("Level {0}: {1} triggers, {2} traps in their chains, {3} wandering-monster spawners, {4}{5} other traps.", m.Level, chains.Count, chains.SelectMany(c => c.Steps).Count(o => Triggers.IsTrap(o.Item)), spawners.Count, runes.Count > 0 ? runes.Count + " rune traps, " : "", lone.Count);
         }
 
         static string Flat(string s)

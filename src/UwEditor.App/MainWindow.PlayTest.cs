@@ -9,22 +9,26 @@ using UwEditor.Core;
 
 namespace UwEditor.App
 {
-    /// <summary>Level ▸ Play-test: the game run in DOSBox from a copy holding the unsaved levels, with the player on the chosen square.</summary>
+    /// <summary>Run and Test ▸ Play-test: the game run in DOSBox or in Underworld Exhumed from a copy holding the unsaved levels, with the player on the chosen square.</summary>
     public partial class MainWindow
     {
         /// <summary>Where the play test's copy of the game goes (the settings folder; tests may set another).</summary>
         public string PlayTestFolder;
-        /// <summary>Tests set this to false: the copy is made, DOSBox is not started.</summary>
+        /// <summary>Tests set this to false: the copy is made, DOSBox (or the port) is not started.</summary>
         public bool PlayTestLaunch = true;
         /// <summary>The last play test made (for the tests).</summary>
         public PlayTestPlan LastPlayTest { get; private set; }
 
-        void OnPlayTest(object sender, RoutedEventArgs e)
+        void OnPlayTest(object sender, RoutedEventArgs e) { PlayTestSelected(false); }
+
+        void OnPlayTestExhumed(object sender, RoutedEventArgs e) { PlayTestSelected(true); }
+
+        void PlayTestSelected(bool exhumed)
         {
             int x = vm.SelectedTileX, y = vm.SelectedTileY;
             if (x < 0 && vm.Session?.Start != null && vm.Level != null && vm.Session.Start.Level == vm.Level.Level) { x = (int)vm.Session.Start.X; y = (int)vm.Session.Start.Y; }
             if (x < 0) { vm.EditStatus = "Select the tile to start on first."; return; }
-            _ = PlayTest(x, y);
+            _ = PlayTest(x, y, exhumed);
         }
 
         void OnDosBoxPath(object sender, RoutedEventArgs e) { ShowRunPaths(); }
@@ -44,8 +48,11 @@ namespace UwEditor.App
             catch (Exception ex) { vm.EditStatus = ex.Message; return null; }
         }
 
-        /// <summary>Makes the copy and starts DOSBox in it. Returns the plan, or null when it could not.</summary>
-        public async Task<PlayTestPlan> PlayTest(int x, int y)
+        /// <summary>
+        /// Makes the copy and starts DOSBox in it, or Underworld Exhumed (exhumed) with the copy as
+        /// its game and its home. Returns the plan, or null when it could not.
+        /// </summary>
+        public async Task<PlayTestPlan> PlayTest(int x, int y, bool exhumed = false)
         {
             var s = vm.Session;
             var level = vm.Level;
@@ -55,10 +62,11 @@ namespace UwEditor.App
             {
                 string folder = PlayTestFolder ?? Path.Combine(Settings.Folder, "Play test", (s.IsUw2 ? "uw2-" : "uw1-") + new string(Path.GetFileName(s.GameFolder.TrimEnd('/', '\\')).Select(c => char.IsLetterOrDigit(c) ? c : '-').ToArray()));
                 byte[] player = playerSheet != null && playerSheet.Dirty ? playerSheet.ToBytes() : null;
-                plan = Core.PlayTest.Prepare(s, vm.Edits, player, level.Level, x, y, folder);
+                plan = Core.PlayTest.Prepare(s, vm.Edits, player, level.Level, x, y, folder, exhumed);
                 LastPlayTest = plan;
             }
             catch (Exception ex) { await MessageWindow.Show(this, "Play test", ex.Message); return null; }
+            if (exhumed) return await PlayTestInExhumed(s, plan);
             if (!PlayTestLaunch) { vm.EditStatus = "Play test ready in " + plan.Folder + ". " + plan.Note; return plan; }
             string dosbox = !string.IsNullOrEmpty(settings.DosBoxPath) && File.Exists(settings.DosBoxPath) ? settings.DosBoxPath : Core.PlayTest.FindDosBox(s.GameFolder);
             if (dosbox == null)
@@ -74,9 +82,44 @@ namespace UwEditor.App
                 foreach (var arg in DosBoxConfig.Arguments(conf, settings.DosBoxArgs)) psi.ArgumentList.Add(arg);
                 Process.Start(psi);
                 vm.EditStatus = "Play test started. " + plan.Note + " (It runs in a copy in " + plan.Folder + "; the game folder is untouched.)";
-                if (plan.Slot != null) _ = MessageWindow.Show(this, "Play test", plan.Note + "\n\nThe test runs in a copy of the game with the unsaved levels; your game folder is not changed.");
+                _ = MessageWindow.Show(this, "Play test", plan.Note + "\n\nThe test runs in a copy of the game with the unsaved levels; your game folder is not changed.");
             }
             catch (Exception ex) { await MessageWindow.Show(this, "Play test", "DOSBox did not start (" + dosbox + "): " + ex.Message); }
+            return plan;
+        }
+
+        /// <summary>
+        /// The play test's copy run in Underworld Exhumed: the copy is the port's game (--data) and
+        /// its home (--home), so the saved game holding the player is in Journey Onward's list and
+        /// games saved in the port stay in the copy. The editor's settings for the port go into the
+        /// copy's settings file first.
+        /// </summary>
+        async Task<PlayTestPlan> PlayTestInExhumed(GameSession s, PlayTestPlan plan)
+        {
+            string port = ExhumedPort(s.Kind);
+            try
+            {
+                // the copy was just written here, so only the port's own folder can be off this disk
+                string problem = ExhumedConfig.Problem(port, plan.Folder, plan.Folder, ExhumedAttributes);
+                LastRunProblem = problem;
+                if (problem != null) { await MessageWindow.Show(this, "Play test", problem); return plan; }
+                ApplyExhumedSettings(plan.Folder, s.Kind);
+                var args = Core.PlayTest.ExhumedArguments(plan, settings.ExhumedArgs);
+                LastRun = (port, args, plan.Folder, plan.Note);
+                if (!PlayTestLaunch) { vm.EditStatus = "Play test ready in " + plan.Folder + ". " + plan.Note; return plan; }
+                if (port == null)
+                {
+                    await MessageWindow.Show(this, "Play test", "The port (" + ExhumedCheck.ProgramName(s.Kind) + ") was not found. Download a release of Underworld Exhumed (github.com/abedegno/underworld-exhumed) and choose it in Run and Test ▸ Programs and paths.");
+                    ShowRunPaths();
+                    return plan;
+                }
+                var psi = new ProcessStartInfo(port) { UseShellExecute = false, WorkingDirectory = Path.GetDirectoryName(port) ?? plan.Folder };
+                foreach (var a in args) psi.ArgumentList.Add(a);
+                WatchPort(Process.Start(psi), "Play test", plan.Folder);
+                vm.EditStatus = "Play test started in Underworld Exhumed. " + plan.Note + " (It runs in a copy in " + plan.Folder + "; the game folder is untouched.)";
+                _ = MessageWindow.Show(this, "Play test", plan.Note + "\n\nThe test runs in a copy of the game with the unsaved levels; your game folder is not changed. Games saved in the port stay in the copy, which the next play test clears.");
+            }
+            catch (Exception ex) { await MessageWindow.Show(this, "Play test", "The port did not start (" + port + "): " + ex.Message); }
             return plan;
         }
     }

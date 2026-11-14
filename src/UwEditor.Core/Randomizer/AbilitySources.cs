@@ -25,7 +25,15 @@ namespace UwEditor.Core.Randomizer
         public int Zone;
         public string Holder;
         /// <summary>The token a placement grants: worn:X, perm:X or once:X.</summary>
-        public string Token { get { return (Worn ? "worn:" : Permanent ? "perm:" : "once:") + Ability; } }
+        public string Token { get { return OnlyLevel > 0 ? string.Format("flag:{0}_on_l{1}", Ability, OnlyLevel) : (Worn ? "worn:" : Permanent ? "perm:" : "once:") + Ability; } }
+        /// <summary>
+        /// The level the thing works on and no further (0: anywhere). UW2's telekinesis wand of
+        /// the Scintillus Academy (a wand, item 0x9B, with id bit 13): it has no charges, and
+        /// leaving the Academy's level 3 (or Killorn Keep's) takes it from the player and puts
+        /// it back (game/GAMEWRAP.C do_level_hacks, event/WORLDEV.C remove_TK_wand). Its
+        /// token is a flag the ways of that level take in place of the ability.
+        /// </summary>
+        public int OnlyLevel;
         public override string ToString()
         {
             return string.Format("{0}: #{1} {2} ({3}{4}){5}, L{6} ({7}, {8})", Token, Index, Name, Spell, Charges >= 0 ? ", " + Charges + " charges" : "", Holder != null ? " in " + Holder : "", Level, TileX, TileY);
@@ -40,7 +48,7 @@ namespace UwEditor.Core.Randomizer
     public static class Abilities
     {
         /// <summary>The abilities, as the tokens' names (spell:levitate, worn:lava ...). Fly counts as levitate (Requirement.Normalize).</summary>
-        public static readonly string[] Names = { "levitate", "jump", "waterwalk", "lava", "reveal", "open", "telekinesis", "light", "gate_travel" };
+        public static readonly string[] Names = { "levitate", "jump", "waterwalk", "lava", "reveal", "open", "telekinesis", "light", "gate_travel", "portal", "iron_flesh" };
 
         public static readonly string[] RuneNames = "An Bet Corp Des Ex Flam Grav Hur In Jux Kal Lor Mani Nox Ort Por Quas Rel Sanct Tym Uus Vas Wis Ylem".Split(' ');
 
@@ -163,7 +171,10 @@ namespace UwEditor.Core.Randomizer
             {
                 // UW2's object spells are class 7: 12 Open, 15 Gate Travel; class 11 minor 8 is Telekinesis as in UW1 (uw2 combat/SPELLS.C)
                 if (cls == 7) return minor == 12 ? "open" : minor == 15 ? "gate_travel" : null;
-                if (cls == 11) return minor == 8 ? "telekinesis" : null;
+                // class 11 minor 1 is Portal: two squares ahead, through whatever is between (uw2 combat/SPELLS2.C xt_spells)
+                if (cls == 11) return minor == 8 ? "telekinesis" : minor == 1 ? "portal" : null;
+                // class 2 minor 5 is Iron Flesh: cast on the baked mud it glazes it, a step of the djinn's capture (combat/SPELLS.C do_spell)
+                if (cls == 2 && minor == 5) return "iron_flesh";
                 return OfEffect(cls, minor);
             }
             // class 11 spells are xt_spells' subs, not effects: 5 Open (obj_spells picks the lock with skill 45),
@@ -232,6 +243,7 @@ namespace UwEditor.Core.Randomizer
                     foreach (var src in Classify(s, m, o))
                     {
                         src.Level = slot.Level; src.Index = o.Index; src.Item = o.Item; src.TileX = o.TileX; src.TileY = o.TileY;
+                        if (s.IsUw2 && o.Item == 0x9B && ((o.Record[1] >> 5) & 1) != 0 && src.Ability == "telekinesis" && (slot.Level == 43 || slot.Level == 19)) src.OnlyLevel = slot.Level;
                         src.Name = o.Name;
                         src.Zone = zs == null ? 0 : zs.ZoneOf(slot.Level, m, o);
                         if (o.Parent >= 0) src.Holder = m.Objects[o.Parent].ToString();

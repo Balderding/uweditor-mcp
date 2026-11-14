@@ -65,7 +65,7 @@ namespace UwEditor.App.Tests
             var o = vm.Level.Objects.First(x => !x.Free && x.OnTile && !x.IsMobile);
             var items = w.ContextItems(new PickResult { Object = o.Index, Tile = o.TileX + 64 * o.TileY });
             var headers = items.OfType<MenuItem>().Select(m => (m.Header ?? "").ToString().Replace("_", "")).ToList();
-            foreach (var h in new[] { "Copy", "Cut", "Duplicate", "Delete", "Add an object here…", "Use as the brush template", "Fill from here with the brush", "Play-test from here…" })
+            foreach (var h in new[] { "Copy", "Cut", "Duplicate", "Delete", "Add an object here…", "Use as the brush template", "Fill from here with the brush", "Play-test from here (DOSBox)…", "Play-test from here (Exhumed)…" })
                 Assert.Contains(h, headers);
             Assert.Equal(o.Index, vm.SelectedObject);
             w.Close();

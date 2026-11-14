@@ -16,6 +16,12 @@ namespace UwEditor.Core.Randomizer
         public int TickLength = 16;
         /// <summary>What a gap jump is asked to spare, in eighths of a tile (2: a quarter tile, one side's footprint), for a take-off that is not on the last cell.</summary>
         public int JumpMargin = 2;
+        /// <summary>
+        /// UW2: the Portal spell's ways (two squares ahead through what is between) are made at
+        /// all. Off unless asked for: the game is finished without Portal (Karl), so a solve
+        /// that does without it holds for every player, and the ways it would add hide gaps.
+        /// </summary>
+        public bool Portal;
         /// <summary>Gap jumps over lower ground are made at all (kind "jump").</summary>
         public bool GapJumps = true;
         /// <summary>Gap jumps along the diagonals too (a diagonal tile is 1.41 long, and the tiles beside the line must be clear as well).</summary>
@@ -194,6 +200,12 @@ namespace UwEditor.Core.Randomizer
         /// of the world.
         /// </summary>
         public bool Airlock;
+        /// <summary>
+        /// UW2: one of the two states of a control that moves walls back and forth (NavGraph.FindToggles):
+        /// the player sets it either way, so it is not a change of the world. The squares its
+        /// other state opens are ways that ask for this flag.
+        /// </summary>
+        public bool Toggle;
         /// <summary>Set off by walking onto it or picking something up: the player does not choose it.</summary>
         public bool Unavoidable;
         /// <summary>A free chain (the facts' kind "free"): its conditions and the reach of its switch were dropped.</summary>
@@ -321,15 +333,119 @@ namespace UwEditor.Core.Randomizer
                 models[slot.Level] = m;
             }
             var lv = new Dictionary<int, LevelNav>();
+            // the squares a two-state control opens are regions of their own: open while the graph is built, put back after
+            var put = new List<Action>();
+            if (s.IsUw2) foreach (var kv in models) g.FindToggles(kv.Value, put);
+            try { BuildRest(g, s, models, lv, terrain); }
+            finally { foreach (var back in put) back(); }
+            return g;
+        }
+
+        static void BuildRest(NavGraph g, GameSession s, Dictionary<int, LevelModel> models, Dictionary<int, LevelNav> lv, TerrainTable terrain)
+        {
             foreach (var kv in models) lv[kv.Key] = g.BuildRegions(s, kv.Value, terrain);
             foreach (var kv in models) g.BuildEdges(lv[kv.Key]);
+            if (s.IsUw2 && g.Options.Portal) foreach (var kv in models) g.Portals(lv[kv.Key]);
             foreach (var kv in models) g.ReadTriggers(s, lv[kv.Key], lv);
-            if (s.IsUw2) g.States.AddRange(StateRules.Derive(g.Tests.Values, g.Sets));
+            if (s.IsUw2) foreach (var kv in models) g.PitLifts(lv[kv.Key]);
+            if (s.IsUw2) g.VoidPyramid();
+            if (s.IsUw2)
+            {
+                // the schedules: what fires the scheduled triggers, and the variables they set (before the states are worked out)
+                var sched = new List<NavState>();
+                try
+                {
+                    var present = new HashSet<int>(s.LevelSlots().Where(x => x.Present).Select(x => x.Level));
+                    StateRules.ReadSchedules(Editing.Schedules.Load(s).Blocks, present.Contains, g.Tests, g.Sets, sched);
+                }
+                catch (Exception ex) { g.Notes.Add("The schedules (SCD.ARK) could not be read: " + ex.Message + " Scheduled triggers never fire."); }
+                g.States.AddRange(StateRules.Derive(g.Tests.Values, g.Sets));
+                g.States.AddRange(sched);
+            }
             foreach (var kv in models) g.ReachPastBarriers(lv[kv.Key]);
             g.ApplyDoorRequirements(lv);
+            // nobody stands on a barrier's square, so nothing leads on from it either (a door beside a force field: UW2 level 16 (30, 33))
+            foreach (var e in g.Edges)
+                if (g.Regions[e.From].IsBarrier && e.Kind != "reach" && !e.Requires.Contains(BarrierToken)) { e.Requires = BarrierToken; e.Kind = "barrier"; }
             if (g.Options.ClosersOneWay) g.OneWayClosers(s, lv);
             g.Merge();
-            return g;
+        }
+
+        /// <summary>A square a two-state control opens: where, the floor it gets, the control and the trigger of the state that opens it.</summary>
+        public sealed class ToggleTile
+        {
+            public int Level, X, Y, Height, Control, Trigger;
+            public string ControlName = "";
+            public string Flag { get { return string.Format("flag:terrain_L{0}_{1}", Level, Trigger); } }
+        }
+
+        /// <summary>UW2: the squares the two-state controls open (FindToggles), by level.</summary>
+        public readonly Dictionary<int, List<ToggleTile>> ToggleTiles = new Dictionary<int, List<ToggleTile>>();
+        /// <summary>The triggers of the two-state controls, both states: level &lt;&lt; 16 | trigger.</summary>
+        readonly HashSet<int> toggleTriggers = new HashSet<int>();
+        readonly Dictionary<int, ToggleTile> toggleAt = new Dictionary<int, ToggleTile>();
+
+        /// <summary>
+        /// UW2: a control (a lever, switch, button or pull chain) with two use triggers, each
+        /// running change terrain traps on the same single squares, the one making rock what
+        /// the other makes open, and one of the two being how the level stands: the player
+        /// sets it either way, as often as he likes (the Ice Caverns' wall maze, level 25: four
+        /// controls at (38, 15) to (39, 16)). Such a control is not a change of the world.
+        /// The squares its other state opens become regions of their own, passed with the flag
+        /// of that state; the squares it closes stay open. Left out: that the two states of one
+        /// control do not hold at once (a way through a square of each is not ruled out).
+        /// </summary>
+        void FindToggles(LevelModel m, List<Action> put)
+        {
+            foreach (var c in m.Objects)
+            {
+                if (c == null || c.Free || !c.OnTile || c.Item < 0x170 || c.Item > 0x17F) continue;
+                var trigs = m.Objects.Where(t => t != null && !t.Free && t.Parent == c.Index && t.Item == 0x1A2 && PlayerSetsOff(t)).ToList();
+                if (trigs.Count != 2) continue;
+                var states = new List<Dictionary<int, ObjectInfo>>();
+                bool ok = true;
+                foreach (var t in trigs)
+                {
+                    var eff = new Dictionary<int, ObjectInfo>();
+                    var trap = t.Link > 0 && t.Link < m.Objects.Length ? m.Objects[t.Link] : null;
+                    for (int i = 0; i < 16 && trap != null && !trap.Free && trap.IsTrapOrTrigger; i++)
+                    {
+                        // the chain goes on through triggers on the squares, and may end in a message
+                        if (trap.Item >= 0x1A0 || trap.Item == 0x190 || trap.Item == 0x18F) { trap = trap.Link > 0 && trap.Link < m.Objects.Length ? m.Objects[trap.Link] : null; continue; }
+                        if (trap.Item != 0x185) { ok = false; break; }
+                        int type = trap.Heading * 2 + (trap.Quality & 1);
+                        if (trap.FineX != 0 || trap.FineY != 0 || type > 1 || trap.TileX < 0 || eff.ContainsKey(trap.TileY * 64 + trap.TileX)) { ok = false; break; }
+                        eff[trap.TileY * 64 + trap.TileX] = trap;
+                        trap = trap.Link > 0 && trap.Link < m.Objects.Length ? m.Objects[trap.Link] : null;
+                    }
+                    if (!ok || eff.Count == 0) { ok = false; break; }
+                    states.Add(eff);
+                }
+                if (!ok || states[0].Count != states[1].Count) continue;
+                Func<ObjectInfo, bool> opens = trap => (trap.Heading * 2 + (trap.Quality & 1)) == 1;
+                // the same squares, each made rock by the one and open by the other
+                if (states[0].Any(kv => !states[1].ContainsKey(kv.Key) || opens(states[1][kv.Key]) == opens(kv.Value))) continue;
+                // one of the two is how the level stands
+                int now = -1;
+                for (int i = 0; i < 2; i++)
+                    if (states[i].All(kv => opens(kv.Value) == !m.Tiles[kv.Key % 64, kv.Key / 64].IsSolid)) now = i;
+                if (now < 0) continue;
+                foreach (var t in trigs) toggleTriggers.Add(m.Level << 16 | t.Index);
+                foreach (var kv in states[1 - now])
+                {
+                    if (!opens(kv.Value)) continue;
+                    var tile = m.Tiles[kv.Key % 64, kv.Key / 64];
+                    int h = kv.Value.Z >> 3;
+                    var tt = new ToggleTile { Level = m.Level, X = kv.Key % 64, Y = kv.Key / 64, Height = h <= 15 ? h : tile.Height, Control = c.Index, ControlName = c.Name, Trigger = trigs[1 - now].Index };
+                    List<ToggleTile> list;
+                    if (!ToggleTiles.TryGetValue(m.Level, out list)) ToggleTiles[m.Level] = list = new List<ToggleTile>();
+                    list.Add(tt);
+                    toggleAt[m.Level << 16 | kv.Key] = tt;
+                    var type0 = tile.Type; int h0 = tile.Height;
+                    tile.Type = TileType.Open; tile.Height = tt.Height;
+                    put.Add(() => { tile.Type = type0; tile.Height = h0; });
+                }
+            }
         }
 
         byte[] comobj;
@@ -367,7 +483,9 @@ namespace UwEditor.Core.Randomizer
             public string[] BarrierName = new string[64 * 64];
             /// <summary>The region of each surface: the floors by tile, then the decks.</summary>
             public int[] RegionOfNode;
-            public bool Closed(int k) { return Door[k] || Barrier[k] != 0; }
+            public bool Closed(int k) { return Door[k] || Barrier[k] != 0 || Toggle[k]; }
+            /// <summary>A square a two-state control opens (NavGraph.FindToggles).</summary>
+            public bool[] Toggle = new bool[64 * 64];
             /// <summary>The undersides of the objects over each tile that the head may meet (boxes of radius 3 and more: bridges, also those laid as a ceiling, gratings high up), in height units.</summary>
             public Dictionary<int, List<int>> Overhead = new Dictionary<int, List<int>>();
 
@@ -526,6 +644,7 @@ namespace UwEditor.Core.Randomizer
         LevelNav BuildRegions(GameSession s, LevelModel m, TerrainTable terrain)
         {
             var n = new LevelNav { M = m, Level = m.Level };
+            foreach (var kv in toggleAt) if (kv.Key >> 16 == m.Level) n.Toggle[kv.Key & 0xFFFF] = true;
             foreach (var o in m.Objects)
                 if (!o.Free && o.OnTile && o.Item >= 0x140 && o.Item <= 0x14F && n.Open(o.TileX, o.TileY))
                 {
@@ -600,6 +719,14 @@ namespace UwEditor.Core.Randomizer
                         r = new NavRegion { Id = Regions.Count, Level = m.Level, IsDoor = true, DoorIndex = d.Index, DoorKind = (d.Item & 7) == 6 ? "portcullis" : (d.Item & 7) == 7 ? "secret" : "door" };
                         r.DoorRequires = ZoneDoors.Requirement(s, m, d, out notes);
                         r.DoorNotes = notes;
+                        Regions.Add(r);
+                    }
+                    else if (toggleAt.ContainsKey(m.Level << 16 | k))
+                    {
+                        // a square a two-state control opens: passed once that state can be set
+                        var tt = toggleAt[m.Level << 16 | k];
+                        r = new NavRegion { Id = Regions.Count, Level = m.Level, IsDoor = true, KeepApart = true, DoorIndex = tt.Control, DoorKind = "toggle", DoorRequires = tt.Flag };
+                        r.DoorNotes = string.Format("the wall at ({0}, {1}) that {2} #{3} moves", tt.X, tt.Y, tt.ControlName, tt.Control);
                         Regions.Add(r);
                     }
                     else if (n.Barrier[k] != 0)
@@ -799,6 +926,154 @@ namespace UwEditor.Core.Randomizer
             }
         }
 
+        /// <summary>
+        /// UW2: the way out of a pit made to be left (the Academy, level 46 (41, 52)). In the
+        /// pit's square a switch low on the wall sets off a jump trap that stops the player
+        /// and throws him straight up (in the air he can only turn, motion/PHYSICS.C), and a
+        /// switch higher up sets off the pit trap, which fills an open pit (event/TRIGGER.C
+        /// TRAP_PIT: a floor at 0 is raised to the trap's height). Used in the air, the second
+        /// switch puts the floor back under him. A free way from the open pit to the squares
+        /// beside it that the raised floor walks onto.
+        /// </summary>
+        void PitLifts(LevelNav n)
+        {
+            var m = n.M;
+            var lift = new Dictionary<int, ObjectInfo[]>();
+            var fill = new Dictionary<int, ObjectInfo[]>();
+            foreach (var t in m.Objects)
+            {
+                if (t == null || t.Free || t.Item != 0x1A2 || t.Parent < 0) continue;
+                var w = m.Objects[t.Parent];
+                if (w == null || !w.OnTile || w.Item < 0x170 || w.Item > 0x17F) continue;
+                int at = w.TileY * 64 + w.TileX;
+                var trap = t.Link > 0 ? m.Objects[t.Link] : null;
+                for (int i = 0; i < 8 && trap != null && !trap.Free; i++)
+                {
+                    if (trap.Item == 0x192 && trap.Owner != 0 && !lift.ContainsKey(at)) lift[at] = new[] { w, trap };
+                    if (trap.Item == 0x197 && !fill.ContainsKey(at)) fill[at] = new[] { w, trap };
+                    trap = trap.Link > 0 && trap.IsTrapOrTrigger ? m.Objects[trap.Link] : null;
+                    if (trap != null && !trap.IsTrapOrTrigger) trap = null;
+                }
+            }
+            int dt = Math.Max(1, Math.Min(64, Options.TickLength));
+            foreach (var kv in lift)
+            {
+                ObjectInfo[] f;
+                if (!fill.TryGetValue(kv.Key, out f)) continue;
+                int x = kv.Key % 64, y = kv.Key / 64;
+                if (!n.Open(x, y) || m.Tiles[x, y].Height != 0) continue;     // the pit is closed: nothing to leave
+                int from = n.RegionOfNode[kv.Key];
+                if (from < 0) continue;
+                double v = kv.Value[1].Quality * 47 / 2 - 2.0 * dt / 2;
+                double peak = Math.Min(Math.Max(0, v * v / 4 / 16384 - JumpModel.Sag(true, dt)), n.Cap(kv.Key, 0));
+                int raised = f[1].FineX + ((f[1].FineY & 7) << 3);
+                // the low switch within reach from the bottom, the high one from the top of the throw, and the raised floor under the feet then
+                if (raised > 15 || raised > peak || kv.Value[0].Z / 8.0 > 4 || f[0].Z / 8.0 > peak + 4) continue;
+                var pit = new Surf { Tile = kv.Key };
+                for (int d = 0; d < 4; d++)
+                {
+                    int tx = x + Dx[d], ty = y + Dy[d];
+                    if (!n.Open(tx, ty) || n.Closed(ty * 64 + tx)) continue;
+                    foreach (var sb in n.Surfs(tx, ty))
+                    {
+                        int blo, bhi;
+                        if (sb.Deck != null || !n.Edge(sb, (d + 2) & 3, out blo, out bhi) || !n.Clear(sb)) continue;
+                        int to = n.RegionOfNode[sb.Node];
+                        if (to < 0 || to == from || Regions[to].IsDoor || bhi > raised + JumpModel.WalkStep) continue;
+                        if (Edges.Exists(e => e.From == from && e.To == to && e.Kind == "jump" && e.Requires == "free")) continue;
+                        AddEdge(new NavEdge
+                        {
+                            From = from, To = to, Kind = "jump", Requires = "free", Level = n.Level, X = x, Y = y, Trigger = kv.Value[1].Index,
+                            Notes = string.Format("out of the pit at ({0}, {1}): the switch #{2} throws the player up (jump trap #{3}, force {4}), and the switch #{5} used in the air fills the pit under him (pit trap #{6}, floor {7}); then to ({8}, {9})",
+                                x, y, kv.Value[0].Index, kv.Value[1].Index, kv.Value[1].Quality, f[0].Index, f[1].Index, raised, tx, ty),
+                        });
+                    }
+                }
+            }
+        }
+
+        /// <summary>The squares the Portal spell reaches: two along the heading, each step rounded away from zero (sys/UTIL.C move_along), so every square two away in x or in y.</summary>
+        static readonly int[][] PortalSteps =
+        {
+            new[] { 0, 2 }, new[] { 1, 2 }, new[] { 2, 2 }, new[] { 2, 1 }, new[] { 2, 0 }, new[] { 2, -1 }, new[] { 2, -2 }, new[] { 1, -2 },
+            new[] { 0, -2 }, new[] { -1, -2 }, new[] { -2, -2 }, new[] { -2, -1 }, new[] { -2, 0 }, new[] { -2, 1 }, new[] { -2, 2 }, new[] { -1, 2 },
+        };
+
+        /// <summary>
+        /// UW2's Portal spell (combat/SPELLS2.C xt_spells, sub 1): the player is put on the
+        /// square two ahead of him, whatever lies between (rock, a door, a force field, a gap),
+        /// when he fits there at the height he stands at (motion/COLLIDE.C can_place with a
+        /// range of 8: no wall and no floor more than a level above his feet under his
+        /// footprint, nothing in his way; a lower floor is fine, he falls). The game's own
+        /// height test (the floor less his height << 3 at most 2) never fails above floor 0.
+        /// A way from each floor to every floor of another region two squares off that is no
+        /// more than a level higher, needing spell:portal. From and onto decks is left out.
+        /// </summary>
+        void Portals(LevelNav n)
+        {
+            var m = n.M;
+            var made = new HashSet<long>();
+            for (int y = 0; y < 64; y++)
+                for (int x = 0; x < 64; x++)
+                {
+                    if (!n.Open(x, y)) continue;
+                    int a = y * 64 + x, ra = n.RegionOfNode[a];
+                    if (ra < 0 || n.Closed(a) || n.Low[a] || Regions[ra].IsDoor) continue;
+                    int ha = LevelGeometry.CornerHeights(m.Tiles[x, y]).Min();
+                    foreach (var st in PortalSteps)
+                    {
+                        int bx = x + st[0], by = y + st[1];
+                        if (!n.Open(bx, by)) continue;
+                        int b = by * 64 + bx, rb = n.RegionOfNode[b];
+                        if (rb < 0 || rb == ra || n.Closed(b) || n.Low[b] || Regions[rb].IsDoor) continue;
+                        if (LevelGeometry.CornerHeights(m.Tiles[bx, by]).Max() > ha + 1) continue;
+                        if (!made.Add((long)ra << 32 | (uint)rb)) continue;
+                        AddEdge(new NavEdge
+                        {
+                            From = ra, To = rb, Kind = "teleport", Requires = ZoneLink.JoinAnd(new[] { "spell:portal", n.Lava[b] && !n.Lava[a] ? "hazard:lava" : "" }), Level = m.Level, X = x, Y = y,
+                            Notes = string.Format("the Portal spell from ({0}, {1}) to ({2}, {3}), through what is between", x, y, bx, by),
+                        });
+                    }
+                }
+        }
+
+        /// <summary>UW2: the flags of the Ethereal Void's coloured trials (hack 32 with a colour under 10 at a trial's end), by colour.</summary>
+        readonly Dictionary<int, List<string>> voidTrials = new Dictionary<int, List<string>>();
+
+        /// <summary>
+        /// The Ethereal Void's pyramid (level 69, event/WORLDEV.C do_qbert): the end of a
+        /// coloured trial puts its colour in the pyramid's sequence and sends the player to
+        /// the pyramid at (49, 51); with four trials done a fifth colour comes, and the pyramid
+        /// turned all that colour makes its moongate lead to (32, 25), inside the walled ring
+        /// under the gem's platform. A way from the pyramid to the ring, needing every trial.
+        /// The ways are of kind "stairs", as those between levels are: a level built again
+        /// on its own after a change does not read the other levels' trials.
+        /// </summary>
+        void VoidPyramid()
+        {
+            if (voidTrials.Count < 4) return;
+            int from = NearestRegion(69, 49, 51), to = NearestRegion(69, 32, 25);
+            if (from < 0 || to < 0 || from == to) return;
+            var each = voidTrials.OrderBy(kv => kv.Key).Take(4).Select(kv => kv.Value.Count == 1 ? kv.Value[0] : "(" + string.Join(" | ", kv.Value) + ")");
+            // turned any other colour it has, the moongate leads to that colour's room at (4, 4 + 6 * colour): the first colour, 6, is there from the start
+            foreach (int colour in new[] { 6 }.Concat(voidTrials.Keys.OrderBy(k => k)))
+            {
+                int room = NearestRegion(69, 4, colour * 6 + 4);
+                if (room < 0 || room == from) continue;
+                var fl = colour == 6 ? null : voidTrials[colour];
+                AddEdge(new NavEdge
+                {
+                    From = from, To = room, Kind = "stairs", Requires = fl == null ? "free" : fl.Count == 1 ? fl[0] : string.Join(" | ", fl), Level = 69, X = 51, Y = 49,
+                    Notes = string.Format("the Void's pyramid turned colour {0}: its moongate at (51, 49) leads to (4, {1})", colour, colour * 6 + 4),
+                });
+            }
+            AddEdge(new NavEdge
+            {
+                From = from, To = to, Kind = "stairs", Requires = string.Join(" & ", each), Level = 69, X = 51, Y = 49,
+                Notes = "the Void's pyramid turned the fifth colour, which the four coloured trials bring: its moongate at (51, 49) leads to (32, 25)",
+            });
+        }
+
         /// <summary>Over the water, whichever way it flows.</summary>
         public const string OverWater = "spell:waterwalk | spell:levitate";
 
@@ -910,6 +1185,8 @@ namespace UwEditor.Core.Randomizer
             var outOf = new Dictionary<int, HashSet<int>>();
             foreach (var e in Edges)
             {
+                // the Portal spell goes through a barrier: what is behind stays a dead end for the hand's reach
+                if (e.Requires.Contains("spell:portal")) continue;
                 HashSet<int> l;
                 if (!outOf.TryGetValue(e.From, out l)) outOf[e.From] = l = new HashSet<int>();
                 l.Add(e.To);
@@ -1301,6 +1578,43 @@ namespace UwEditor.Core.Randomizer
                     string cond = free ? "free" : ZoneLink.JoinAnd(st.Conditions);
                     if (s.IsUw2 && trap.Item == 0x192 && player && (mode == 0 || mode == 6) && trap.Owner == 0)
                         SpringPad(n, t, trap, ZoneLink.JoinAnd(new[] { extra, cond }));
+                    if (s.IsUw2 && trap.Item == 0x183 && trap.Quality == 32 && trap.Owner < 10 && player)
+                    {
+                        // the end of one of the Void's coloured trials: its colour joins the pyramid's, and the player is sent to the pyramid
+                        string flag = string.Format("flag:hack_L{0}_{1}", L, t.Index);
+                        List<string> fl;
+                        if (!voidTrials.TryGetValue(trap.Owner, out fl)) voidTrials[trap.Owner] = fl = new List<string>();
+                        if (!fl.Contains(flag)) fl.Add(flag);
+                        int dest = NearestRegion(69, 49, 51);
+                        foreach (int fr in fromRegions)
+                            if (dest >= 0 && fr >= 0 && fr != dest)
+                                AddEdge(new NavEdge
+                                {
+                                    From = fr, To = dest, Kind = "stairs", Requires = ZoneLink.JoinAnd(new[] { extra, cond }), Level = L, X = t.TileX, Y = t.TileY, Trigger = t.Index,
+                                    Notes = string.Format("the end of the Void's trial of colour {0} (trigger #{1}, hack 32): to the pyramid on L69 (49, 51)", trap.Owner, t.Index),
+                                });
+                    }
+                    if (s.IsUw2 && trap.Item == 0x183 && trap.Quality == 32 && trap.Owner >= 10 && trap.Owner < 20 && player && trap.Owner + 0x2E < 64)
+                    {
+                        // one of the Void's shifting gates (event/WORLDEV.C do_qbert, owner 10 to 19): the destination is drawn from a table
+                        // kept in the map's own squares, column owner + 46: the count in the wall of row 1, x in the wall of row 32 + n,
+                        // y in the wall of row 2 + n, and the level 69 less the low bits of row 32 + n's floor
+                        int col = trap.Owner + 0x2E, count = m.Tiles[col, 1].WallIndex;
+                        for (int pick = 0; pick < count && pick + 0x20 < 64; pick++)
+                        {
+                            var fromT = m.Tiles[col, pick + 0x20];
+                            int dl = 69 - (fromT.FloorIndex & 7), dx = fromT.WallIndex, dy = m.Tiles[col, pick + 2].WallIndex;
+                            if (!all.ContainsKey(dl)) continue;
+                            int dest = NearestRegion(dl, dx, dy);
+                            foreach (int fr in fromRegions)
+                                if (dest >= 0 && fr >= 0 && fr != dest && !Edges.Exists(e => e.From == fr && e.To == dest && e.Trigger == t.Index && e.Level == L))
+                                    AddEdge(new NavEdge
+                                    {
+                                        From = fr, To = dest, Kind = "stairs", Requires = ZoneLink.JoinAnd(new[] { extra, cond }), Level = L, X = t.TileX, Y = t.TileY, Trigger = t.Index,
+                                        Notes = string.Format("one of the Void's shifting gates (trigger #{0}, hack 32, table {1}): at random, here to L{2} ({3}, {4})", t.Index, trap.Owner, dl, dx, dy),
+                                    });
+                        }
+                    }
                     if (s.IsUw2 && trap.Item == 0x183 && trap.Quality == 55 && player)
                     {
                         // the blackrock gem: each facet takes the player to its world once the castle plot lets the gem show it
@@ -1371,6 +1685,7 @@ namespace UwEditor.Core.Randomizer
                     mech.Unavoidable = !s.IsUw2 && (ti == 0 || ti == 1);
                     if (trap.Item == 0x188) mech.DoorAction = trap.Quality;
                     if (s.IsUw2 && trap.Item == 0x188 && trap.Owner != 0 && (mode == 10 || mode == 11) && holder != null && holder.Item >= 0x140 && holder.Item <= 0x14F) mech.Airlock = true;
+                    if (toggleTriggers.Contains(L << 16 | t.Index)) mech.Toggle = true;
                     if (lever != null) lever.What += (lever.What.Length > 0 ? "; " : "") + mech.Kind + ": " + mech.What;
                     if (mech.Kind == "door" && lever != null) continue;     // a lever's door is on the door's edges
                     // UW2: the traps of one trigger behind different conditions are different mechanisms

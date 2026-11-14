@@ -114,11 +114,90 @@ namespace UwEditor.Core.Editing
 
         public static List<TrapChain> Chains(LevelModel m) { return TriggersOf(m).Select(t => Chain(m, t)).ToList(); }
 
-        /// <summary>Traps on the level no trigger's chain reaches (fired by a door, a hack, a conversation, a schedule, or nothing).</summary>
+        /// <summary>
+        /// UW2's flam rune (0x19E) and tym rune (0x19F): runes of flame and of stasis lying on the
+        /// floor. They are in the trap class but need no trigger: whatever touches one sets it off
+        /// (obj/OBJUSE.C UseObject, MAJOR_TRAP: UseRune for these two items only; obj/USEITEMS.C
+        /// UseRune burns or paralyses whoever it was, and the rune goes). UW1 has no such items.
+        /// </summary>
+        public static bool IsRuneTrap(GameKind kind, int item) { return kind == GameKind.UW2 && (item == 0x19E || item == 0x19F); }
+
+        /// <summary>The level's rune traps (IsRuneTrap), which work by themselves.</summary>
+        public static List<ObjectInfo> RuneTraps(LevelModel m)
+        {
+            return m.Objects.Where(o => !o.Free && o.TileX >= 0 && IsRuneTrap(m.Session.Kind, o.Item)).OrderBy(o => o.Index).ToList();
+        }
+
+        /// <summary>
+        /// Traps on the level no trigger's chain reaches (fired by a door, a hack, a conversation, a
+        /// schedule, or nothing). The rune traps are not among them: they need no trigger (RuneTraps).
+        /// </summary>
         public static List<ObjectInfo> Unreached(LevelModel m, List<TrapChain> chains)
         {
             var reached = new HashSet<int>(chains.SelectMany(c => c.Steps).Select(o => o.Index));
-            return m.Objects.Where(o => !o.Free && o.TileX >= 0 && IsTrap(o.Item) && !reached.Contains(o.Index)).OrderBy(o => o.Index).ToList();
+            return m.Objects.Where(o => !o.Free && o.TileX >= 0 && IsTrap(o.Item) && !reached.Contains(o.Index) && !IsRuneTrap(m.Session.Kind, o.Item)).OrderBy(o => o.Index).ToList();
+        }
+
+        /// <summary>A lever, switch, button or pull chain (0x170-0x17F), which sets off the trigger it holds when used.</summary>
+        public static bool IsControl(int item) { return item >= 0x170 && item < 0x180; }
+
+        /// <summary>
+        /// One step forward along a chain from o: for a trigger or a trap, the object its link
+        /// names (the trap it fires, the next trap or trigger, or the object a trap works with);
+        /// for anything else (a lever, a door, an item), the triggers and traps it holds. Empty at
+        /// the end of the chain.
+        /// </summary>
+        public static List<ObjectInfo> ChainNext(LevelModel m, ObjectInfo o)
+        {
+            var list = new List<ObjectInfo>();
+            if (m == null || o == null || o.Free) return list;
+            if (o.IsTrapOrTrigger)
+            {
+                var t = LinksTo(m, o);
+                if (t != null && t != o) list.Add(t);
+            }
+            else
+                foreach (int c in o.Children)
+                    if (c > 0 && c < m.Objects.Length && !m.Objects[c].Free && m.Objects[c].IsTrapOrTrigger) list.Add(m.Objects[c]);
+            return list;
+        }
+
+        /// <summary>
+        /// One step back along a chain from o: the objects whose link names it (LinkedFrom: the
+        /// trigger that fires it, the trap before it, the lever or door that holds it) and, for a
+        /// trigger or trap held further down an object's contents, that holder. An object that is
+        /// not a trigger or trap is reached only from the traps and triggers that link to it.
+        /// Empty at the start of the chain.
+        /// </summary>
+        public static List<ObjectInfo> ChainPrevious(LevelModel m, ObjectInfo o)
+        {
+            var list = new List<ObjectInfo>();
+            if (m == null || o == null || o.Free) return list;
+            foreach (var x in LinkedFrom(m, o))
+                if (o.IsTrapOrTrigger || x.IsTrapOrTrigger) list.Add(x);
+            if (o.IsTrapOrTrigger && o.Parent > 0 && o.Parent < m.Objects.Length && !m.Objects[o.Parent].Free && !list.Exists(x => x.Index == o.Parent))
+                list.Add(m.Objects[o.Parent]);
+            return list.OrderBy(x => x.Index).ToList();
+        }
+
+        /// <summary>Whether o is part of a chain to step along: a control, a trigger, a trap, or anything a step leads to or from.</summary>
+        public static bool InChain(LevelModel m, ObjectInfo o)
+        {
+            if (m == null || o == null || o.Free) return false;
+            return o.IsTrapOrTrigger || IsControl(o.Item) || ChainNext(m, o).Count > 0 || ChainPrevious(m, o).Count > 0;
+        }
+
+        /// <summary>The chain's steps round o in words: what comes next and what comes before (for the properties panel).</summary>
+        public static string ChainText(LevelModel m, ObjectInfo o)
+        {
+            if (!InChain(m, o)) return "";
+            var next = ChainNext(m, o); var prev = ChainPrevious(m, o);
+            Func<List<ObjectInfo>, string> names = l => string.Join(", ", l.Take(6).Select(x => x.ToString())) + (l.Count > 6 ? ", …" : "");
+            string n = next.Count == 0 ? (o.IsTrapOrTrigger ? "Next: nothing, the chain ends here." : "Next: nothing, it holds no trigger.")
+                : next.Count == 1 ? "Next: " + next[0] + "." : "Next: " + next.Count + " objects (" + names(next) + ").";
+            string p = prev.Count == 0 ? "Previous: nothing links to it."
+                : prev.Count == 1 ? "Previous: " + prev[0] + "." : "Previous: " + prev.Count + " objects link to it (" + names(prev) + ").";
+            return p + "\n" + n;
         }
 
         /// <summary>The item a create-object trap copies as a random monster in UW2 (include/items.h ITEM_ADVENTURER).</summary>

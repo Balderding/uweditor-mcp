@@ -2,7 +2,7 @@
   "format": "uw2-facts",
   "version": 1,
   "game": "UW2",
-  "notes": "Facts the automatic zones cannot read from UW2's levels alone, in the format of uw1-facts.json (see its notes). Every docs/facts/uw2-*.json is read, this file first. The castle plot (X clock 1) is a count in the solver: a fact that grants plotset:V sets it to V, one that grants plotstep:NAME adds one, and plot:N in a requirement asks for the highest set plus the steps to reach N. The levels' own set variable traps are read automatically (the plot's 1, 2 and 3 on levels 3, 9 and 14, the steps of the gems picked up on levels 26 and 48); the steps below come from conversations and the schedules. Not here yet: key gem 4 fused into the gem (obj/USEITEMS.C UseKeyGem), what moves the plot from 10 to 11, and the end of the plot (13 to 16).",
+  "notes": "Facts the automatic zones cannot read from UW2's levels alone, in the format of uw1-facts.json (see its notes). Every docs/facts/uw2-*.json is read, this file first. The castle plot (X clock 1) is a count in the solver: a fact that grants plotset:V sets it to V, one that grants plotstep:NAME adds one, and plot:N in a requirement asks for the highest set plus the steps to reach N. The levels' own set variable traps are read automatically (the plot's 1, 2 and 3 on levels 3, 9 and 14, the steps of the gems picked up on levels 26 and 48); the steps below come from conversations and the schedules. Not here yet: the end of the plot (13 to 16: the djinn's bottle, the eight gems fused, Nystul's spell), and so no goal.",
   "facts": [
     {
       "id": "plot_miranda_tower",
@@ -64,6 +64,57 @@
       "source": "conversation 96 (Zoranthus): if (met_before == 0) x_clock(1, x_clock(1, 10001) + 1)"
     },
     {
+      "id": "key_gem_4",
+      "kind": "flag",
+      "grants": "item:key_gem_4",
+      "level": 34,
+      "object": 1022,
+      "requires": "free",
+      "notes": "The blackrock key gem of Talorus (item 0x11B, gem 4) lies on level 34 at (30, 34).",
+      "source": "level 34 object #1022; obj/USEITEMS.C UseKeyGem (gem number = item - 0x117)"
+    },
+    {
+      "id": "plot_gem_4",
+      "kind": "flag",
+      "grants": "plotstep:gem_4",
+      "level": 5,
+      "object": 934,
+      "requires": "item:key_gem_4 & npc:nystul",
+      "notes": "Nystul treats a key gem when asked (he sets its owner field), and the treated gem used on the large blackrock gem on level 5 fuses with it; fusing gem 4 adds one to the castle plot.",
+      "source": "conversation 130 (Nystul): x_obj_stuff(gem, 1, -1, 1, ...); obj/USEITEMS.C UseKeyGem (if (gem == 4) xclock[XC_CASTLE]++)"
+    },
+    {
+      "id": "key_gem_8",
+      "kind": "flag",
+      "grants": "item:key_gem_8",
+      "level": 69,
+      "object": 596,
+      "requires": "spell:levitate & (spell:telekinesis | spell:portal)",
+      "notes": "The blackrock key gem of the Ethereal Void (item 0x11F, gem 8) lies on the platform at level 69 (32, 28), twelve steps up among pillars, over a ring of floor walled in all round ((29, 25) to (35, 31)). Karl: awake, Fly or Levitate up beside the platform and take the gem with Telekinesis, or step onto the platform with Portal. Granted in the zone outside the ring, by the gem's facet at (32, 22).",
+      "source": "Karl, 2026-11-13; level 69 object #906; combat/SPELLS2.C xt_spells (Portal)"
+    },
+    {
+      "id": "key_gem_8_dream",
+      "kind": "flag",
+      "grants": "item:key_gem_8",
+      "level": 69,
+      "object": 625,
+      "requires": "item:dream_plant",
+      "notes": "Karl: eat a dream plant and sleep; the dreamer arrives on the gem's platform flying and cannot pocket anything, so he carries the gem to the platform's edge and throws it down into the ring below, where it can be picked up awake once the ring is reached: by the Void's pyramid after the four coloured trials, or with Portal through the ring's wall. Granted in the ring.",
+      "source": "Karl, 2026-11-13; game/SKILLS.C go_void (the dream arrives at void_tiles[0] = (32, 28), five times in eight; motionbits |= 0x10), inv/INVPANEL.C (nothing goes into the pack while sleepbits and in_void are set), obj/USEITEMS.C UseFood (item 0x114 sets sleepbits)"
+    },
+    {
+      "id": "plot_patterson",
+      "kind": "flag",
+      "grants": "plotstep:patterson",
+      "level": 1,
+      "object": 232,
+      "requires": "plot:12 & npc:nelson",
+      "notes": "With the castle plot at 12 Nelson's talk of Thaam's spell sets quest 43, Patterson then attacks when spoken to, and his death moves the plot to 13: the gem then shows all eight facets.",
+      "source": "conversation 139 (Nelson): set_quest(43, 1); conversation 140 (Patterson): if (get_quest(43)) attack_and_end(); event/WORLDEV.C death_check case 0x8C (xclock[XC_CASTLE] = 0xD)",
+      "confidence": "probable"
+    },
+    {
       "id": "plot_miranda_11",
       "kind": "flag",
       "grants": "plotstep:miranda_11",
@@ -72,6 +123,325 @@
       "requires": "plot:11",
       "notes": "Talking to Miranda with the castle plot at 11 moves it to 12.",
       "source": "conversation 136 (Miranda): if (x_clock(1, 10001) == 11) x_clock(1, x_clock(1, 10001) + 1)"
+    },
+    {
+      "id": "key_gem_1",
+      "kind": "flag",
+      "grants": "item:key_gem_1",
+      "level": 14,
+      "object": 1017,
+      "requires": "free",
+      "notes": "The blackrock key gem of world 1 (item 0x118): carried by the goblin #253 on level 14 (35, 32); taken from him, a fight or a trade.",
+      "source": "level 14 object #1017",
+      "confidence": "probable"
+    },
+    {
+      "id": "key_gem_2",
+      "kind": "flag",
+      "grants": "item:key_gem_2",
+      "level": 18,
+      "object": 907,
+      "requires": "free",
+      "notes": "The blackrock key gem of world 2 (item 0x119): lies on level 18 at (56, 52).",
+      "source": "level 18 object #907"
+    },
+    {
+      "id": "key_gem_3",
+      "kind": "flag",
+      "grants": "item:key_gem_3",
+      "level": 26,
+      "object": 931,
+      "requires": "free",
+      "notes": "The blackrock key gem of world 3 (item 0x11A): lies on level 26 at (28, 7).",
+      "source": "level 26 object #931"
+    },
+    {
+      "id": "key_gem_5",
+      "kind": "flag",
+      "grants": "item:key_gem_5",
+      "level": 48,
+      "object": 898,
+      "requires": "free",
+      "notes": "The blackrock key gem of world 5 (item 0x11C): lies on level 48 at (37, 30).",
+      "source": "level 48 object #898"
+    },
+    {
+      "id": "key_gem_6",
+      "kind": "flag",
+      "grants": "item:key_gem_6",
+      "level": 49,
+      "object": 1004,
+      "requires": "free",
+      "notes": "The blackrock key gem of world 6 (item 0x11D): lies on level 49 at (23, 41).",
+      "source": "level 49 object #1004"
+    },
+    {
+      "id": "key_gem_7",
+      "kind": "flag",
+      "grants": "item:key_gem_7",
+      "level": 57,
+      "object": 784,
+      "requires": "free",
+      "notes": "The blackrock key gem of world 7 (item 0x11E): carried by the fighter #252 on level 57 (3, 52), in the Pits of Carnage; taken from him, a fight.",
+      "source": "level 57 object #784",
+      "confidence": "probable"
+    },
+    {
+      "id": "gems_fused",
+      "kind": "flag",
+      "grants": "flag:gems_fused",
+      "level": 5,
+      "object": 934,
+      "requires": "item:key_gem_1 & item:key_gem_2 & item:key_gem_3 & item:key_gem_4 & item:key_gem_5 & item:key_gem_6 & item:key_gem_7 & item:key_gem_8 & npc:nystul",
+      "notes": "All eight key gems treated by Nystul and used on the large blackrock gem under the castle (level 5 (28, 40), used from the square before it): X clock 2 reaches 8, which Nystul asks for before the ceremony.",
+      "source": "obj/USEITEMS.C UseKeyGem (a treated key gem used on the large gem: X clock 2 counts it); conversation 130 (Nystul treats a gem)"
+    },
+    {
+      "id": "basilisk_oil_1",
+      "kind": "flag",
+      "grants": "item:basilisk_oil",
+      "level": 3,
+      "object": 583,
+      "requires": "free",
+      "notes": "A flask of basilisk oil: a colourless potion (item 0xE6) carrying special spell 3 (link 512 + 67).",
+      "source": "level 3 object #583; obj/OBJUSE.C decode_obj_spell; motion/OBJPHYS.C do_filanium"
+    },
+    {
+      "id": "basilisk_oil_2",
+      "kind": "flag",
+      "grants": "item:basilisk_oil",
+      "level": 57,
+      "object": 790,
+      "requires": "free",
+      "notes": "A flask of basilisk oil: a colourless potion (item 0xE6) carrying special spell 3 (link 512 + 67).",
+      "source": "level 57 object #790; obj/OBJUSE.C decode_obj_spell; motion/OBJPHYS.C do_filanium"
+    },
+    {
+      "id": "basilisk_oil_3",
+      "kind": "flag",
+      "grants": "item:basilisk_oil",
+      "level": 59,
+      "object": 823,
+      "requires": "free",
+      "notes": "A flask of basilisk oil: a colourless potion (item 0xE6) carrying special spell 3 (link 512 + 67).",
+      "source": "level 59 object #823; obj/OBJUSE.C decode_obj_spell; motion/OBJPHYS.C do_filanium"
+    },
+    {
+      "id": "basilisk_oil_4",
+      "kind": "flag",
+      "grants": "item:basilisk_oil",
+      "level": 67,
+      "object": 902,
+      "requires": "free",
+      "notes": "A flask of basilisk oil: a colourless potion (item 0xE6) carrying special spell 3 (link 512 + 67).",
+      "source": "level 67 object #902; obj/OBJUSE.C decode_obj_spell; motion/OBJPHYS.C do_filanium"
+    },
+    {
+      "id": "djinn_mud",
+      "kind": "flag",
+      "grants": "flag:state_xclock3_low3_is_2",
+      "level": 26,
+      "object": 969,
+      "requires": "item:basilisk_oil",
+      "notes": "The djinn's capture, step 2: basilisk oil thrown into the filanium mud pool of the Ice Caverns (level 26, (58, 15) to (60, 16), floor texture 0xC1): 'The thick oil permeates the mud.' X clock 3 goes to 2. Stepping into the pool then sets it to 3 (the pressure trigger #969, which the zones read).",
+      "source": "motion/OBJPHYS.C do_filanium; level 26 trigger #969, set variable trap #970"
+    },
+    {
+      "id": "djinn_baked",
+      "kind": "craft",
+      "grants": "flag:djinn_baked",
+      "requires": "flag:variable_L26_969",
+      "notes": "The djinn's capture, step 4: standing in lava with the oily mud on (X clock 3 at 3): 'The oily mud bakes on your skin.' Any lava does; the burn is taken as survived.",
+      "source": "motion/PLAYMOVE.C (motion_state & 2, X clock 3 from 3 to 4)"
+    },
+    {
+      "id": "djinn_glazed",
+      "kind": "craft",
+      "grants": "flag:djinn_glazed",
+      "requires": "flag:djinn_baked & spell:iron_flesh",
+      "notes": "The djinn's capture, step 5: Iron Flesh cast on the baked mud: 'The baked mud hardens into a clear glaze.'",
+      "source": "combat/SPELLS.C do_spell (class 2 minor 5 with X clock 3 at 4)"
+    },
+    {
+      "id": "bottle_zoranthus",
+      "kind": "flag",
+      "grants": "item:bottle",
+      "level": 58,
+      "object": 227,
+      "requires": "free",
+      "confidence": "probable",
+      "notes": "Karl: there are two djinn bottles. Zoranthus (the Pits, level 58) hands one over once he has been given what he asks for (quest 27), and another whenever asked after that; the second lies in the Void pyramid's room at level 69 (3, 20), which the levels give by its name.",
+      "source": "Karl, 2026-11-14; conversation 96 (do_inv_create(278))"
+    },
+    {
+      "id": "plot_djinn",
+      "kind": "flag",
+      "grants": "plotstep:djinn",
+      "level": 69,
+      "x": 21,
+      "y": 52,
+      "requires": "plot:13 & flag:djinn_glazed & item:bottle",
+      "notes": "The djinn's capture, the last step: the stoppered bottle (item 0x116, from the Void's yellow room at level 69 (3, 20)) broken on the sigil at level 69 (21, 52) to (22, 53): the air daemon is absorbed, X clock 3 goes to 6 and the castle plot from 13 to 14. Broken before the glaze it kills the player. Counted from plot 13 only: broken earlier, the plot moves to 14 when Patterson dies.",
+      "source": "combat/DAMAGE.C remove_object (ITEM_BOTTLE_116); event/WORLDEV.C special death 0x8C"
+    },
+    {
+      "id": "altara_rod",
+      "kind": "flag",
+      "grants": "item:pearl_tipped_rod",
+      "level": 17,
+      "object": 243,
+      "requires": "plotstep:listener & item:amethyst_rod & item:black_eggshell",
+      "confidence": "probable",
+      "notes": "Altara (Killorn Keep) gives a black pearl once the Listener is dead, and with an amethyst rod and a black eggshell brought to her makes the pearl-tipped rod (item 0x112, special spell 0), which cuts the Guardian's lines of power.",
+      "source": "conversation 45 (quest 11, quest 12, do_inv_create(274) with link 512 + 64)"
+    },
+    {
+      "id": "line_1",
+      "kind": "flag",
+      "grants": "flag:line_1",
+      "level": 16,
+      "requires": "item:pearl_tipped_rod",
+      "notes": "The Guardian's line of power of world 1: an invisible Guardian signet ring at level 16 (30, 33), behind the force field at (31, 33); the pearl-tipped rod reaches two squares, so it is used from (32, 33), before the force field.",
+      "source": "combat/SPELLS2.C thump_your_magic_twanger_froggie, check_Guardian_magic_marker; level 16 object #985; level 16 object #985 (the marker), #1004 (the force field, with hack 11 traps: fraznium, not modelled)",
+      "x": 32,
+      "y": 33
+    },
+    {
+      "id": "line_2",
+      "kind": "flag",
+      "grants": "flag:line_2",
+      "level": 18,
+      "requires": "item:pearl_tipped_rod",
+      "notes": "The Guardian's line of power of world 2: an invisible Guardian signet ring; the pearl-tipped rod used within two squares of it cuts the line.",
+      "source": "combat/SPELLS2.C thump_your_magic_twanger_froggie, check_Guardian_magic_marker; level 18 object #987",
+      "object": 987
+    },
+    {
+      "id": "line_3",
+      "kind": "flag",
+      "grants": "flag:line_3",
+      "level": 26,
+      "requires": "item:pearl_tipped_rod",
+      "notes": "The Guardian's line of power of world 3: an invisible Guardian signet ring; the pearl-tipped rod used within two squares of it cuts the line.",
+      "source": "combat/SPELLS2.C thump_your_magic_twanger_froggie, check_Guardian_magic_marker; level 26 object #980",
+      "object": 980
+    },
+    {
+      "id": "line_4",
+      "kind": "flag",
+      "grants": "flag:line_4",
+      "level": 33,
+      "requires": "item:pearl_tipped_rod",
+      "notes": "The Guardian's line of power of world 4: an invisible Guardian signet ring; the pearl-tipped rod used within two squares of it cuts the line.",
+      "source": "combat/SPELLS2.C thump_your_magic_twanger_froggie, check_Guardian_magic_marker; level 33 object #710",
+      "object": 710
+    },
+    {
+      "id": "line_5",
+      "kind": "flag",
+      "grants": "flag:line_5",
+      "level": 48,
+      "requires": "item:pearl_tipped_rod",
+      "notes": "The Guardian's line of power of world 5: an invisible Guardian signet ring; the pearl-tipped rod used within two squares of it cuts the line.",
+      "source": "combat/SPELLS2.C thump_your_magic_twanger_froggie, check_Guardian_magic_marker; level 48 object #903",
+      "object": 903
+    },
+    {
+      "id": "line_6",
+      "kind": "flag",
+      "grants": "flag:line_6",
+      "level": 49,
+      "requires": "item:pearl_tipped_rod",
+      "notes": "The Guardian's line of power of world 6: an invisible Guardian signet ring; the pearl-tipped rod used within two squares of it cuts the line.",
+      "source": "combat/SPELLS2.C thump_your_magic_twanger_froggie, check_Guardian_magic_marker; level 49 object #930",
+      "object": 930
+    },
+    {
+      "id": "line_7",
+      "kind": "flag",
+      "grants": "flag:line_7",
+      "level": 57,
+      "requires": "item:pearl_tipped_rod",
+      "notes": "The Guardian's line of power of world 7: an invisible Guardian signet ring; the pearl-tipped rod used within two squares of it cuts the line.",
+      "source": "combat/SPELLS2.C thump_your_magic_twanger_froggie, check_Guardian_magic_marker; level 57 object #793",
+      "object": 793
+    },
+    {
+      "id": "line_8",
+      "kind": "flag",
+      "grants": "flag:line_8",
+      "level": 69,
+      "requires": "item:pearl_tipped_rod",
+      "notes": "The Guardian's line of power of world 8: an invisible Guardian signet ring on the Void gem's platform at level 69 (32, 28), reached from the ring under it; the pearl-tipped rod used within two squares of it cuts the line.",
+      "source": "combat/SPELLS2.C thump_your_magic_twanger_froggie, check_Guardian_magic_marker; level 69 object #874",
+      "x": 30,
+      "y": 26
+    },
+    {
+      "id": "lines_cut",
+      "kind": "craft",
+      "grants": "flag:lines_cut",
+      "requires": "flag:line_1 & flag:line_2 & flag:line_3 & flag:line_4 & flag:line_5 & flag:line_6 & flag:line_7 & flag:line_8",
+      "notes": "All eight lines of power cut: quest 14, which Nystul asks for before the ceremony.",
+      "source": "combat/SPELLS2.C check_Guardian_magic_marker (QB_LINES_OF_POWER at 0xFF sets quest 14)"
+    },
+    {
+      "id": "mors_gotha_book",
+      "kind": "flag",
+      "grants": "item:mors_gotha_book",
+      "level": 17,
+      "object": 818,
+      "requires": "free",
+      "notes": "Mors Gotha's spell book (item 0x138), in her room in Killorn Keep at level 17 (20, 43).",
+      "source": "level 17 object #818; conversation 130 (find_barter(312))"
+    },
+    {
+      "id": "plot_nystul_book",
+      "kind": "flag",
+      "grants": "plotstep:nystul_book",
+      "level": 1,
+      "object": 254,
+      "requires": "plot:14 & flag:gems_fused & flag:lines_cut & item:mors_gotha_book & item:horn",
+      "notes": "Nystul, given Mors Gotha's book at castle plot 14 with the eight gems fused, the lines cut and Praecor Loth's horn won (quest 7): the plot moves to 15.",
+      "source": "conversation 130 (quest 120, quest 7, X clock 2 > 7, quest 14, X clock 1 == 14)"
+    },
+    {
+      "id": "plot_nystul_hour",
+      "kind": "flag",
+      "grants": "plotstep:nystul_hour",
+      "level": 1,
+      "object": 254,
+      "requires": "plot:15",
+      "notes": "Nystul asks at what hour the blackrock gem appeared; the answer is four. The plot moves to 16 and Mors Gotha attacks the castle.",
+      "source": "conversation 130 (contains '4' or 'four')"
+    },
+    {
+      "id": "goal_ceremony",
+      "kind": "goal",
+      "level": 1,
+      "object": 254,
+      "requires": "plot:16 & item:horn",
+      "notes": "The end of the game: at castle plot 16, with Mors Gotha dead (quest 64: a fight, taken as won) and the horn of Praecor Loth in the pack, Nystul reads the spell while the Avatar sounds the horn: cutscene 2, the ending.",
+      "source": "conversation 130 (X clock 1 == 16, find_inv(273), quest 64, quest 143 = 3); game/SKILLS.C cs_check, player_won_game"
+    },
+    {
+      "id": "academy_pillars",
+      "kind": "link",
+      "from": {
+        "level": 43,
+        "x": 33,
+        "y": 31
+      },
+      "to": {
+        "level": 43,
+        "x": 33,
+        "y": 43
+      },
+      "requires": "spell:telekinesis | flag:telekinesis_on_l43",
+      "twoWay": true,
+      "linkKind": "jump",
+      "notes": "Karl: the Scintillus Academy's lava room (level 43) is crossed by jumping from pillar to pillar, with the pillars raised and lowered by the six buttons on the side walls, which the level's telekinesis wand presses from afar; nothing else is needed, and falling into the lava is failing the puzzle, not a way. The pillars are a 5 by 3 grid three squares apart from (27, 34), toggled between heights 2 and 10 (hack 20); the way runs from the ledge at (33, 31) over the middle column to the passage at (33, 43).",
+      "source": "Karl, 2026-11-14; event/WORLDEV.C toggle_pillars_hack; level 43 buttons #1018 to #1023, hack traps #999 to #1009"
     }
   ]
 }

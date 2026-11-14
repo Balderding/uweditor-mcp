@@ -214,6 +214,26 @@ namespace UwEditor.Core.Tests
         }
 
         [Fact]
+        public void Uw2_unshuffled_has_a_walkthrough_to_the_end()
+        {
+            string game = GameData.Game("UW2"); if (game == null) return;
+            var s = GameSession.Open(game);
+            var t = Timeline.Build(s, l => s.LoadLevel(l), new NavOptions(), new AbilityOptions(), null, null, false);
+            Assert.True(t.Solve.GoalReached);
+            var w = Walkthrough.Build(t, t.Solve, null, l => s.LoadLevel(l));
+            Assert.True(w.Reached);
+            Assert.Empty(w.Doubts);
+            // a way between every two steps: what the hand reaches from afar (the large blackrock gem's square) is not stood in
+            Assert.Empty(w.NoWay);
+            Assert.True(w.ReverseRan);
+            Assert.Empty(w.ReverseProblems);
+            var text = string.Join(" ", w.Lines());
+            Assert.Contains("plotstep:djinn", text);
+            Assert.Contains("plotstep:nystul_hour", text);
+            Assert.Contains("flag:lines_cut", text);
+        }
+
+        [Fact]
         public void The_unshuffled_game_has_a_walkthrough()
         {
             var s = Session(); if (s == null) return;

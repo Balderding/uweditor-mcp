@@ -286,6 +286,7 @@ namespace UwEditor.Core.Randomizer
         static void Classify(TimelineResult res)
         {
             var e = res.Engine;
+            var onlyCloses = new List<WorldChange>();
             foreach (var m in res.Abilities.Auto.Graph.Mechanisms)
             {
                 var c = new WorldChange { Mechanism = m };
@@ -295,6 +296,12 @@ namespace UwEditor.Core.Randomizer
                     c.Effect = "not applied";
                     c.Treatment = m.Kind == "create" ? "its flag is granted when set off (what it creates needs the flag)" :
                         m.Kind == "hack" ? "its flag is granted when set off; the hack itself is not modelled" : "its flag is granted when set off (facts may test it)";
+                    continue;
+                }
+                if (m.Toggle)
+                {
+                    c.Effect = "comes and goes";
+                    c.Treatment = "not applied: one state of a control the player sets either way; the squares its other state opens are ways that ask for that state's flag";
                     continue;
                 }
                 if (m.Airlock)
@@ -312,7 +319,7 @@ namespace UwEditor.Core.Randomizer
                     continue;
                 }
                 // the mechanisms of one trigger go off together: try them together
-                var together = res.Abilities.Auto.Graph.Mechanisms.Where(x => x.Level == m.Level && x.Trigger == m.Trigger && Appliable.Contains(x.Kind) && !x.Airlock && !(x.Kind == "door" && (x.DoorAction == 2 || (x.DoorAction == 3 && x.Unavoidable))))
+                var together = res.Abilities.Auto.Graph.Mechanisms.Where(x => x.Level == m.Level && x.Trigger == m.Trigger && Appliable.Contains(x.Kind) && !x.Airlock && !x.Toggle && !(x.Kind == "door" && (x.DoorAction == 2 || (x.DoorAction == 3 && x.Unavoidable))))
                     .Select(x => Requirement.Normalize(x.Flag)).ToList();
                 var basis = e.Rebuild(m.Level, new List<string>());
                 var trial = e.Rebuild(m.Level, together);
@@ -322,10 +329,69 @@ namespace UwEditor.Core.Randomizer
                 if (closes && !opens && !m.Unavoidable)
                 {
                     c.Treatment = "not applied: it only takes ways away and the player chooses to set it off";
+                    onlyCloses.Add(c);
                     continue;
                 }
                 c.Applied = true;
                 c.Treatment = closes ? "applied when set off; the ways it takes away are gone from then on (the zones reached before stay reached)" : "applied when set off";
+            }
+            // A change the player chooses that alone only takes ways away may open one together with
+            // other changes of its level (UW1 level 4's levers: each raises one step, which alone
+            // stands apart, and the three make a stair up to the alcove a fourth lever opens). It
+            // is applied when the level with every change has a way that the level with all but
+            // this one lacks.
+            foreach (var lv in onlyCloses.GroupBy(c => c.Level))
+            {
+                var all = res.Changes.Where(c => c.Level == lv.Key && (c.Applied || onlyCloses.Contains(c))).ToList();
+                if (all.Count < 2) continue;
+                var joint = e.Rebuild(lv.Key, all.Select(c => c.Flag).Distinct().ToList());
+                foreach (var grp in lv.GroupBy(c => c.Mechanism.Trigger))
+                {
+                    var mine = new HashSet<string>(grp.Select(c => c.Flag));
+                    var without = e.Rebuild(lv.Key, all.Select(c => c.Flag).Where(f => !mine.Contains(f)).Distinct().ToList());
+                    var d = new WorldChange { Mechanism = grp.First().Mechanism };
+                    Compare(res, without, joint, d);
+                    if (d.Opens.Count == 0) continue;
+                    foreach (var c in grp)
+                    {
+                        c.Applied = true;
+                        c.Effect = "opens with others";
+                        c.Opens.AddRange(d.Opens);
+                        c.Treatment = "applied when set off: alone it only takes ways away, but with the other changes of this level it opens one";
+                    }
+                }
+            }
+            // Changes the player chooses that alone change no way may take ways away together (the
+            // Academy's falling platforms, UW2 level 47: each platform stepped on drops another, and
+            // with all of them down the ledge of the way on stands alone). They are taken one
+            // trigger after another on top of those before: one that then only takes ways away is
+            // left to the player, who steps where it does no harm.
+            foreach (var lv in res.Changes.Where(c => c.Applied && !c.Mechanism.Unavoidable && c.Opens.Count == 0 && c.Closes.Count == 0).GroupBy(c => c.Level))
+            {
+                var groups = lv.GroupBy(c => c.Mechanism.Trigger).OrderBy(x => x.Key).ToList();
+                if (groups.Count < 2) continue;
+                var acc = new List<string>();
+                var prev = e.Rebuild(lv.Key, acc);
+                foreach (var grp in groups)
+                {
+                    var with = acc.Concat(grp.Select(c => c.Flag)).ToList();
+                    var next = e.Rebuild(lv.Key, with);
+                    var d = new WorldChange { Mechanism = grp.First().Mechanism };
+                    Compare(res, prev, next, d);
+                    if (d.Closes.Count > 0 && d.Opens.Count == 0)
+                    {
+                        foreach (var c in grp)
+                        {
+                            c.Applied = false;
+                            c.Effect = "closes with others";
+                            c.Closes.AddRange(d.Closes);
+                            c.Treatment = "not applied: alone it changes no way, but after the others like it on this level it only takes ways away, and the player chooses to set it off";
+                        }
+                        continue;
+                    }
+                    acc = with;
+                    prev = next;
+                }
             }
             e.Applicable = new HashSet<string>(res.Changes.Where(c => c.Applied).Select(c => c.Flag));
             e.Closing = new HashSet<string>(res.Changes.Where(c => c.Applied && c.Closes.Count > 0).Select(c => c.Flag));
@@ -361,6 +427,18 @@ namespace UwEditor.Core.Randomizer
                 var k = kv.Value[0];
                 List<ZoneLink> old;
                 bool freeNow = kv.Value.Any(x => x.Requires == "free");
+                // a way of a part split off a zone is no new way when the zone it was part of had it:
+                // inside that zone before (the part and the rest were one), or from that zone to the same other zone
+                int pf, pt;
+                bool partF = b.PartOf.TryGetValue(k.From, out pf), partT = b.PartOf.TryGetValue(k.To, out pt);
+                if (partF || partT)
+                {
+                    if (!partF) pf = k.From;
+                    if (!partT) pt = k.To;
+                    if (pf == pt) continue;
+                    List<ZoneLink> was;
+                    if (pa.TryGetValue(pf + ">" + pt, out was) && (!freeNow || was.Any(x => x.Requires == "free"))) continue;
+                }
                 if (!pa.TryGetValue(kv.Key, out old)) c.Opens.Add(string.Format("{0} -> {1} ({2}, {3})", zn(k.From), zn(k.To), k.Kind, k.Requires));
                 else if (freeNow && !old.Any(x => x.Requires == "free")) c.Opens.Add(string.Format("{0} -> {1} now free", zn(k.From), zn(k.To)));
             }
@@ -399,14 +477,14 @@ namespace UwEditor.Core.Randomizer
                 else if (kv.Value.Any(x => x.Requires == "free") && !now.Any(x => x.Requires == "free") && !still(k.From, k.To, "free")) c.Closes.Add(string.Format("{0} -> {1} no longer free", zn(k.From), zn(k.To)));
             }
             foreach (var z in b.NewNames.Keys.Where(z => !a.NewNames.ContainsKey(z) || a.NewNames[z] != b.NewNames[z]))
-                if (!a.NewNames.Values.Contains(b.NewNames[z])) c.Closes.Add("splits off " + z + " " + b.NewNames[z]);
+                if (b.PartOf.ContainsKey(z) && !a.NewNames.Values.Contains(b.NewNames[z])) c.Closes.Add("splits off " + z + " " + b.NewNames[z]);     // a part of a zone; squares that were no zone's are a new area, nothing taken away
             int rock = 0;
             for (int i = 0; i < 64 * 64; i++) if (!a.Model.Tiles[i % 64, i / 64].IsSolid && b.Model.Tiles[i % 64, i / 64].IsSolid) rock++;
             if (rock > 0) c.Closes.Add(rock + " square" + (rock == 1 ? "" : "s") + " turned to rock");
             int opened = 0;
             for (int i = 0; i < 64 * 64; i++) if (a.Model.Tiles[i % 64, i / 64].IsSolid && !b.Model.Tiles[i % 64, i / 64].IsSolid) opened++;
             if (opened > 0 && c.Opens.Count == 0) c.Opens.Add(opened + " square" + (opened == 1 ? "" : "s") + " opened (no new way between zones)");
-            foreach (var kv in b.Absorbed) c.Opens.Add(string.Format("joins {0} with {1}", zn(kv.Key), zn(kv.Value)));
+            foreach (var kv in b.Absorbed.Where(kv => { int t; return !a.Absorbed.TryGetValue(kv.Key, out t) || t != kv.Value; })) c.Opens.Add(string.Format("joins {0} with {1}", zn(kv.Key), zn(kv.Value)));
         }
 
         // ---------------------------------------------------------------- the level states
@@ -424,6 +502,8 @@ namespace UwEditor.Core.Randomizer
             public readonly List<KeyValuePair<NavMechanism, Requirement>> Mechs = new List<KeyValuePair<NavMechanism, Requirement>>();
             /// <summary>Zones split off by the changes (fresh ids) and their names.</summary>
             public readonly Dictionary<int, string> NewNames = new Dictionary<int, string>();
+            /// <summary>A zone split off a base zone (a fresh id) -> that base zone.</summary>
+            public readonly Dictionary<int, int> PartOf = new Dictionary<int, int>();
             /// <summary>Base zones with no group of their own any more -> the zone that took their tiles.</summary>
             public readonly Dictionary<int, int> Absorbed = new Dictionary<int, int>();
             /// <summary>Placements on this level that lie in another zone now.</summary>
@@ -852,6 +932,7 @@ namespace UwEditor.Core.Randomizer
                     int id;
                     if (!freshIds.TryGetValue(fk, out id)) freshIds[fk] = id = nextFresh++;
                     idOf[grp] = id;
+                    if (top > ZoneSet.Unassigned) st.PartOf[id] = top;
                     st.NewNames[id] = top > ZoneSet.Unassigned ? string.Format("part of {0} at ({1}, {2})", ZoneName(top), first % 64, first / 64) : string.Format("L{0} new area at ({1}, {2})", st.Level, first % 64, first / 64);
                 }
                 st.Zone = new int[n];

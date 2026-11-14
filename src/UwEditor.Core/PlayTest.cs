@@ -14,8 +14,14 @@ namespace UwEditor.Core
         public string Folder;
         /// <summary>The executable's file name in the copy (UW.EXE or UW2.EXE).</summary>
         public string Exe;
-        /// <summary>The saved game holding the player on the square (SAVE1…), or null when a new game starts there.</summary>
+        /// <summary>The saved game holding the player on the square (SAVE1…).</summary>
         public string Slot;
+        /// <summary>A lantern full of oil was put in the player's inventory (he had none): "lit, on a shoulder" or "unlit, in the pack"; else null.</summary>
+        public string Lantern;
+        /// <summary>The saved game was made for the test round the editor's default player (the folder had none to take one from).</summary>
+        public bool DefaultPlayer;
+        /// <summary>The test is for Underworld Exhumed: the copy's executable is left as it is (the port checks it), so the player is always in a saved game.</summary>
+        public bool Exhumed;
         public int Level, X, Y;
         /// <summary>What to do in the game, in words.</summary>
         public string Note;
@@ -23,17 +29,21 @@ namespace UwEditor.Core
 
     /// <summary>
     /// Sets up a play test: a copy of the game folder with the unsaved levels in it and the player
-    /// put on a square. A new game starts on level 1's square by patching the copy's executable
-    /// (as Move the new-game start does); anywhere else needs a saved game, whose PLAYER.DAT gets the
-    /// position (an open save's own, or with DATA open the first save of the folder, given DATA's
-    /// levels as edited). The copy is made afresh each time in its own folder, marked so that only a
-    /// folder made here is ever cleared.
+    /// put on a square. The player is always in a saved game of the copy, whose PLAYER.DAT gets
+    /// the position (an open save's own, or with DATA open the first save of the folder, given
+    /// DATA's levels as edited). A folder with no saved game gets one made round the editor's
+    /// default player (DefaultPlayer). The copy's executable is never changed: Underworld Exhumed
+    /// refuses any but the GOG release's (its port_check_exe: size and CRC-32), and a new game
+    /// started in DOSBox from an executable with the start square patched in (StartPosition) was
+    /// seen to begin on the usual square all the same. A player with no lantern gets one, full
+    /// of oil. The copy is made afresh each time in its own folder, marked so that only a folder
+    /// made here is ever cleared.
     /// </summary>
     public static class PlayTest
     {
         public const string Marker = ".uwedit-playtest";
 
-        public static PlayTestPlan Prepare(GameSession s, LevelEdits edits, byte[] playerDat, int level, int x, int y, string folder)
+        public static PlayTestPlan Prepare(GameSession s, LevelEdits edits, byte[] playerDat, int level, int x, int y, string folder, bool exhumed = false)
         {
             if (s == null) throw new InvalidOperationException("Open a game first.");
             var lm = edits != null ? edits.Model(level) : s.LoadLevel(level);
@@ -53,30 +63,26 @@ namespace UwEditor.Core
             CopyGame(game, folder, folder);
 
             string dataName = Path.GetFileName(s.DataFolder.TrimEnd(Path.DirectorySeparatorChar));
-            var plan = new PlayTestPlan { Folder = folder, Level = level, X = x, Y = y };
+            var plan = new PlayTestPlan { Folder = folder, Level = level, X = x, Y = y, Exhumed = exhumed };
             string exe = s.ExePath ?? StartPosition.ExePath(s.DataFolder, s.Kind);
             plan.Exe = exe != null ? Path.GetFileName(exe) : (s.IsUw2 ? "UW2.EXE" : "UW.EXE");
             byte[] levels = edits != null ? edits.ToBytes() : s.LevArk.ToBytes();
 
             string slot = s.IsSave ? Path.GetFileName(s.SaveFolder.TrimEnd(Path.DirectorySeparatorChar)) : null;
-            if (slot == null && level == 1 && exe != null)
-            {
-                // a new game: the edited levels in DATA, the start square patched into the copy's executable
-                File.WriteAllBytes(Path.Combine(folder, dataName, Path.GetFileName(s.LevArkPath)), levels);
-                string copyExe = Path.Combine(folder, Path.GetFileName(exe));
-                var bytes = File.ReadAllBytes(copyExe);
-                if (!StartPosition.Patch(bytes, s.Kind, x, y)) throw new InvalidOperationException("The start call was not found in " + plan.Exe + " (another version?).");
-                File.WriteAllBytes(copyExe, bytes);
-                plan.Note = string.Format("Start a new game: you begin on ({0}, {1}) of level 1.", x, y);
-                return plan;
-            }
             if (slot == null)
             {
-                // somewhere else from DATA: the first saved game carries the player into DATA's levels as edited
+                // from DATA: the first saved game carries the player into DATA's levels as edited
                 slot = Enumerable.Range(1, 4).Select(i => "SAVE" + i).FirstOrDefault(n => GameProfile.Find(Path.Combine(game, n), "PLAYER.DAT") != null);
-                if (slot == null) throw new InvalidOperationException("Only a new game starts without a saved game, and it starts on level 1. Save a game once (any slot), or test from level 1.");
                 File.WriteAllBytes(Path.Combine(folder, dataName, Path.GetFileName(s.LevArkPath)), levels);
                 playerDat = null;   // that save's own player
+                if (slot == null)
+                {
+                    // no saved game at all: one is made as slot 1 of the copy, round the editor's default player
+                    if (DefaultPlayer.Bytes(s.Kind) == null) throw new InvalidOperationException("Only a new game starts without a saved game, and it starts on level 1. Save a game once (any slot), or test from level 1.");
+                    slot = "SAVE1";
+                    DefaultPlayer.WriteSave(s, Path.Combine(folder, slot), levels);
+                    plan.DefaultPlayer = true;
+                }
             }
             string slotDir = Path.Combine(folder, slot);
             if (s.IsSave && !Directory.Exists(slotDir))
@@ -90,14 +96,61 @@ namespace UwEditor.Core
             }
             File.WriteAllBytes(Path.Combine(slotDir, Path.GetFileName(s.LevArkPath)), levels);
             string playerPath = GameProfile.Find(slotDir, "PLAYER.DAT") ?? Path.Combine(slotDir, "PLAYER.DAT");
+            if (playerDat == null && !File.Exists(playerPath))
+            {
+                // an open saved game with no player of its own
+                playerDat = DefaultPlayer.Bytes(s.Kind);
+                if (playerDat == null) throw new InvalidOperationException("This saved game has no PLAYER.DAT.");
+                plan.DefaultPlayer = true;
+            }
             var pd = PlayerDat.Parse(playerDat ?? File.ReadAllBytes(playerPath), s.Kind);
             var t = lm.Tiles[x, y];
             bool slope = t.Type >= TileType.SlopeUpN;
             pd.SetPosition(level, x, y, t.Height, slope, pd.Heading);
+            pd = WithLantern(pd, out plan.Lantern);
             File.WriteAllBytes(playerPath, pd.ToBytes());
             plan.Slot = slot;
-            plan.Note = string.Format("Restore saved game {0} ({1}): you stand on ({2}, {3}) of level {4}.", slot.Substring(4), slot, x, y, level);
+            plan.Note = string.Format("{0} saved game {1} ({2}): you stand on ({3}, {4}) of level {5}.", exhumed ? "Choose Journey Onward and" : "Restore", slot.Substring(4), slot, x, y, level)
+                + (plan.DefaultPlayer ? " There is no saved game to take the player from, so it is the editor's default character." : "")
+                + (plan.Lantern != null ? " A full lantern was added (" + plan.Lantern + ")." : "");
             return plan;
+        }
+
+        /// <summary>The lantern (both games): 0x090 unlit, 0x094 lit; its quality is the oil left.</summary>
+        public const int LanternItem = 0x90, LitLanternItem = 0x94;
+
+        /// <summary>
+        /// The player with a lantern full of oil, when he carries none: lit on a free shoulder,
+        /// else unlit in a free pack slot (what: which of the two; null when he has a lantern
+        /// already or no slot is free).
+        /// </summary>
+        public static PlayerDat WithLantern(PlayerDat pd, out string what)
+        {
+            what = null;
+            var inv = Player.PlayerInventory.Parse(pd.Rest);
+            if (inv.All().Any(i => i.ItemId == LanternItem || i.ItemId == LitLanternItem)) return pd;
+            int shoulder = new[] { 5, 6 }.FirstOrDefault(n => inv.InSlot(n) == null, -1);
+            int pack = inv.FreePackSlot();
+            if (shoulder < 0 && pack < 0) return pd;
+            var it = new Player.InventoryItem();
+            it.ItemId = shoulder >= 0 ? LitLanternItem : LanternItem;
+            it.IsQuantity = true; it.Link = 1;
+            it.Quality = 0x3F;
+            it.Slot = shoulder >= 0 ? shoulder : pack;
+            inv.Top.Add(it);
+            inv.Changed = true;
+            what = shoulder >= 0 ? "lit, on a shoulder" : "unlit, in the pack";
+            return pd.WithRest(inv.Serialize(pd.Rest));
+        }
+
+        /// <summary>
+        /// Underworld Exhumed's arguments for a play test: --data and --home both the copy, so the
+        /// port reads the copy's saved games (the one holding the player among them) and writes
+        /// its own there; then the extra arguments set.
+        /// </summary>
+        public static List<string> ExhumedArguments(PlayTestPlan plan, string extra)
+        {
+            return ExhumedConfig.Arguments(plan.Folder, plan.Folder, extra);
         }
 
         /// <summary>The game folder copied file by file, leaving out the editor's own backups, checkpoints and copies.</summary>
