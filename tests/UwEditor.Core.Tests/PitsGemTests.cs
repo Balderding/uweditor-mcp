@@ -66,12 +66,13 @@ namespace UwEditor.Core.Tests
             Assert.Equal((0x11E, 226), (l57.Objects[782].Item, l57.Objects[782].Parent));
 
             // the default options: both ways count, the kill comes first (sphere 14); with the option, Blog's way (sphere 16)
+            // (334 zones: since 0.1.44 Telekinesis from runes does not reach the two barrier squares of Britannia, WhereMagicWorksTests)
             var t = Timeline.Build(s, l => s.LoadLevel(l), new NavOptions(), new AbilityOptions(), null, null, variants: false);
-            Ends(t.Solve, 336);
+            Ends(t.Solve, 334);
             Assert.Equal("facts: key_gem_7", GemEvent(t.Solve).Placement.Source);
             Assert.Equal(14, GemEvent(t.Solve).Sphere);
             var blog = Timeline.Solve(t, new AbilityOptions { PitsGemByBlog = true }, "Blog's way");
-            Ends(blog, 336);
+            Ends(blog, 334);
             Assert.Equal("facts: key_gem_7_blog", GemEvent(blog).Placement.Source);
             Assert.Equal(16, GemEvent(blog).Sphere);
             Assert.DoesNotContain(blog.Events, e => e.Placement != null && e.Placement.Source == "facts: key_gem_7");

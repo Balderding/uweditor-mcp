@@ -56,7 +56,10 @@ namespace UwEditor.App
                        "The player logic says what the solver may expect of the player: where each ability comes from, lock picking and the Search skill. Bashing doors is always allowed." + (s.IsUw2 ? " This is made for UW1; UW2's levels are read the same way but not checked." : ""),
             });
             // the autozone movement and the player logic (shared with the Apply window)
-            top.Children.Add(new LogicOptionsPanel(opt, abil, true));
+            logicPanel = new LogicOptionsPanel(opt, abil, true);
+            top.Children.Add(logicPanel);
+            SettingsButtons = new SettingsBar(() => RandomizerSettings.FileName(RandomizerSettings.GameOf(session), RandomizerSettings.AutoZones, null), SettingsText, LoadSettings, t => summary.Text = t, "Settings");
+            top.Children.Add(SettingsButtons);
 
             var build = new Button { Content = "Build and Report", FontWeight = FontWeight.SemiBold };
             build.Click += async (o, e) => await BuildAsync();
@@ -74,6 +77,31 @@ namespace UwEditor.App
             root.Children.Add(top); root.Children.Add(report);
             Content = root;
             ManualWindow.Attach(this, "Automatic zones");
+        }
+
+        // ---- the settings file (the movement options and the player logic; a build has no seed)
+
+        readonly LogicOptionsPanel logicPanel;
+
+        /// <summary>Save, Load, Copy and Paste settings.</summary>
+        public SettingsBar SettingsButtons { get; private set; }
+
+        /// <summary>The settings on screen now, pretty or on one line.</summary>
+        public string SettingsText(bool compact)
+        {
+            return RandomizerSettings.Write(RandomizerSettings.GameOf(session), RandomizerSettings.AutoZones, new AutoZoneSettings { Nav = opt, Logic = abil }, null, null, compact);
+        }
+
+        /// <summary>Reads settings text into the options and the panel's controls; the summary line says what was loaded and every warning. Gives that message.</summary>
+        public string LoadSettings(string text)
+        {
+            var r = RandomizerSettings.Read(text, RandomizerSettings.GameOf(session), RandomizerSettings.AutoZones, new AutoZoneSettings());
+            if (!r.Ok) return summary.Text = SettingsBar.Refused(r);
+            var o = r.As<AutoZoneSettings>();
+            RandomizerSettings.CopyInto(o.Nav, opt);
+            RandomizerSettings.CopyInto(o.Logic, abil);
+            logicPanel.Refresh();
+            return summary.Text = SettingsBar.Loaded(r);
         }
 
         /// <summary>Build and Report: builds the zones with the current options (the levels with their unsaved edits) and shows the report.</summary>

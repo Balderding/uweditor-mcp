@@ -182,6 +182,9 @@ namespace UwEditor.App
             Changed?.Invoke();
         }
 
+        /// <summary>The list's entries were replaced from outside (settings loaded): saved and shown again.</summary>
+        public void ListReplaced() { Save(); }
+
         void Refresh()
         {
             string f = (filter.Text ?? "").Trim();

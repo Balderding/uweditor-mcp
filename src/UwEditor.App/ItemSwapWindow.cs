@@ -12,45 +12,6 @@ using UwEditor.Core.Randomizer;
 
 namespace UwEditor.App
 {
-    /// <summary>The swap window's settings, kept per game (item-swap-uw1.json / -uw2.json), apart from the shuffle's.</summary>
-    public sealed class SwapSettings
-    {
-        public int Seed { get; set; } = 1;
-        public bool AnyKind { get; set; }
-        public bool IncludeInventories { get; set; } = true;
-        public bool Weapons { get; set; } = true;
-        public bool Armour { get; set; } = true;
-        public bool Food { get; set; } = true;
-        public bool Lights { get; set; } = true;
-        public bool Tools { get; set; } = true;
-        public bool Runes { get; set; } = true;
-        public bool Wands { get; set; } = true;
-        public bool Scrolls { get; set; } = true;
-        public bool Potions { get; set; } = true;
-        public bool Rings { get; set; } = true;
-        /// <summary>Skulls, bones and piles of bones (Garamon's bones never).</summary>
-        public bool Bones { get; set; }
-        /// <summary>The other scenery that can be picked up.</summary>
-        public bool Scenery { get; set; }
-        /// <summary>An item put in a spot takes the spot's owner (ShuffleOptions.SpotOwnership).</summary>
-        public bool SpotOwnership { get; set; } = true;
-        /// <summary>"game", "world", "level" or "near" (ShuffleOptions.SwapScope).</summary>
-        public string Scope { get; set; } = "game";
-        public int Range { get; set; } = 1;
-        public bool SwapEnchantments { get; set; }
-        public bool EnchantWeapons { get; set; } = true;
-        public bool EnchantArmour { get; set; } = true;
-        public bool EnchantScrolls { get; set; } = true;
-        /// <summary>"random" or "progression" (ShuffleOptions.SwapRule).</summary>
-        public string Rule { get; set; } = "random";
-        /// <summary>The starting equipment stays where it is.</summary>
-        public bool KeepStart { get; set; } = true;
-        /// <summary>The starting equipment; null until filled with the game's (ItemShuffle.StartingEquipment).</summary>
-        public List<IgnoredObject> Start { get; set; }
-        /// <summary>The swap's own ignore list; null until filled from the shuffle's list the first time.</summary>
-        public List<IgnoredObject> Ignored { get; set; }
-    }
-
     /// <summary>
     /// Item swap: the existing objects of the ticked kinds trade places, within their kind or
     /// across all the ticked kinds, within a level, a world, ±N levels or the whole game.
@@ -91,6 +52,31 @@ namespace UwEditor.App
                        "Uniform progression hands out the weapons, armour, spell scrolls and wands by strength, with the weakest on the first level.",
             });
 
+            seed.ValueChanged += (o, e) => set.Seed = (int)(seed.Value ?? 1);
+            SettingsButtons = new SettingsBar(() => RandomizerSettings.FileName(RandomizerSettings.GameOf(session), RandomizerSettings.ItemSwap, set.Seed), SettingsText, LoadSettings, t => report.Text = t, "Settings");
+            header.Children.Add(SettingsButtons);
+            BuildTabs();
+
+            var preview = new Button { Content = "Preview" };
+            preview.Click += (o, e) => { string line = LogLine(); report.Text = "Preview — nothing changed yet.\n\n" + line + Run().Report; };
+            var swap = new Button { Content = "Swap", FontWeight = FontWeight.SemiBold };
+            swap.Click += (o, e) => Swap();
+            undoButton.Click += (o, e) => UndoAll();
+            var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 8, 0, 6) };
+            buttons.Children.Add(preview); buttons.Children.Add(swap); buttons.Children.Add(undoButton);
+            buttons.Children.Add(new TextBlock { Text = "Each swap is also one Edit ▸ Undo step per level; nothing is written to the game until you save.", VerticalAlignment = VerticalAlignment.Center, Opacity = 0.7, FontSize = 12, TextWrapping = TextWrapping.Wrap });
+
+            ItemToolLayout.Build(this, header, tabs, buttons, formula, report, 470, () => ItemShuffle.SwapFormula(session, Options()));
+            ManualWindow.Attach(this, "Swapping items");
+            Closed += (o, e) => Save();
+        }
+
+        /// <summary>The tabs (settings, ignored objects, starting equipment), built from the settings; again after Load settings.</summary>
+        void BuildTabs()
+        {
+            var s = session;
+            int sel = Math.Max(0, tabs.SelectedIndex);
+            tabs.Items.Clear();
             tabs.Items.Add(new TabItem { Header = "Settings", Content = new ScrollViewer { Content = SettingsTab(), Padding = new Thickness(4, 8, 16, 8) } });
             var ignTab = new TabItem { Header = "Ignored (" + set.Ignored.Count + ")" };
             ignTab.Content = new IgnoreListPanel(main, s, set.Ignored, ItemShuffle.Candidates(s, Level, true), () => { Save(); ignTab.Header = "Ignored (" + set.Ignored.Count + ")"; },
@@ -120,26 +106,14 @@ namespace UwEditor.App
             };
             buildStart();
             tabs.Items.Add(startTab);
-
-            var preview = new Button { Content = "Preview" };
-            preview.Click += (o, e) => report.Text = "Preview — nothing changed yet.\n\n" + Run().Report;
-            var swap = new Button { Content = "Swap", FontWeight = FontWeight.SemiBold };
-            swap.Click += (o, e) => Swap();
-            undoButton.Click += (o, e) => UndoAll();
-            var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 8, 0, 6) };
-            buttons.Children.Add(preview); buttons.Children.Add(swap); buttons.Children.Add(undoButton);
-            buttons.Children.Add(new TextBlock { Text = "Each swap is also one Edit ▸ Undo step per level; nothing is written to the game until you save.", VerticalAlignment = VerticalAlignment.Center, Opacity = 0.7, FontSize = 12, TextWrapping = TextWrapping.Wrap });
-
-            ItemToolLayout.Build(this, header, tabs, buttons, formula, report, 470, () => ItemShuffle.SwapFormula(session, Options()));
-            ManualWindow.Attach(this, "Swapping items");
-            Closed += (o, e) => Save();
+            tabs.SelectedIndex = sel;
         }
 
         Control SettingsTab()
         {
             var p = new StackPanel { Spacing = 6 };
             seed.Value = set.Seed;
-            seed.ValueChanged += (o, e) => set.Seed = (int)(seed.Value ?? 1);
+            if (seed.Parent is Panel old) old.Children.Remove(seed);
             var newSeed = new Button { Content = "New seed" };
             newSeed.Click += (o, e) => seed.Value = new Random().Next(1, int.MaxValue);
             var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
@@ -266,23 +240,34 @@ namespace UwEditor.App
         }
 
         /// <summary>The swap as shuffle options: the mode, the scope, the kinds, the owners, the enchantments, the ignored objects and the starting equipment.</summary>
-        public ShuffleOptions Options()
+        public ShuffleOptions Options() { return set.ToShuffleOptions(session); }
+
+        // ---- the settings file
+
+        /// <summary>Save, Load, Copy and Paste settings.</summary>
+        public SettingsBar SettingsButtons { get; private set; }
+
+        /// <summary>The settings on screen now (the settings tab, the ignored objects, the starting equipment, the seed, the levels' hash), pretty or on one line.</summary>
+        public string SettingsText(bool compact)
         {
-            var o = ShuffleOptions.Defaults(session);
-            o.Seed = set.Seed;
-            o.Mode = set.AnyKind ? "swap-any" : "swap-kind";
-            o.SwapRule = set.Rule == "progression" ? "progression" : "random";
-            o.IncludeInventories = set.IncludeInventories;
-            o.ShuffleWeapons = set.Weapons; o.ShuffleArmour = set.Armour; o.ShuffleFood = set.Food; o.ShuffleLights = set.Lights; o.SwapTools = set.Tools;
-            o.ShuffleRunes = set.Runes; o.ShuffleWands = set.Wands; o.ShuffleScrolls = set.Scrolls; o.ShufflePotions = set.Potions; o.ShuffleRings = set.Rings;
-            o.SwapBones = set.Bones; o.SwapScenery = set.Scenery;
-            o.SpotOwnership = set.SpotOwnership;
-            o.SwapScope = string.IsNullOrEmpty(set.Scope) ? "game" : set.Scope;
-            o.SwapRange = Math.Max(1, set.Range);
-            o.SwapEnchantments = set.SwapEnchantments; o.EnchantWeapons = set.EnchantWeapons; o.EnchantArmour = set.EnchantArmour; o.EnchantScrolls = set.EnchantScrolls;
-            o.Ignored = set.Ignored;
-            o.Kept = set.KeepStart ? set.Start : null;
-            return o;
+            return RandomizerSettings.Write(RandomizerSettings.GameOf(session), RandomizerSettings.ItemSwap, set, RandomizerSettings.LevelsHash(session, main.ViewModel.Edits), null, compact);
+        }
+
+        string LogLine() { return RandomizerSettings.LogLine(SettingsText(true)) + "\n\n"; }
+
+        /// <summary>Reads settings text into the settings and every tab (what it leaves out takes the defaults: the game's starting equipment and ignored wands). The report says what was loaded and every warning; gives that message.</summary>
+        public string LoadSettings(string text)
+        {
+            var d = new SwapSettings { Seed = set.Seed, Start = ItemShuffle.StartingEquipment(session, Level), Ignored = ItemShuffle.DefaultIgnored(session, Level) };
+            var r = RandomizerSettings.Read(text, RandomizerSettings.GameOf(session), RandomizerSettings.ItemSwap, d);
+            if (!r.Ok) return report.Text = SettingsBar.Refused(r);
+            var o = r.As<SwapSettings>();
+            if (o.Start == null) o.Start = new List<IgnoredObject>();
+            if (o.Ignored == null) o.Ignored = new List<IgnoredObject>();
+            RandomizerSettings.CopyInto(o, set);
+            Save();
+            BuildTabs();
+            return report.Text = SettingsBar.Loaded(r, new[] { RandomizerSettings.LevelsWarning(r, RandomizerSettings.LevelsHash(session, main.ViewModel.Edits)) });
         }
 
         public SwapSettings Settings_ { get { return set; } }
@@ -300,13 +285,14 @@ namespace UwEditor.App
         /// <summary>The Swap button.</summary>
         public void Swap()
         {
+            string line = LogLine();
             var r = Run();
             if (r.Changed == 0) { report.Text = "Nothing to change.\n\n" + r.Report; return; }
             ItemShuffle.Apply(r, main.ViewModel.Edits, set.Seed);
             applied.Add(r);
             undoButton.IsEnabled = true;
             Save();
-            report.Text = "Swapped. " + (applied.Count > 1 ? applied.Count + " swaps so far; Undo swap puts back all of them.\n\n" : "Undo swap puts everything back.\n\n") + r.Report;
+            report.Text = "Swapped. " + (applied.Count > 1 ? applied.Count + " swaps so far; Undo swap puts back all of them.\n\n" : "Undo swap puts everything back.\n\n") + line + r.Report;
             main.RandomizerApplied("Items swapped. Edit ▸ Undo (per level) or Undo swap in the item swap window puts them back.");
         }
 

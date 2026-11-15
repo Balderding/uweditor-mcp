@@ -1,0 +1,36 @@
+{
+  "format": "uw-randomizer-settings",
+  "version": 1,
+  "editor": "0.1.45",
+  "game": "UW1",
+  "tool": "auto-zones",
+  "options": {
+    "nav": {
+      "tickLength": 16,
+      "jumpMargin": 2,
+      "portal": false,
+      "gapJumps": true,
+      "diagonalJumps": false,
+      "cutAtLevelChanges": true,
+      "foldEmptyDeadEnds": true,
+      "shippedStart": false
+    },
+    "logic": {
+      "magic": true,
+      "newCharacterCircle": 1,
+      "singleUseItems": false,
+      "singleUseOnly": null,
+      "lockPicking": false,
+      "pickSkill": 30,
+      "pickRetry": true,
+      "searchSkill": 0,
+      "searchRetry": true,
+      "damageTrapWalls": false,
+      "ringNeedsLava": true,
+      "killNpcs": false,
+      "requireOrb": false,
+      "avoidLost": true,
+      "pitsGemByBlog": false
+    }
+  }
+}

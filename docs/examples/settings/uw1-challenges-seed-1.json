@@ -1,0 +1,166 @@
+{
+  "format": "uw-randomizer-settings",
+  "version": 1,
+  "editor": "0.1.45",
+  "game": "UW1",
+  "tool": "challenges",
+  "seed": 1,
+  "levels": "69fbf5e2",
+  "options": {
+    "selected": [],
+    "fastingKeep": 50,
+    "rangerWeights": [
+      10,
+      3,
+      2,
+      1
+    ],
+    "special": [
+      {
+        "level": 5,
+        "index": 211,
+        "label": "L5 #211 fire elemental (19, 50) hostile in #533 create object trap"
+      },
+      {
+        "level": 6,
+        "index": 196,
+        "label": "L6 #196 fire elemental (55, 6) hostile"
+      },
+      {
+        "level": 6,
+        "index": 206,
+        "label": "L6 #206 fire elemental (57, 56) hostile in #704 create object trap"
+      },
+      {
+        "level": 7,
+        "index": 177,
+        "label": "L7 #177 fire elemental (33, 49) hostile"
+      },
+      {
+        "level": 7,
+        "index": 178,
+        "label": "L7 #178 fire elemental (34, 53) hostile"
+      },
+      {
+        "level": 7,
+        "index": 205,
+        "label": "L7 #205 fire elemental (35, 45) hostile"
+      },
+      {
+        "level": 7,
+        "index": 209,
+        "label": "L7 #209 fire elemental (56, 41) hostile"
+      },
+      {
+        "level": 7,
+        "index": 211,
+        "label": "L7 #211 fire elemental (35, 59) hostile"
+      },
+      {
+        "level": 7,
+        "index": 212,
+        "label": "L7 #212 fire elemental (47, 40) hostile"
+      },
+      {
+        "level": 7,
+        "index": 213,
+        "label": "L7 #213 fire elemental (51, 40) hostile"
+      },
+      {
+        "level": 7,
+        "index": 228,
+        "label": "L7 #228 fire elemental (42, 41) hostile"
+      },
+      {
+        "level": 7,
+        "index": 229,
+        "label": "L7 #229 fire elemental (32, 61) hostile"
+      },
+      {
+        "level": 7,
+        "index": 236,
+        "label": "L7 #236 fire elemental (60, 43) hostile"
+      },
+      {
+        "level": 7,
+        "index": 237,
+        "label": "L7 #237 fire elemental (35, 56) hostile in #835 create object trap"
+      },
+      {
+        "level": 7,
+        "index": 239,
+        "label": "L7 #239 fire elemental (60, 43) hostile in #573 create object trap"
+      },
+      {
+        "level": 7,
+        "index": 254,
+        "label": "L7 #254 fire elemental (38, 43) hostile"
+      },
+      {
+        "level": 8,
+        "index": 138,
+        "label": "L8 #138 fire elemental (41, 51) hostile"
+      },
+      {
+        "level": 8,
+        "index": 141,
+        "label": "L8 #141 fire elemental (23, 15) hostile"
+      },
+      {
+        "level": 8,
+        "index": 142,
+        "label": "L8 #142 fire elemental (22, 5) hostile"
+      },
+      {
+        "level": 8,
+        "index": 143,
+        "label": "L8 #143 fire elemental (9, 30) hostile"
+      },
+      {
+        "level": 8,
+        "index": 144,
+        "label": "L8 #144 fire elemental (4, 36) hostile"
+      },
+      {
+        "level": 8,
+        "index": 145,
+        "label": "L8 #145 fire elemental (33, 38) hostile"
+      },
+      {
+        "level": 8,
+        "index": 146,
+        "label": "L8 #146 fire elemental (53, 37) hostile"
+      },
+      {
+        "level": 8,
+        "index": 147,
+        "label": "L8 #147 fire elemental (54, 7) hostile"
+      },
+      {
+        "level": 8,
+        "index": 148,
+        "label": "L8 #148 fire elemental (41, 22) hostile"
+      },
+      {
+        "level": 8,
+        "index": 191,
+        "label": "L8 #191 fire elemental (33, 27) upset"
+      },
+      {
+        "level": 8,
+        "index": 254,
+        "label": "L8 #254 fire elemental (31, 27) upset"
+      },
+      {
+        "level": 9,
+        "index": 219,
+        "label": "L9 #219 item 0x04F (4, 3) mellow"
+      },
+      {
+        "level": 9,
+        "index": 241,
+        "label": "L9 #241 item 0x07D (19, 10) mellow"
+      }
+    ]
+  }
+}

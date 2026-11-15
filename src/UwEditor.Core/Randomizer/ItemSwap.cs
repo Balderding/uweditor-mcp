@@ -32,6 +32,65 @@ namespace UwEditor.Core.Randomizer
         public List<IgnoredObject> Kept { get; set; }
     }
 
+    /// <summary>The swap window's settings, kept per game (item-swap-uw1.json / -uw2.json), apart from the shuffle's; <see cref="ToShuffleOptions"/> makes the options a swap runs with.</summary>
+    public sealed class SwapSettings
+    {
+        public int Seed { get; set; } = 1;
+        public bool AnyKind { get; set; }
+        public bool IncludeInventories { get; set; } = true;
+        public bool Weapons { get; set; } = true;
+        public bool Armour { get; set; } = true;
+        public bool Food { get; set; } = true;
+        public bool Lights { get; set; } = true;
+        public bool Tools { get; set; } = true;
+        public bool Runes { get; set; } = true;
+        public bool Wands { get; set; } = true;
+        public bool Scrolls { get; set; } = true;
+        public bool Potions { get; set; } = true;
+        public bool Rings { get; set; } = true;
+        /// <summary>Skulls, bones and piles of bones (Garamon's bones never).</summary>
+        public bool Bones { get; set; }
+        /// <summary>The other scenery that can be picked up.</summary>
+        public bool Scenery { get; set; }
+        /// <summary>An item put in a spot takes the spot's owner (ShuffleOptions.SpotOwnership).</summary>
+        public bool SpotOwnership { get; set; } = true;
+        /// <summary>"game", "world", "level" or "near" (ShuffleOptions.SwapScope).</summary>
+        public string Scope { get; set; } = "game";
+        public int Range { get; set; } = 1;
+        public bool SwapEnchantments { get; set; }
+        public bool EnchantWeapons { get; set; } = true;
+        public bool EnchantArmour { get; set; } = true;
+        public bool EnchantScrolls { get; set; } = true;
+        /// <summary>"random" or "progression" (ShuffleOptions.SwapRule).</summary>
+        public string Rule { get; set; } = "random";
+        /// <summary>The starting equipment stays where it is.</summary>
+        public bool KeepStart { get; set; } = true;
+        /// <summary>The starting equipment; null until filled with the game's (ItemShuffle.StartingEquipment).</summary>
+        public List<IgnoredObject> Start { get; set; }
+        /// <summary>The swap's own ignore list; null until filled from the shuffle's list the first time.</summary>
+        public List<IgnoredObject> Ignored { get; set; }
+
+        /// <summary>The swap as shuffle options: the mode, the scope, the kinds, the owners, the enchantments, the ignored objects and the starting equipment.</summary>
+        public ShuffleOptions ToShuffleOptions(GameSession s)
+        {
+            var o = ShuffleOptions.Defaults(s);
+            o.Seed = Seed;
+            o.Mode = AnyKind ? "swap-any" : "swap-kind";
+            o.SwapRule = Rule == "progression" ? "progression" : "random";
+            o.IncludeInventories = IncludeInventories;
+            o.ShuffleWeapons = Weapons; o.ShuffleArmour = Armour; o.ShuffleFood = Food; o.ShuffleLights = Lights; o.SwapTools = Tools;
+            o.ShuffleRunes = Runes; o.ShuffleWands = Wands; o.ShuffleScrolls = Scrolls; o.ShufflePotions = Potions; o.ShuffleRings = Rings;
+            o.SwapBones = Bones; o.SwapScenery = Scenery;
+            o.SpotOwnership = SpotOwnership;
+            o.SwapScope = string.IsNullOrEmpty(Scope) ? "game" : Scope;
+            o.SwapRange = Math.Max(1, Range);
+            o.SwapEnchantments = SwapEnchantments; o.EnchantWeapons = EnchantWeapons; o.EnchantArmour = EnchantArmour; o.EnchantScrolls = EnchantScrolls;
+            o.Ignored = Ignored;
+            o.Kept = KeepStart ? Start : null;
+            return o;
+        }
+    }
+
     public static partial class ItemShuffle
     {
         /// <summary>The bones, skulls and piles of bones the player can pick up (include/items.h 0xC2-0xC6, both games).</summary>

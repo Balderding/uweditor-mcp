@@ -678,14 +678,116 @@ namespace UwEditor.Core.Randomizer
 
             int ZoneAt(int[] t) { return t == null ? 0 : zs.NearestZone(t[0], t[1], t[2], 3); }
 
+            // ---- where a spell is cast (AbilityZones.CastAt): the ways are narrowed when the levels are built; the facts' links,
+            // the placements, the mechanisms and the warps here
+
+            readonly Dictionary<string, string> castAt = new Dictionary<string, string>();
+
+            /// <summary>A requirement as it holds when the spell is cast at the square t (level, x, y); unchanged with no square.</summary>
+            string CastAt(string req, int[] t)
+            {
+                if (t == null || string.IsNullOrEmpty(req) || !req.Contains("spell:")) return req;
+                string key = req + "|" + t[0] + "|" + t[1] + "|" + t[2], r;
+                if (!castAt.TryGetValue(key, out r))
+                {
+                    r = AbilityZones.CastAt(s, b.WalledLevel, res.Facts, req, t[0], t[1], t[2]);
+                    var p = Requirement.TryParse(r, out _);
+                    castAt[key] = r = p == null ? r : p.ToString();
+                }
+                return r;
+            }
+
+            /// <summary>A placement's requirement where it lies (its tile, when known).</summary>
+            string PlaceRequires(Placement p)
+            {
+                if (string.IsNullOrEmpty(p.Requires) || !p.Requires.Contains("spell:")) return p.Requires;
+                int[] t;
+                if (!spot.TryGetValue(p, out t)) extraSpot.TryGetValue(p, out t);
+                return CastAt(p.Requires, t);
+            }
+
+            /// <summary>Base zone -> one square of each kind of place a spell can be cast from in it (CastKind).</summary>
+            Dictionary<int, List<int[]>> castSquares;
+            Dictionary<int, int[]> freshSquare;
+
+            /// <summary>What decides a spell at a square: no magic, the nomana fact, Britannia (the same kind narrows a requirement the same way).</summary>
+            string CastKind(int l, int x, int y)
+            {
+                if (AbilityZones.NoMagicAt(s, b.WalledLevel, l, x, y)) return "nomagic";
+                var f = res.Facts.NoMana(l, x, y);
+                return (f != null ? "nomana:" + f.Id : "") + (AbilityZones.InBritannia(s, l) ? "|britannia" : "");
+            }
+
+            /// <summary>
+            /// The squares a spell may be cast from in a zone: one of each kind (CastKind) for a base
+            /// zone, read off the zone set's tiles; for a zone a change split off (a fresh id), its
+            /// first square.
+            /// </summary>
+            List<int[]> CastSquares(int z)
+            {
+                if (castSquares == null)
+                {
+                    castSquares = new Dictionary<int, List<int[]>>();
+                    var kinds = new Dictionary<int, HashSet<string>>();
+                    for (int l = 1; l <= zs.Levels; l++)
+                        for (int y = 0; y < 64; y++)
+                            for (int x = 0; x < 64; x++)
+                            {
+                                int k = zs.ZoneAt(l, x, y);
+                                if (k <= ZoneSet.Unassigned) continue;
+                                HashSet<string> seen;
+                                if (!kinds.TryGetValue(k, out seen)) { kinds[k] = seen = new HashSet<string>(); castSquares[k] = new List<int[]>(); }
+                                if (seen.Add(CastKind(l, x, y))) castSquares[k].Add(new[] { l, x, y });
+                            }
+                }
+                List<int[]> list;
+                if (castSquares.TryGetValue(z, out list)) return list;
+                if (freshSquare == null || freshSquare.Count < freshIds.Count)
+                {
+                    freshSquare = new Dictionary<int, int[]>();
+                    foreach (var kv in freshIds)
+                    {
+                        var parts = kv.Key.Split('|');
+                        int l = int.Parse(parts[0]), first = int.Parse(parts[2]);
+                        freshSquare[kv.Value] = first >= 0 ? new[] { l, first % 64, first / 64 } : new[] { l, -1, -1 };
+                    }
+                }
+                int[] t;
+                return freshSquare.TryGetValue(z, out t) ? new List<int[]> { t } : new List<int[]>();
+            }
+
+            /// <summary>
+            /// A warp's requirement as it holds from the zones reached (ctx.Reach; only those on its
+            /// level when it starts from one): a spell is cast where the player stands, so the warp
+            /// holds when it holds from one of them (CastAt). Gate Travel from UW1's level 7 before the
+            /// orb is broken takes a scroll or a wand, and from a no-magic square nothing.
+            /// </summary>
+            string WarpRequires(Fact f, Ctx ctx)
+            {
+                if (string.IsNullOrEmpty(f.Requires) || !f.Requires.Contains("spell:")) return f.Requires;
+                var alts = new HashSet<string>();
+                foreach (int z in ctx.Reach)
+                    foreach (var t in CastSquares(z))
+                        if (f.FromLevel <= 0 || t[0] == f.FromLevel) alts.Add(CastAt(f.Requires, t));
+                if (alts.Count == 0) return "flag:__never__";
+                if (alts.Count == 1) return alts.First();
+                return string.Join(" | ", alts.OrderBy(a => a, StringComparer.Ordinal).Select(a => "(" + a + ")"));
+            }
+
             void Facts(Func<int, LevelModel> lm)
             {
                 foreach (var f in res.Facts.OfKind("link"))
                 {
-                    int a = ZoneAt(Tile(f.From, lm)), z = ZoneAt(Tile(f.To, lm));
+                    int[] ta = Tile(f.From, lm), tz = Tile(f.To, lm);
+                    int a = ZoneAt(ta), z = ZoneAt(tz);
                     if (a <= ZoneSet.Unassigned || z <= ZoneSet.Unassigned) { res.Warnings.Add("Facts: " + f.Id + ": no zone at " + f.From + " or " + f.To + "."); continue; }
                     if (a == z) { res.Warnings.Add("Facts: " + f.Id + ": " + f.From + " and " + f.To + " lie in the same zone (" + SolveResult.ZoneName(zs, a) + "); the link changes nothing."); continue; }
-                    res.FactLinks.Add(new ZoneLink { Id = 9000 + res.FactLinks.Count, From = a, To = z, Kind = f.LinkKind.Length > 0 ? f.LinkKind : "other", Requires = f.Requires, TwoWay = f.TwoWay, Notes = "facts: " + f.Id, Level = f.From.Level, X = f.From.X, Y = f.From.Y, Confidence = f.Confidence == "todo" ? "todo" : "certain" });
+                    // a spell is cast where the way starts (AbilityZones.CastAt): a two-way link whose ends differ becomes a link each way
+                    string fwd = CastAt(f.Requires, ta), back = f.TwoWay ? CastAt(f.Requires, tz) : fwd;
+                    string kind = f.LinkKind.Length > 0 ? f.LinkKind : "other", conf = f.Confidence == "todo" ? "todo" : "certain";
+                    res.FactLinks.Add(new ZoneLink { Id = 9000 + res.FactLinks.Count, From = a, To = z, Kind = kind, Requires = fwd, TwoWay = f.TwoWay && fwd == back, Notes = "facts: " + f.Id, Level = f.From.Level, X = f.From.X, Y = f.From.Y, Confidence = conf });
+                    if (f.TwoWay && fwd != back)
+                        res.FactLinks.Add(new ZoneLink { Id = 9000 + res.FactLinks.Count, From = z, To = a, Kind = kind, Requires = back, Notes = "facts: " + f.Id + " (back)", Level = f.To.Level, X = f.To.X, Y = f.To.Y, Confidence = conf });
                     if (f.Replace) { cuts.Add(a + ">" + z); cuts.Add(z + ">" + a); }
                 }
                 foreach (var f in res.Facts.OfKind("warp"))
@@ -728,16 +830,14 @@ namespace UwEditor.Core.Randomizer
                 string where = RegionTerm.Replace(m.SetOff, mm => { int r = int.Parse(mm.Groups[1].Value); int z = zoneOf(r); return z > 0 ? "zone:" + z : "flag:__no_zone__"; });
                 var terms = new List<string> { where, m.Conditions, needs };
                 // a look trigger of height z > 0 passes skill_check(Search, z); Reveal sets it off with Search 45 (event/TRIGGER.C UseTrigger, combat/SPELLS.C sp_true_sight)
-                if (m.Look > 0)
-                {
-                    // Reveal where magic does not work, as the ways are narrowed (AbilityZones.Narrow): only worn on UW1's level 9, and cast only with the fact's token on a level without mana
-                    string reveal = "spell:reveal";
-                    var nomana = res.Facts.NoMana(m.Level, m.X, m.Y);
-                    if (s != null && !s.IsUw2 && m.Level == 9) reveal = "worn:reveal";
-                    else if (nomana != null) reveal = string.Format("(cast:reveal & ({0})) | use:reveal", string.IsNullOrEmpty(nomana.Until) ? "flag:__never__" : nomana.Until);
-                    terms.Add(m.Look < 30 ? reveal + " | search:" + m.Look : "search:" + m.Look);
-                }
-                return ZoneLink.JoinAnd(terms);
+                if (m.Look > 0) terms.Add(m.Look < 30 ? "spell:reveal | search:" + m.Look : "search:" + m.Look);
+                // a spell it asks for (Reveal for a look, what the facts add) where magic does not work, as the ways are narrowed (AbilityZones.CastAt):
+                // cast at the trigger's square when it lies on the map, else at the square the trap acts on
+                int tx = m.X, ty = m.Y;
+                LevelModel lm = null;
+                try { lm = b.WalledLevel != null ? b.WalledLevel(m.Level) : null; } catch (Exception) { }
+                if (lm != null && m.Trigger > 0 && m.Trigger < lm.Objects.Length && lm.Objects[m.Trigger].TileX >= 0) { tx = lm.Objects[m.Trigger].TileX; ty = lm.Objects[m.Trigger].TileY; }
+                return CastAt(ZoneLink.JoinAnd(terms), new[] { m.Level, tx, ty });
             }
 
             // ---- applying changes to a level
@@ -1157,7 +1257,7 @@ namespace UwEditor.Core.Randomizer
             {
                 if (f.Option.Length > 0 && !ctx.Options.OptionsOn.Contains(f.Option)) return false;
                 if (f.FromLevel > 0 && !ctx.Reach.Any(z => zs.LevelsOf(z).Contains(f.FromLevel))) return false;
-                return Req(f.Requires).Eval(ctx);
+                return Req(WarpRequires(f, ctx)).Eval(ctx);
             }
 
             int WarpTarget(Fact f)
@@ -1282,12 +1382,13 @@ namespace UwEditor.Core.Randomizer
                             if (z <= ZoneSet.Unassigned || ctx.Reach.Contains(z) || newly.Contains(z) || !WarpHolds(f, ctx, cur)) continue;
                             // a warp made with a scroll or a potion uses it up, as a way does
                             int w0 = sv.OnceSpent.Count;
-                            if (!holds(Req(f.Requires))) continue;
+                            string wreq = WarpRequires(f, ctx);
+                            if (!holds(Req(wreq))) continue;
                             newly.Add(z);
                             if (!sv.FirstLink.ContainsKey(z))
                             {
-                                sv.FirstLink[z] = new ZoneLink { From = 0, To = z, Kind = "warp", Requires = f.Requires, Notes = "facts: " + f.Id };
-                                var wev = new TimelineEvent { Sphere = sphere.Index, Kind = "zone", Zone = z, Link = sv.FirstLink[z], Warp = f, Requires = f.Requires ?? "" };
+                                sv.FirstLink[z] = new ZoneLink { From = 0, To = z, Kind = "warp", Requires = wreq, Notes = "facts: " + f.Id };
+                                var wev = new TimelineEvent { Sphere = sphere.Index, Kind = "zone", Zone = z, Link = sv.FirstLink[z], Warp = f, Requires = wreq ?? "" };
                                 spentSince(wev, w0);
                                 sv.Events.Add(wev);
                             }
@@ -1378,14 +1479,15 @@ namespace UwEditor.Core.Randomizer
                             if (SolverOptions.Gone(p, ctx, Req)) continue;
                             int n0 = sv.OnceSpent.Count;
                             List<string> over = null;
-                            if (p.UsesUp != null && !string.IsNullOrEmpty(p.Requires))
+                            string preq = PlaceRequires(p);
+                            if (p.UsesUp != null && !string.IsNullOrEmpty(preq))
                             {
-                                over = handsOver(p, Req(p.Requires));
+                                over = handsOver(p, Req(preq));
                                 if (over.Any(g => !left(g))) continue;      // nothing left to hand over: another piece must be found first
                             }
-                            if (!string.IsNullOrEmpty(p.Requires) && !holds(Req(p.Requires))) continue;
+                            if (!string.IsNullOrEmpty(preq) && !holds(Req(preq))) continue;
                             if (over != null) foreach (var g in over) spend(g);
-                            var pev = new TimelineEvent { Sphere = sphere.Index, Kind = "token", Zone = z, Token = t, Placement = p, Requires = p.Requires ?? "" };
+                            var pev = new TimelineEvent { Sphere = sphere.Index, Kind = "token", Zone = z, Token = t, Placement = p, Requires = preq ?? "" };
                             spentSince(pev, n0);
                             if (once)
                             {
@@ -1691,7 +1793,7 @@ namespace UwEditor.Core.Randomizer
                                 if (t.Length == 0 || (ctx.Tokens.Contains(t) && !onceHere) || (!anywhere && !ctx.Reach.Contains(PlacementZone(p, cur)))) continue;
                                 // from a zone reached before the solve left the start's free area, a new character's casting
                                 if (anywhere && sv.FreeArea != null && (sv.FreeAreaLeft < 0 || sp < sv.FreeAreaLeft) && p.Circle > so.NewCharacterCircle) continue;
-                                if (!string.IsNullOrEmpty(p.Requires) && !Req(p.Requires).Eval(ctx)) continue;
+                                if (!string.IsNullOrEmpty(p.Requires) && !Req(PlaceRequires(p)).Eval(ctx)) continue;
                                 if (onceHere) ctx.OnceAllowed.Add(t);
                                 ctx.Tokens.Add(t); any = true;
                             }

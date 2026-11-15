@@ -41,7 +41,7 @@ namespace UwEditor.App
             var shuffle = new Button { Content = "Shuffle", FontWeight = FontWeight.SemiBold };
             shuffle.Click += (o, e) => Shuffle();
             var preview = new Button { Content = "Preview" };
-            preview.Click += (o, e) => { var r = Run(); report.Text = "Preview — nothing changed yet.\n\n" + r.Report; };
+            preview.Click += (o, e) => { string line = LogLine(); var r = Run(); report.Text = "Preview — nothing changed yet.\n\n" + line + r.Report; };
             undoButton.Click += (o, e) => UndoAll();
             var newSeed = new Button { Content = "New seed" };
             newSeed.Click += (o, e) => seed.Value = new Random().Next(1, int.MaxValue);
@@ -72,6 +72,8 @@ namespace UwEditor.App
             row.Children.Add(Label("Seed")); row.Children.Add(seed); row.Children.Add(newSeed); row.Children.Add(defaults);
             row.Children.Add(inv); row.Children.Add(keep); row.Children.Add(anywhere);
             top.Children.Add(row);
+            SettingsButtons = new SettingsBar(() => RandomizerSettings.FileName(RandomizerSettings.GameOf(session), RandomizerSettings.ItemShuffle, opt.Seed), SettingsText, LoadSettings, t => report.Text = t, "Settings");
+            top.Children.Add(SettingsButtons);
 
             var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 8, 0, 6) };
             var world = new Button { Content = "World report" };
@@ -142,16 +144,48 @@ namespace UwEditor.App
 
         ShuffleResult Run() { opt.Mode = "shuffle"; return ItemShuffle.Run(session, Level, opt); }
 
+        // ---- the settings file
+
+        /// <summary>Save, Load, Copy and Paste settings.</summary>
+        public SettingsBar SettingsButtons { get; private set; }
+
+        /// <summary>The settings on screen now (every tab, the ignored objects, the seed, the levels' hash), pretty or on one line.</summary>
+        public string SettingsText(bool compact)
+        {
+            opt.Mode = "shuffle";
+            return RandomizerSettings.Write(RandomizerSettings.GameOf(session), RandomizerSettings.ItemShuffle, opt, RandomizerSettings.LevelsHash(session, main.ViewModel.Edits), null, compact);
+        }
+
+        /// <summary>The settings line a report starts with.</summary>
+        string LogLine() { return RandomizerSettings.LogLine(SettingsText(true)) + "\n\n"; }
+
+        /// <summary>Reads settings text into the options and every tab (what it leaves out takes the game's defaults); the ignored objects become the shuffle's list. The report says what was loaded and every warning; gives that message.</summary>
+        public string LoadSettings(string text)
+        {
+            var d = ShuffleOptions.Defaults(session, Level);
+            d.Seed = opt.Seed;
+            var r = RandomizerSettings.Read(text, RandomizerSettings.GameOf(session), RandomizerSettings.ItemShuffle, d);
+            if (!r.Ok) return report.Text = SettingsBar.Refused(r);
+            opt = r.As<ShuffleOptions>();
+            opt.Game = RandomizerSettings.GameOf(session);
+            opt.Complete(session, Level);
+            IgnoreStore.Save(session, opt.Ignored);
+            SaveOptions();
+            Build();
+            return report.Text = SettingsBar.Loaded(r, new[] { RandomizerSettings.LevelsWarning(r, RandomizerSettings.LevelsHash(session, main.ViewModel.Edits)) });
+        }
+
         /// <summary>The Shuffle button.</summary>
         public void Shuffle()
         {
+            string line = LogLine();
             var r = Run();
             if (r.Changed == 0 && r.Moved == 0) { report.Text = "Nothing to change.\n\n" + r.Report; return; }
             ItemShuffle.Apply(r, main.ViewModel.Edits, opt.Seed);
             applied.Add(r);
             undoButton.IsEnabled = true;
             SaveOptions();
-            report.Text = "Shuffled. " + (applied.Count > 1 ? applied.Count + " shuffles so far; Undo shuffle puts back all of them.\n\n" : "Undo shuffle puts everything back.\n\n") + r.Report;
+            report.Text = "Shuffled. " + (applied.Count > 1 ? applied.Count + " shuffles so far; Undo shuffle puts back all of them.\n\n" : "Undo shuffle puts everything back.\n\n") + line + r.Report;
             main.ShuffleApplied();
         }
 

@@ -58,6 +58,8 @@ namespace UwEditor.App
                        "Quest items and conversations are never touched. Some pairs cannot go together; the others are applied one after another in a fixed order. The same seed gives the same result.",
             });
             header = head;
+            SettingsButtons = new SettingsBar(() => RandomizerSettings.FileName(RandomizerSettings.GameOf(session), RandomizerSettings.Challenges, opt.Seed), SettingsText, LoadSettings, t => report.Text = t, "Settings");
+            head.Children.Add(SettingsButtons);
 
             BuildSettings();
             tabs.Items.Add(new TabItem { Header = "Challenges", Content = new ScrollViewer { Content = settings, Padding = new Thickness(4, 8, 16, 8) } });
@@ -199,6 +201,45 @@ namespace UwEditor.App
             try { Directory.CreateDirectory(Settings.Folder); File.WriteAllText(PathOf(), opt.ToJson()); } catch (Exception) { }
         }
 
+        // ---- the settings file
+
+        /// <summary>Save, Load, Copy and Paste settings.</summary>
+        public SettingsBar SettingsButtons { get; private set; }
+
+        /// <summary>The settings on screen now (the ticked challenges and their options, the special creatures, the seed, the levels' hash), pretty or on one line.</summary>
+        public string SettingsText(bool compact)
+        {
+            return RandomizerSettings.Write(RandomizerSettings.GameOf(session), RandomizerSettings.Challenges, opt, RandomizerSettings.LevelsHash(session, main.ViewModel.Edits), null, compact);
+        }
+
+        string LogLine() { return RandomizerSettings.LogLine(SettingsText(true)) + "\n\n"; }
+
+        /// <summary>Reads settings text into the options and every control (what it leaves out takes the defaults, the game's special creatures among them). The report says what was loaded and every warning; gives that message.</summary>
+        public string LoadSettings(string text)
+        {
+            var d = new ChallengeOptions { Seed = opt.Seed, Special = Challenges.DefaultSpecial(session, Level) };
+            var r = RandomizerSettings.Read(text, RandomizerSettings.GameOf(session), RandomizerSettings.Challenges, d);
+            if (!r.Ok) return report.Text = SettingsBar.Refused(r);
+            var o = r.As<ChallengeOptions>();
+            if (o.Special == null) o.Special = new List<IgnoredObject>();
+            if (o.Selected == null) o.Selected = new List<string>();
+            if (o.RangerWeights == null || o.RangerWeights.Length != 4) o.RangerWeights = new double[] { 10, 3, 2, 1 };
+            var selected = o.Selected.ToList();
+            RandomizerSettings.CopyInto(o, opt);
+            // the controls follow; their handlers write the same values back (the ticks keep the text's order)
+            seed.Value = opt.Seed;
+            foreach (var kv in boxes) kv.Value.IsChecked = opt.IsOn(kv.Key);
+            opt.Selected = selected;
+            if (FastingSlider != null) FastingSlider.Value = opt.FastingKeep;
+            var weights = opt.RangerWeights.ToArray();
+            if (RangerBoxes != null) for (int i = 0; i < RangerBoxes.Count && i < weights.Length; i++) RangerBoxes[i].Value = (decimal)weights[i];
+            opt.RangerWeights = weights;
+            SpecialPanel.ListReplaced();
+            UpdateConflict();
+            Save();
+            return report.Text = SettingsBar.Loaded(r, new[] { RandomizerSettings.LevelsWarning(r, RandomizerSettings.LevelsHash(session, main.ViewModel.Edits)) });
+        }
+
         public ChallengeOptions Options { get { return opt; } }
         public string ReportText { get { return report.Text; } }
         public bool CanUndo { get { return undoButton.IsEnabled; } }
@@ -223,12 +264,13 @@ namespace UwEditor.App
             ChallengeResult r;
             try { r = Run(); }
             catch (Exception ex) { report.Text = "The preview failed: " + ex.Message; return; }
-            report.Text = r.Refused != null ? r.Refused : "Preview — nothing changed yet.\n\n" + r.Report;
+            report.Text = r.Refused != null ? r.Refused : "Preview — nothing changed yet.\n\n" + LogLine() + r.Report;
         }
 
         /// <summary>The Apply button.</summary>
         public void ApplyChallenges()
         {
+            string line = LogLine();
             ChallengeResult r;
             try { r = Run(); }
             catch (Exception ex) { report.Text = "Nothing was changed: " + ex.Message; return; }
@@ -245,7 +287,7 @@ namespace UwEditor.App
             if (r.TableChanges.Count > 0)
                 notes.Add(tables == null ? "OBJECTS.DAT could not be opened, so its creature table is unchanged." : a.Table.Count + " field(s) of OBJECTS.DAT's creature table changed in Tools ▸ Object tables. They are unsaved there until File ▸ Save all writes them; DATA's copy of the file serves every save.");
             if (player != null) notes.Add("The player's inventory changed (unsaved).");
-            report.Text = "Applied. " + (applied.Count > 1 ? applied.Count + " runs so far; Undo challenges puts back all of them." : "Undo challenges puts everything back.") + string.Concat(notes.Select(n => "\n" + n)) + "\n\n" + r.Report;
+            report.Text = "Applied. " + (applied.Count > 1 ? applied.Count + " runs so far; Undo challenges puts back all of them." : "Undo challenges puts everything back.") + string.Concat(notes.Select(n => "\n" + n)) + "\n\n" + line + r.Report;
             main.ViewModel.RaiseEditState();
             main.RandomizerApplied("Named challenges applied. Edit ▸ Undo (per level) or Undo challenges in the Named challenges window puts them back.");
         }

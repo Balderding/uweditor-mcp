@@ -57,6 +57,12 @@ namespace UwEditor.Core.Randomizer
         /// </summary>
         public bool? PlacesInReach;
 
+        /// <summary>The start a given square makes (StartChoice.Given): the middle of the square, at the floor; the window and the settings file make it so.</summary>
+        public static StartPoint GivenStart(int level, int x, int y)
+        {
+            return new StartPoint { Level = level, X = x + 0.5, Y = y + 0.5, Z = double.NaN, Description = string.Format("the given start, level {0} ({1}, {2})", level, x, y) };
+        }
+
         public KeyShuffleOptions Clone()
         {
             var o = (KeyShuffleOptions)MemberwiseClone();

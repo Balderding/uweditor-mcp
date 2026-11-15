@@ -2167,7 +2167,9 @@ All of it is in the **Randomizer** menu:
 - **Randomize mantras (UW1)**.
 - **Vowel play**.
 
-The logic behind them is explained in **How the randomizer's logic works** below.
+The logic behind them is explained in **How the randomizer's logic works** below. Every one of
+these windows can save its settings, the seed included, to a file or a line of text to share:
+see **Saving and sharing settings** below.
 
 **The Pac-Man maze's glowing rocks are never touched.** In Ultima Underworld, every glowing rock
 on level 5 is left alone by every randomizer, whatever the settings. That is the 83 rocks of the
@@ -2637,10 +2639,28 @@ locks as with skill 45), **telekinesis** (Ort Por Ylem; it counts wherever the p
   item that casts without charges. `once:X` is a scroll, a potion or a charged wand; these
   count only with **Single-use items count** on.
 
-**Where magic fails.** On a no-magic tile, and on all of level 9, no spell works, cast or from
-an item; only worn enchantments do (a link starting there takes only `worn:` sources). On
-level 7, while Tyball's orb stands, the player has no mana: casting there needs
-`flag:orb_destroyed` (an orb rock used on the orb), while items still work.
+**Where magic fails.** Where a spell is cast decides whether it works. The logic takes it to be
+cast where the way, the thing or the warp that asks for it starts:
+
+- On a **no-magic tile** (bit 14 of the tile, the **No magic** field), and on all of UW1's level
+  9, no spell works, cast or from an item; only worn enchantments do (a link starting there takes
+  only `worn:` sources). Both games read the bit the same way (combat/SPELLS.C do_spell, for the
+  player's casts and for the scrolls and wands he uses). UW1 sets it on sixteen squares of level 6,
+  six between (5, 17) and (8, 18) and ten between (3, 27) and (6, 30); UW2 on none.
+- On UW1's level 7, while Tyball's orb stands, the player has no mana (arriving there sets mana
+  and its maximum to 0): casting from runes there needs `flag:orb_destroyed` (an orb rock used on
+  the orb), while items still work. UW2's Academy levels 42 to 47, and 48 west of x 25, are the
+  same with no token that lifts it.
+- In UW2's **Britannia** (levels 1 to 8; the castle and the levels under it are 1 to 5) no spell above
+  circle 3 is cast from runes: the game answers "Casting was not successful" and takes no mana
+  (combat/RUNES.C player_cast). Nothing lifts it. Leaping and Water Walk work there; Levitate,
+  Fly, Flameproof, Open, Telekinesis, Gate Travel, Reveal, Portal and Iron Flesh do not, and Light
+  only from the runes of Light or Night Vision. Scrolls, wands and enchanted things still work.
+
+The facts' links, the things lying in the levels, the look triggers and the warps follow the same
+rules as the ways (since 0.1.44). A warp such as Gate Travel holds when it holds from one of the
+zones reached: from level 7 before the orb is broken it takes a scroll or a wand, from a no-magic
+square nothing. A lasting spell cast elsewhere and carried in does not count.
 
 **Hidden gates.** Some walls open when the player looks at a decoration on them (a look
 trigger), often with a secret door behind. The look trigger's height Z is a Search check: a
@@ -2795,7 +2815,8 @@ or a square given by hand (or the square selected in the main window).
   never breaks (obj/USEITEMS.C UseWand, checkSpell, useNSpellCharges), or, when single-use
   items count, a scroll of the spell with the fields of the game's own scrolls of Gate Travel
   (level 5 #899, level 7 #760). A scroll or wand needs no level, mana or skill (checkSpell); it
-  still fails on a no-magic square and on level 9. The start check counts the made object
+  still fails on a no-magic square and on level 9, and the logic counts it only where it works
+  (a start whose way out lies on such a square gets nothing from it). The start check counts the made object
   ("an object made for gate travel"), the fill puts it within reach (on a place moved into
   the room if need be), Apply creates it and Undo takes it away, and the log lists it under
   "Made anew" and says why. The runes stay ordinary key items. With single-use items counting,
@@ -2857,7 +2878,7 @@ shuffle itself still refuses UW2.
 | Cut at level changes | on | zones never span two levels |
 | Fold empty dead ends | on | fewer, larger zones |
 | Consider the current starting square in the editor | on | off: the game's own start, level 1 (32, 2) |
-| Magic | on | casting from runes counts |
+| Magic | on | casting from runes counts (UW2's Britannia, levels 1 to 8: up to circle 3; never on a no-magic tile or, before the orb, on UW1's level 7) |
 | New character casts up to circle | 1 | the highest circle cast from runes that counts before the start's free area is left; 8: every circle |
 | Single-use items count | off | scrolls, potions and charged wands count |
 | Lock picking in logic, skill | off, 30 | doors may be picked |
@@ -2872,8 +2893,8 @@ shuffle itself still refuses UW2.
 
 - Casting ignores mana and the casting roll, and the level but for a new character's (circle 1
   until the start's free area is left).
-- A spell cast before stepping onto a no-magic tile is assumed not to carry over (in the
-  game it does).
+- A spell cast before stepping onto a no-magic tile, onto a level without mana or into UW2's
+  Britannia is assumed not to carry over (in the game a lasting one does, while it lasts).
 - Jumps follow the game's own arithmetic, but only straight along the tiles (and the
   diagonals, with the option). A jump that would carry too far is assumed to be taken
   earlier or slower. The small hop after a landing is not followed, so a landing on a
@@ -2985,7 +3006,8 @@ The window also decides what the logic may expect of the player. The **Player lo
 solver)** rows:
 
 - **Magic.** Casting from runes counts. A spell can be cast once the rune bag and its runes
-  are reached. Mana and the casting roll are ignored.
+  are reached. Mana and the casting roll are ignored. In UW2's Britannia (levels 1 to 8) only
+  spells up to circle 3 count from runes, as in the game.
 - **New character casts up to circle.** The game asks for level 2 x circle - 1 to cast from
   runes, and a new character is level 1: until the solve has left the start's free area (the
   zones reached from the start by ways that need nothing), no spell above this circle counts
@@ -3023,9 +3045,11 @@ used (`use:levitate`). The window finds where each comes from:
 - the dragon skin boots, from the facts file (below).
 
 **Where magic does not work.** On a no-magic tile and on level 9, no spell works, cast or from
-an item; worn enchantments still do. A link starting there only takes `worn:` sources. On
-level 7, while Tyball's orb stands, the player has no mana: casting there needs
-`flag:orb_destroyed` (an orb rock used on the orb), while items still work.
+an item; worn enchantments still do. A link starting there only takes `worn:` sources. UW1's
+sixteen no-magic tiles are on level 6; UW2 has none, though its game reads the bit as UW1's
+does. On level 7, while Tyball's orb stands, the player has no mana: casting there needs
+`flag:orb_destroyed` (an orb rock used on the orb), while items still work. In UW2's Britannia
+(levels 1 to 8) no spell above circle 3 is cast from runes; items still work.
 
 **Hidden gates.** Some walls open when the player looks at a decoration on them: often a
 secret door stands inside the rock. Such a wall becomes a `secret` link that needs
@@ -3810,6 +3834,329 @@ what the step names. "Passed: 118 needs, each paid by an earlier step; nothing i
 start" is the good case. A problem reads "key:5 is needed by step 31, and no step before
 gives it", "item:food: 1 more use than pieces found before" or "Step 12: what it names … does
 not meet its requirement …", and means the logic counted something it should not have.
+
+### Saving and sharing settings
+
+Every randomizer window has a **Settings** row of four buttons, so that a run can be shared and
+made again exactly:
+
+- **Save settings…** writes every setting of the window, the seed included, to a file (by
+  default named after the game, the window and the seed: `uw1-key-scatter-seed-1.json`).
+- **Load settings…** sets every control of the window from such a file, the logic options and
+  the lists (ignored objects, starting equipment, whitelist, special creatures) included.
+- **Copy settings** puts the same settings on the clipboard as one line of text, to paste into
+  a chat or a message.
+- **Paste settings** sets every control from settings text on the clipboard: the line Copy
+  settings gives, a whole settings file, or a spoiler log or report that starts with a settings
+  line.
+
+The row is under the seed in **Apply** (labelled Settings, beside Zones and Seed), under the
+heading of **Item property shuffle**, **Swap items**, **Swap monsters**, **Named challenges**,
+**Randomize mantras** and **Vowel play**, and under the logic options in **Automatic zones**.
+What is saved is what the window shows now, not the last Preview. After a load, the line under
+the buttons (Apply, Automatic zones) or the report (the other windows) says what was loaded,
+which editor wrote it, and every warning.
+
+**The same settings give the same result on the same levels.** The runs read the levels as they
+are, unsaved edits included, so a file records a short fingerprint of them (`"levels"`), and
+loading warns when the levels now differ (another game copy, edits, a shuffle already applied).
+Apply also records the zoning it uses (`"inputs"`: automatic zones, or the Zones window's file
+with a fingerprint of its zones) and warns on load when it would now use another one. Not
+recorded: the facts file and the start square in the executable (both as shipped, unless you
+changed them). Loading the item property shuffle's settings also makes their ignored objects
+the shuffle's ignore list.
+
+**Logs and reports carry their settings.** Apply's spoiler log (on screen and exported), and the
+reports of the item property shuffle, the swaps and the named challenges, start with a line
+`Settings (Paste settings in the window makes this run again): {…}`. Copying that line, or the
+whole log, and pressing Paste settings in the same window sets it up for the same run.
+
+**The file** is JSON, written with two-space indents (Copy settings gives the same on one line):
+
+- `"format": "uw-randomizer-settings"` and `"version"` (the file format, now 1). A file of a
+  newer version is refused, with a message to update the editor.
+- `"editor"`: the editor version that wrote it. `"game"`: `UW1` or `UW2`. A file for the other
+  game is refused.
+- `"tool"`: `key-scatter` (Apply), `item-shuffle`, `item-swap`, `monster-swap`, `challenges`,
+  `mantras`, `vowel-play` or `auto-zones`. Each window takes only its own; another's is refused
+  with its name.
+- `"seed"` (not for the automatic zones, which have none), `"levels"` and `"inputs"`, as above.
+- `"options"`: every option of the window, named as the editor names them. Apply's `"logic"` and
+  `"nav"` are the player logic and the autozone movement of the logic panel. A given start is
+  its square, `{"level": 1, "x": 30, "y": 32}`; `"start"` is `own`, `random` or `given`, and
+  `"startScope"` is `firstLevels` or `anyLevel`.
+
+Left out on purpose: the hand-made zones that only name the places in Apply's log (the window
+loads them itself), the Zones window's zoning (recorded as an input), and what a run works out
+for itself from the facts.
+
+**Reading is forgiving.** A key left out takes its default (for the item property shuffle, the
+game's own values), so a hand-written file needs only what differs. This sets Apply to start in
+the sealed room of level 1, seed 1, everything else as the window starts:
+
+```json
+{"format": "uw-randomizer-settings", "version": 1, "game": "UW1", "tool": "key-scatter", "seed": 1,
+ "options": {"start": "given", "startAt": {"level": 1, "x": 30, "y": 32}}}
+```
+
+A key the editor does not know is ignored and named in the warnings (a misspelt option shows up
+there); a value it cannot read (`"seed": "one"`) refuses the whole text.
+
+**Examples.** Each window's settings as it starts on Ultima Underworld 1, written by the editor;
+the same files are in `docs/examples/settings`.
+
+Apply:
+
+```json
+{
+  "format": "uw-randomizer-settings",
+  "version": 1,
+  "editor": "0.1.45",
+  "game": "UW1",
+  "tool": "key-scatter",
+  "seed": 1,
+  "levels": "69fbf5e2",
+  "inputs": {
+    "zoning": "automatic zones"
+  },
+  "options": {
+    "retries": 20,
+    "logic": {
+      "magic": true,
+      "newCharacterCircle": 1,
+      "singleUseItems": false,
+      "singleUseOnly": null,
+      "lockPicking": false,
+      "pickSkill": 30,
+      "pickRetry": true,
+      "searchSkill": 0,
+      "searchRetry": true,
+      "damageTrapWalls": false,
+      "ringNeedsLava": true,
+      "killNpcs": false,
+      "requireOrb": false,
+      "avoidLost": true,
+      "pitsGemByBlog": false
+    },
+    "nav": {
+      "tickLength": 16,
+      "jumpMargin": 2,
+      "portal": false,
+      "gapJumps": true,
+      "diagonalJumps": false,
+      "cutAtLevelChanges": true,
+      "foldEmptyDeadEnds": true,
+      "shippedStart": false
+    },
+    "move": [
+      "keys",
+      "infinity",
+      "talismans",
+      "runes",
+      "abilities",
+      "ingredients",
+      "plot"
+    ],
+    "creatureInventories": false,
+    "filler": false,
+    "extra": [],
+    "startKit": false,
+    "exploreMaps": false,
+    "anywhere": true,
+    "spoilerNotes": false,
+    "start": "own",
+    "startScope": "firstLevels",
+    "startAt": null,
+    "placesInReach": null
+  }
+}
+```
+
+Swap items:
+
+```json
+{
+  "format": "uw-randomizer-settings",
+  "version": 1,
+  "editor": "0.1.45",
+  "game": "UW1",
+  "tool": "item-swap",
+  "seed": 1,
+  "levels": "69fbf5e2",
+  "options": {
+    "anyKind": false,
+    "includeInventories": true,
+    "weapons": true,
+    "armour": true,
+    "food": true,
+    "lights": true,
+    "tools": true,
+    "runes": true,
+    "wands": true,
+    "scrolls": true,
+    "potions": true,
+    "rings": true,
+    "bones": false,
+    "scenery": false,
+    "spotOwnership": true,
+    "scope": "game",
+    "range": 1,
+    "swapEnchantments": false,
+    "enchantWeapons": true,
+    "enchantArmour": true,
+    "enchantScrolls": true,
+    "rule": "random",
+    "keepStart": true,
+    "start": [
+      {
+        "level": 1,
+        "index": 934,
+        "label": "L1 #934 loaf of bread (33, 3) in #942 sack"
+      },
+      {
+        "level": 1,
+        "index": 935,
+        "label": "L1 #935 fish (33, 3) in #942 sack"
+      },
+      {
+        "level": 1,
+        "index": 936,
+        "label": "L1 #936 torch (33, 3) in #942 sack"
+      },
+      {
+        "level": 1,
+        "index": 940,
+        "label": "L1 #940 dagger (33, 3) in #942 sack"
+      },
+      {
+        "level": 1,
+        "index": 959,
+        "label": "L1 #959 apple (33, 3) in #942 sack"
+      }
+    ],
+    "ignored": [
+      {
+        "level": 4,
+        "index": 555,
+        "label": "L4 #555 wand of the bullfrog (level 4 puzzle) (46, 47)"
+      }
+    ]
+  }
+}
+```
+
+Swap monsters:
+
+```json
+{
+  "format": "uw-randomizer-settings",
+  "version": 1,
+  "editor": "0.1.45",
+  "game": "UW1",
+  "tool": "monster-swap",
+  "seed": 1,
+  "levels": "69fbf5e2",
+  "options": {
+    "scope": "level",
+    "measure": "xp",
+    "depthBlend": 0,
+    "spread": 20,
+    "keepHp": false,
+    "lootWithMonster": false,
+    "rerollPowerful": false,
+    "powerfulChance": 5,
+    "powerfulDepth": 50,
+    "talkersInLevel": false,
+    "leaveSpecialKinds": true,
+    "whitelist": [
+      {
+        "level": 2,
+        "index": 251,
+        "label": "L2 #251 gazer (48, 23) hp 40"
+      }
+    ],
+    "ignored": [],
+    "rule": "rank"
+  }
+}
+```
+
+Randomize mantras (the seed alone):
+
+```json
+{
+  "format": "uw-randomizer-settings",
+  "version": 1,
+  "editor": "0.1.45",
+  "game": "UW1",
+  "tool": "mantras",
+  "seed": 1,
+  "options": {}
+}
+```
+
+Vowel play (`"names": null` is the game's own list):
+
+```json
+{
+  "format": "uw-randomizer-settings",
+  "version": 1,
+  "editor": "0.1.45",
+  "game": "UW1",
+  "tool": "vowel-play",
+  "seed": 1,
+  "options": {
+    "keepFirstLetter": false,
+    "names": null
+  }
+}
+```
+
+Automatic zones:
+
+```json
+{
+  "format": "uw-randomizer-settings",
+  "version": 1,
+  "editor": "0.1.45",
+  "game": "UW1",
+  "tool": "auto-zones",
+  "options": {
+    "nav": {
+      "tickLength": 16,
+      "jumpMargin": 2,
+      "portal": false,
+      "gapJumps": true,
+      "diagonalJumps": false,
+      "cutAtLevelChanges": true,
+      "foldEmptyDeadEnds": true,
+      "shippedStart": false
+    },
+    "logic": {
+      "magic": true,
+      "newCharacterCircle": 1,
+      "singleUseItems": false,
+      "singleUseOnly": null,
+      "lockPicking": false,
+      "pickSkill": 30,
+      "pickRetry": true,
+      "searchSkill": 0,
+      "searchRetry": true,
+      "damageTrapWalls": false,
+      "ringNeedsLava": true,
+      "killNpcs": false,
+      "requireOrb": false,
+      "avoidLost": true,
+      "pitsGemByBlog": false
+    }
+  }
+}
+```
+
+The item property shuffle (`uw1-item-shuffle-seed-1.json`, about 550 lines: every tab's weights,
+enchantments, curves and minimums, and the ignored objects) and the named challenges
+(`uw1-challenges-seed-1.json`, the ticked challenges, Fasting's food, Ranger's weights and the
+special creatures) are complete in `docs/examples/settings`.
 
 ## Mods
 

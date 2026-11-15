@@ -142,7 +142,7 @@ namespace UwEditor.Core.Tests
             Assert.True(sv.GoalReached, string.Join(", ", sv.GoalMissing));
             Assert.Equal(16, Requirement.PlotClock(sv.TokenSphere.Keys));
             Assert.Empty(sv.CutOff);
-            Assert.Equal(336, Timeline.BaseZonesReached(sv));
+            Assert.Equal(334, Timeline.BaseZonesReached(sv));     // 336 before 0.1.44's Britannia rule (WhereMagicWorksTests)
             // every source of kind b the solve takes comes while its window is open, in the solve's own order
             var held = new List<string>();
             foreach (var e in sv.Events)

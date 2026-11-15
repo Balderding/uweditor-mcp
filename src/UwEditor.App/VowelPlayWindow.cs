@@ -64,10 +64,12 @@ namespace UwEditor.App
             seedRow.Children.Add(new TextBlock { Text = "Seed", Width = 40, VerticalAlignment = VerticalAlignment.Center });
             seedRow.Children.Add(seed); seedRow.Children.Add(newSeed); seedRow.Children.Add(keepFirst);
             head.Children.Add(seedRow);
+            SettingsButtons = new SettingsBar(() => RandomizerSettings.FileName(RandomizerSettings.GameOf(session), RandomizerSettings.VowelPlay, opt.Seed), SettingsText, LoadSettings, Show, "Settings");
+            head.Children.Add(SettingsButtons);
 
             // the names, one per line
             names.Text = string.Join("\n", opt.Names ?? VowelPlay.DefaultNames(strings));
-            names.TextChanged += (o, e) => { opt.Names = NameList(); Save(); };
+            names.TextChanged += (o, e) => { if (loadedText != null && names.Text == loadedText) { loadedText = null; return; } opt.Names = NameList(); Save(); };
             var defaults = new Button { Content = "The game's names" };
             defaults.Click += (o, e) => { names.Text = string.Join("\n", VowelPlay.DefaultNames(strings)); opt.Names = null; Save(); };
             var left = new DockPanel { Width = 230, Margin = new Thickness(0, 0, 12, 0) };
@@ -105,6 +107,39 @@ namespace UwEditor.App
 
         public VowelPlayOptions Options { get { return opt; } }
         public string ReportText { get { return report.Text; } }
+
+        // ---- the settings file
+
+        /// <summary>Save, Load, Copy and Paste settings.</summary>
+        public SettingsBar SettingsButtons { get; private set; }
+        public NumericUpDown SeedBox { get { return seed; } }
+        public CheckBox KeepFirstBox { get { return keepFirst; } }
+        public TextBox NamesBox { get { return names; } }
+        // the names text Load settings put in the box, whose change is not the user's
+        string loadedText;
+
+        /// <summary>The settings on screen now (the seed, the first vowel, the names: null for the game's), pretty or on one line.</summary>
+        public string SettingsText(bool compact) { return RandomizerSettings.Write(RandomizerSettings.GameOf(session), RandomizerSettings.VowelPlay, opt, null, null, compact); }
+
+        /// <summary>Reads settings text into the options and the controls; the report says what was loaded and every warning. Gives that message.</summary>
+        public string LoadSettings(string text)
+        {
+            var r = RandomizerSettings.Read(text, RandomizerSettings.GameOf(session), RandomizerSettings.VowelPlay, new VowelPlayOptions { Seed = opt.Seed });
+            if (!r.Ok) { Show(SettingsBar.Refused(r)); return report.Text; }
+            var o = r.As<VowelPlayOptions>();
+            var list = o.Names?.ToList();
+            RandomizerSettings.CopyInto(o, opt);
+            seed.Value = opt.Seed;
+            keepFirst.IsChecked = opt.KeepFirstLetter;
+            // the box shows the names; the options keep the text's (null: the game's), whenever the box reports its change
+            loadedText = string.Join("\n", list ?? VowelPlay.DefaultNames(strings));
+            if (names.Text == loadedText) loadedText = null;
+            else names.Text = loadedText;
+            opt.Names = list;
+            Save();
+            Show(SettingsBar.Loaded(r));
+            return report.Text;
+        }
 
         List<string> NameList()
         {

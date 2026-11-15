@@ -118,9 +118,9 @@ namespace UwEditor.Core.Tests
         /// and the search after the change looks only among the zones reached so far, so the way back
         /// to (43, 18) through level 8 is not seen until the next sphere, which does get back there.
         /// A zone cut off and got back is not a cut-off for the filter (TimelineSolve.CutOffRegained).
-        /// The solve below counts every circle from the start (NewCharacterCircle 8), as before 0.1.43:
-        /// by default a new character does not levitate from the runes before he has left the ledge's
-        /// free area, the spheres fall otherwise and the cut-off does not come up.
+        /// The solve below starts at level 7 (60, 62) with the default options, where the same cut-off
+        /// of (43, 18) comes up in sphere 5 and is got back (0.1.44; before, from (35, 48) with every
+        /// circle counted, which relied on Gate Travel cast from runes on level 7 with no mana).
         /// </summary>
         [Fact]
         public void UW1_a_zone_cut_off_and_got_back_later_does_not_reject_a_start()
@@ -132,8 +132,10 @@ namespace UwEditor.Core.Tests
                 Assert.True(c.Viable, c.ToString());
             }
             var s = p.Session;
-            var any = new AbilityOptions { NewCharacterCircle = AbilityOptions.MaxCircle };
-            var t = Timeline.Build(s, l => s.LoadLevel(l), new NavOptions { StartOverride = new StartPoint { Level = 7, X = 35.5, Y = 48.5 } }, any, null, null, variants: false);
+            // since 0.1.44 Gate Travel is not cast from runes on level 7 while the orb stands (no mana), so the solve from (35, 48)
+            // with every circle no longer leaves early by the moonstone and is cut off nowhere; from (60, 62) with the default options it is
+            var any = new AbilityOptions();
+            var t = Timeline.Build(s, l => s.LoadLevel(l), new NavOptions { StartOverride = new StartPoint { Level = 7, X = 60.5, Y = 62.5 } }, any, null, null, variants: false);
             var sv = Timeline.Solve(t, any, "held", p.Assumed);
             Assert.True(sv.GoalReached);
             int area = t.Set.ZoneAt(7, 43, 18);

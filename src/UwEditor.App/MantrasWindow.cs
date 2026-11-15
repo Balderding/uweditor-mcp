@@ -50,6 +50,8 @@ namespace UwEditor.App
             seedRow.Children.Add(seed);
             seedRow.Children.Add(newSeed);
             head.Children.Add(seedRow);
+            SettingsButtons = new SettingsBar(() => RandomizerSettings.FileName(Game, RandomizerSettings.Mantras, Seed), SettingsText, LoadSettings, Show, "Settings");
+            head.Children.Add(SettingsButtons);
 
             var preview = new Button { Content = "Preview" };
             preview.Click += (o, e) => Show(MantraShuffle.Preview(strings, Seed).Report(false));
@@ -70,6 +72,30 @@ namespace UwEditor.App
         }
 
         int Seed { get { return (int)(seed.Value ?? 1); } }
+
+        // ---- the settings file (the seed alone)
+
+        string Game { get { return RandomizerSettings.GameOf(strings.Session); } }
+
+        /// <summary>Save, Load, Copy and Paste settings.</summary>
+        public SettingsBar SettingsButtons { get; private set; }
+
+        /// <summary>The settings on screen now (the seed), pretty or on one line.</summary>
+        public string SettingsText(bool compact) { return RandomizerSettings.Write(Game, RandomizerSettings.Mantras, new MantraOptions { Seed = Seed }, null, null, compact); }
+
+        /// <summary>Reads settings text into the seed; the report says what was loaded and every warning. Gives that message.</summary>
+        public string LoadSettings(string text)
+        {
+            var r = RandomizerSettings.Read(text, Game, RandomizerSettings.Mantras, new MantraOptions { Seed = Seed });
+            if (!r.Ok) { Show(SettingsBar.Refused(r)); return report.Text; }
+            seed.Value = r.As<MantraOptions>().Seed;
+            Show(SettingsBar.Loaded(r));
+            return report.Text;
+        }
+
+        /// <summary>The report shown now.</summary>
+        public string ReportText { get { return report.Text; } }
+        public NumericUpDown SeedBox { get { return seed; } }
 
         void Show(string text) { report.Text = text; }
 

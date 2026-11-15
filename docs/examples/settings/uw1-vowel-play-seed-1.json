@@ -1,0 +1,12 @@
+{
+  "format": "uw-randomizer-settings",
+  "version": 1,
+  "editor": "0.1.45",
+  "game": "UW1",
+  "tool": "vowel-play",
+  "seed": 1,
+  "options": {
+    "keepFirstLetter": false,
+    "names": null
+  }
+}

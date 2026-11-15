@@ -2,7 +2,8 @@
 
 Written 2026-11-14, at editor version 0.1.36 (uncommitted on top of `d48d0901`); section 1
 and the starting positions brought up to date at 0.1.37, section 2 at 0.1.38, 2.1 at 0.1.39;
-at 0.1.41 the Pits' gem by Blog (2.3), the brain creatures' rule (2.1) and timed gifts (3).
+at 0.1.41 the Pits' gem by Blog (2.3), the brain creatures' rule (2.1) and timed gifts (3);
+at 0.1.44 where magic works: Britannia's circle rule and the no-magic squares (end of 3).
 
 ## Where it stands
 
@@ -10,7 +11,8 @@ at 0.1.41 the Pits' gem by Blog (2.3), the brain creatures' rule (2.1) and timed
   16, Nystul's ceremony) with no cut-offs: 379 zones, 336 reached with the default options
   (slot 73, a leftover level of 37 zones, is no longer zoned). Still 336 at 0.1.38, with
   the conversation doors and the quests of section 2 modelled; the timeline report now
-  prints that number (it counted only zone ids below 1000 before, 23 for UW2).
+  prints that number (it counted only zone ids below 1000 before, 23 for UW2). 334 at 0.1.44:
+  Telekinesis from runes no longer reaches two barrier squares of Britannia (end of 3).
 - A pure fighter (rune magic off, of the single-use things only Iron Flesh) also reaches
   the end (257 zones at 0.1.38); it spends one Iron Flesh, for the djinn.
 - The Core suite (748 tests) and the App suite (238 tests) pass on this state; see
@@ -321,14 +323,81 @@ put by hand):
   (2, 2), seed 3, twice; level 7 (55, 51) seed 3). Made: a wand of Gate Travel for the sealed
   room and level 5 (57, 61); a wand of Flameproof for level 6 (16, 10), level 7 (47, 43) and
   (30, 46), level 8 (23, 45) and (48, 49).
-  - For UW2 when its shuffle comes: in Britannia (levels 1 to 8) no spell above circle 3
-    works from runes at all (player_cast: `(PlayerLevel - 1) / 8 == 0 && circle > 3`), which the
-    logic does not model yet: Levitate, Flameproof, Open, Telekinesis, Reveal, Gate Travel,
-    Portal and Iron Flesh cast from runes there are counted today. UW2 has no Gate Travel
-    object of its own.
-  - Not modelled: Gate Travel's warp (`gate_travel` fact) is not narrowed by `nomana` or no-magic
-    squares as the ways are, so casting it from runes on UW1 level 7 before the orb is broken is
-    counted (from level 7 (47, 43) the 0.1.42 fill relied on it).
+  - Britannia's circle rule and Gate Travel's warp: modelled at 0.1.44 (next bullet).
+
+- **Where magic works (0.1.44).** Read in the decompiled sources (byte-matching, so the C is
+  what the game runs) and checked against the shipped levels by running the Core.
+  - *Britannia.* uw2 combat/RUNES.C player_cast:232, `if ((PlayerLevel - 1) / 8 == 0 && level > 3)
+    return fail_spell(3);` ("Casting was not successful", string 0xE4; tested before the level,
+    mana and skill checks, so no mana is spent). PlayerLevel is the editor's level number (1 at a
+    new game, game/CHARGEN.C:128; 0x44 is level 68 in 3d/GRIDDB.C), so levels 1 to 8; nothing
+    else in the test, so no plot state, quest or item lifts it. Objects do not go through
+    player_cast: obj/OBJUSE.C checkSpell:353 calls event/WORLDEV.C inanimate_spell:505, which
+    calls do_spell directly, so scrolls, wands and enchanted things work in Britannia. UW1's
+    player_cast has no such test.
+  - *The no-magic bit.* Bit 0 of the tile's `door` field, bit 14 of the tile word (include/map.h
+    struct Tile; the editor's `TileInfo.NoMagic`, Uw1Schemas "No magic"). Its only reader is
+    combat/SPELLS.C anti_magic_p (uw1:76, uw2:54). Callers: do_spell (uw1:98-102, uw2:86-90): an
+    object caster (who at or above objdata: a trap) is tested at the trap's square, every other
+    caster at its own square, `anti_magic_p(OBJ_HOMEX(who), OBJ_HOMEY(who))`, and in UW1 also
+    `|| PlayerLevel == 9`. The player is critdata + 1 (game/PLAYER.C), below objdata, and his home
+    square is kept at the square he stands on (motion/PHYSICS.C uw1:247, 355, 396); a scroll or
+    wand he uses is cast with who = the player (checkSpell: `src = who` when used), so runes and
+    things used both fail there, in both games. Creatures: critter/AI.C maybe_cast_defensive_spell
+    and crit_magik_attack (uw1:509, 530-533; uw2:484, 503) do not cast while standing on one, and
+    a creature's own do_spell is tested at its square. Nothing else reads it: no test when a spell
+    is already running (set_curmagic, the active spells), none on missiles in flight, none on
+    mana. Worn enchantments never go through do_spell.
+  - *Where the bit is set.* UW1: sixteen squares, all on level 6: (6, 17), (7, 17), (5, 18) to
+    (8, 18), and (3, 27) to (6, 27), (4, 28), (5, 28), (4, 29), (5, 29), (4, 30), (5, 30), all in
+    the big zone of level 6 at (24, 3). UW2: none on any level. So Karl's memory fits the data: in
+    UW1 the bit works but sits on two small patches nobody needs to cast in; in UW2 it would work
+    the same, but no square has it.
+  - *UW1 level 7 before the orb.* game/GAMEWRAP.C do_level_hacks:459 sets mana and maximum mana
+    to 0 on arrival while `player->orb` is 0; combat/SPELLS.C restore_mana caps at the maximum, so
+    potions give nothing; player_cast's mana test fails every rune spell. Scrolls and wands need
+    no mana and work. Tybal's guards (race 0x13) do not cast there either (AI.C:353, 510, 531).
+    Breaking the orb (obj/USEITEMS.C:524) gives the mana back. The logic had this right.
+  - *UW1 level 9.* do_spell refuses every spell of the player and of creatures there (SPELLS.C:101);
+    traps are tested only at their square. Left as it was: reaching level 9 ends the game.
+  - *What the logic assumed.* The ways (region edges) were narrowed for no-magic squares in UW1
+    only, and for the nomana levels; the facts' links, the placements, the look triggers but for
+    Reveal, and the warps were not narrowed at all. The 0.1.43 note that a made scroll or wand
+    "still fails on a no-magic square and on level 9" was right; the one that Gate Travel's warp
+    ignored where magic fails was right too.
+  - *What changed.* One rule for all of them, `AbilityZones.CastAt` (where the spell is cast):
+    worn sources only on a no-magic square (both games now) or UW1's level 9; cast with the fact's
+    token where a nomana fact holds; in Britannia `use:X` for an ability whose spells are all above
+    circle 3, `(cast:X & the runes of a low spell) | use:X` for Light (Light or Night Vision, not
+    Daylight), unchanged for Leaping and Water Walk. The ways get it when the levels are built (36
+    UW2 edges in Britannia); in the timeline the facts' links (at their start, a two-way link with
+    ends that differ split in two), the placements (at their square), the mechanisms (at the
+    trigger's square) and the warps (from any zone reached, one square of each kind a zone holds).
+    A lasting spell cast elsewhere and carried in does not count, as for the nomana levels. A made
+    wand (perm:X) counts only where it works, so StartAbilities does not rely on one on a no-magic
+    square: its trial solves go through the same rule.
+  - *Numbers.* UW2 default: 334 of 379 zones (was 336), 41 spheres, plot 16, no cut-off; every
+    token in the same sphere as before (gems 1 to 8 at 11, 13, 13, 18, 30, 31, 14, 29). The two
+    zones lost are reached only by Telekinesis across a barrier: level 1 (31, 53) and level 5
+    (28, 40), the large blackrock gem's square, which is used from the square before it; nothing
+    lies there that the logic needs (the game's one scroll of Telekinesis reaches one of them when
+    single-use things count). The walkthrough now takes level 43's telekinesis wand before the
+    pillar room (the link starts on a level without mana). Pure fighter: 257 zones, 42 spheres,
+    plot 16, unchanged. StartPicker on UW2: 20 of 25 castle zones and 159 of 252 zones viable,
+    unchanged. UW1 default: unchanged (22 spheres, 189 zones); the Ring of Levitation's link now
+    reads `(cast:lava & flag:orb_destroyed) | use:lava`. UW1 starts on level 7 with every circle
+    counted no longer leave by Gate Travel cast from runes before the orb: from (47, 43) the start
+    is then not viable (nothing makes the wand when no circle is withheld), as in the game. With
+    the default circle it still gets its wand of Flameproof.
+  - To check in the game (DOSBox or Exhumed): (1) UW2, level 1, with a character of level 7 or
+    more and the runes: Levitate (Uus Hur Por) gives "Casting was not successful" and keeps the
+    mana; Leaping works; a scroll or wand of Levitate works. (2) The same on level 9 or another
+    world: Levitate works. (3) UW1 level 6, standing on (6, 18): Light from runes fails and keeps
+    the mana; a lit torch and a worn ring go on; a Light cast beside the patch and carried in
+    stays lit. (4) UW1 level 7 before the orb: a scroll of Gate Travel works, runes do not.
+  - Not done: StartAbilities still makes objects only for the circles a new character lacks, not
+    for a start whose runes fail where it lies (UW1 level 7 before the orb with every circle
+    counted).
 
 ## 4. Randomizer features to try on UW2
 

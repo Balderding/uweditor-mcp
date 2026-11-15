@@ -154,8 +154,8 @@ namespace UwEditor.Core.Randomizer
         public Dictionary<string, List<string>> Walls = new Dictionary<string, List<string>>();
         /// <summary>Damage-trap tiles outside the facts' areas (walled only with the global option), per level.</summary>
         public Dictionary<int, int> DamageTilesElsewhere = new Dictionary<int, int>();
-        /// <summary>Region edges whose spell: terms were narrowed where magic does not work.</summary>
-        public int NoMagicEdges, NoManaEdges;
+        /// <summary>Region edges whose spell: terms were narrowed where magic does not work (BritanniaEdges: UW2's levels 1 to 8, AbilityZones.CastAt).</summary>
+        public int NoMagicEdges, NoManaEdges, BritanniaEdges;
         public SolveResult Solve;
         /// <summary>The main option sets, by a short label: the solve of each.</summary>
         public List<KeyValuePair<string, SolveResult>> Variants = new List<KeyValuePair<string, SolveResult>>();
@@ -486,14 +486,108 @@ namespace UwEditor.Core.Randomizer
         static readonly Regex SpellTerm = new Regex(@"spell:([a-z_]+)");
 
         /// <summary>
-        /// hazard:lava becomes spell:lava; then each spell:X of an edge that starts on a no-magic
-        /// square, or anywhere on UW1's level 9, becomes worn:X: do_spell refuses every spell there,
-        /// the player's casts and the items he uses alike (combat/SPELLS.C do_spell, anti_magic_p;
-        /// obj/USEITEMS.C checkSpell), but a worn enchantment never goes through it
-        /// (game/PLAYDATA.C FixPlayerEquips). On a nomana level (L7 while the orb stands; with the
-        /// fact's rect, only for an edge that starts inside it: UW2 level 48 west of x 25), it
-        /// becomes (cast:X &amp; the fact's token) | use:X. An active spell cast before stepping onto
-        /// a no-magic square keeps working (nothing there ends it), so this is the strict reading.
+        /// The highest circle UW2 lets the player cast from runes in Britannia (levels 1 to 8):
+        /// combat/RUNES.C player_cast, <c>if ((PlayerLevel - 1) / 8 == 0 &amp;&amp; level &gt; 3) return
+        /// fail_spell(3)</c> ("Casting was not successful", no mana spent), tested before the
+        /// level, mana and skill checks, with no plot state, quest or item that lifts it. Objects
+        /// do not go through player_cast (obj/OBJUSE.C checkSpell, event/WORLDEV.C
+        /// inanimate_spell, combat/SPELLS.C do_spell), so scrolls, wands and enchanted things work
+        /// there; UW1's player_cast has no such test.
+        /// </summary>
+        public const int BritanniaCircle = 3;
+
+        /// <summary>UW2's first world, Britannia: levels 1 to 8 (PlayerLevel, 1-based as the editor's levels; (PlayerLevel - 1) / 8 == 0).</summary>
+        public static bool InBritannia(GameSession s, int level) { return s != null && s.IsUw2 && level >= 1 && level <= 8; }
+
+        /// <summary>
+        /// Whether no spell works at a square, cast or from a thing the player uses: the tile's
+        /// no-magic bit (bit 14 of the tile word, combat/SPELLS.C anti_magic_p, both games) or
+        /// UW1's level 9 (do_spell: <c>anti_magic_p(OBJ_HOMEX(who), OBJ_HOMEY(who)) || PlayerLevel ==
+        /// 9</c>; the player's casts and the objects he uses both pass who = ThePlayer, whose home
+        /// square motion/PHYSICS.C keeps at the square he stands on). A square not known (x or y
+        /// below 0) is not one.
+        /// </summary>
+        public static bool NoMagicAt(GameSession s, Func<int, LevelModel> level, int lv, int x, int y)
+        {
+            if (s != null && !s.IsUw2 && lv == 9) return true;
+            if (level == null || x < 0 || y < 0 || x > 63 || y > 63) return false;
+            LevelModel m;
+            try { m = level(lv); } catch (Exception) { return false; }
+            return m != null && m.Present && m.Tiles[x, y] != null && m.Tiles[x, y].NoMagic;
+        }
+
+        /// <summary>
+        /// What casting an ability from runes needs on top of cast:X in Britannia: "" when every
+        /// spell giving it is at or below BritanniaCircle (Leaping, Water Walk), null when none is
+        /// (Levitate, Flameproof, Open, Telekinesis, Gate Travel, Reveal, Portal, Iron Flesh: the
+        /// runes count for nothing there), else the runes of one of the low spells (Light: Light or
+        /// Night Vision, not Daylight alone).
+        /// </summary>
+        public static string BritanniaCast(GameSession s, string ability)
+        {
+            var all = Abilities.SpellsGiving(true, ability);
+            var low = all.Where(sp => SpellTables.Circle(true, sp) <= BritanniaCircle).ToList();
+            if (low.Count == 0) return null;
+            if (low.Count == all.Count) return "";
+            return string.Join(" | ", low.Select(sp => "(" + Abilities.CastRequirement(s, sp) + ")"));
+        }
+
+        /// <summary>
+        /// A requirement as it holds for a way, a placement or a warp that starts at the square
+        /// (lv, x, y): where the spell is cast decides. Each spell:X becomes
+        /// <list type="bullet">
+        /// <item>worn:X on a square where no magic works (NoMagicAt): a worn enchantment never goes
+        /// through do_spell (game/PLAYDATA.C FixPlayerEquips);</item>
+        /// <item>(cast:X &amp; the fact's token) | use:X where a nomana fact holds (UW1's level 7 while
+        /// the orb stands: no mana, so no rune casting; UW2's Academy levels 42 to 47 and level 48 west
+        /// of x 25), as before;</item>
+        /// <item>in UW2's Britannia (levels 1 to 8): use:X when every spell giving X is above circle 3
+        /// (BritanniaCast), (cast:X &amp; the runes of a low one) | use:X when only some are.</item>
+        /// </list>
+        /// A lasting spell cast elsewhere and carried in counts for nothing (the strict reading, as
+        /// for the nomana levels): the solve does not follow how long a spell lasts. noMagic, noMana
+        /// and britannia say which rule changed something.
+        /// </summary>
+        public static string CastAt(GameSession s, Func<int, LevelModel> level, FactSet facts, string req, int lv, int x, int y, out bool noMagic, out bool noMana, out bool britannia)
+        {
+            noMagic = noMana = britannia = false;
+            if (string.IsNullOrEmpty(req) || !req.Contains("spell:")) return req;
+            req = SpellTerm.Replace(req, mm => Requirement.Normalize(mm.Value));
+            if (NoMagicAt(s, level, lv, x, y)) { noMagic = true; return SpellTerm.Replace(req, mm => "worn:" + mm.Groups[1].Value); }
+            var nomana = facts == null ? null : facts.NoMana(lv, x, y);
+            bool brit = InBritannia(s, lv);
+            if (nomana == null && !brit) return req;
+            bool mana = false, b = false;
+            string res = SpellTerm.Replace(req, mm =>
+            {
+                string ab = mm.Groups[1].Value;
+                var conds = new List<string>();
+                if (nomana != null) { conds.Add(string.IsNullOrEmpty(nomana.Until) ? "flag:__never__" : nomana.Until); mana = true; }
+                if (brit)
+                {
+                    string low = BritanniaCast(s, ab);
+                    if (low == null) { b = true; return "use:" + ab; }
+                    if (low.Length > 0) { conds.Add(low); b = true; }
+                }
+                if (conds.Count == 0) return mm.Value;
+                return string.Format("((cast:{0} & {1}) | use:{0})", ab, string.Join(" & ", conds.Select(c => "(" + c + ")")));
+            });
+            noMana = mana; britannia = b;
+            return res;
+        }
+
+        /// <summary>CastAt without the flags.</summary>
+        public static string CastAt(GameSession s, Func<int, LevelModel> level, FactSet facts, string req, int lv, int x, int y)
+        {
+            bool a, b, c;
+            return CastAt(s, level, facts, req, lv, x, y, out a, out b, out c);
+        }
+
+        /// <summary>
+        /// hazard:lava becomes spell:lava; then the spell terms of each edge are narrowed by where it
+        /// starts (CastAt): on a no-magic square (both games; the shipped UW2 has none, UW1 sixteen on
+        /// level 6) and anywhere on UW1's level 9 to worn sources, on a nomana level to casting with
+        /// the fact's token, in UW2's Britannia to the spells of circle 3 and below.
         /// </summary>
         static void Narrow(GameSession s, Func<int, LevelModel> level, NavGraph g, FactSet facts, AbilityZoneResult res)
         {
@@ -501,21 +595,11 @@ namespace UwEditor.Core.Randomizer
             {
                 string req = e.Requires.Replace("hazard:lava", "spell:lava");
                 if (!req.Contains("spell:")) { e.Requires = req; continue; }
-                req = SpellTerm.Replace(req, mm => Requirement.Normalize(mm.Value));
-                bool noMagic = false;
-                if (!s.IsUw2)
-                {
-                    var m = level(e.Level);
-                    noMagic = e.Level == 9 || (e.X >= 0 && e.Y >= 0 && m != null && m.Tiles[e.X, e.Y].NoMagic);
-                }
-                var nomana = facts.NoMana(e.Level, e.X, e.Y);
-                if (noMagic) { req = SpellTerm.Replace(req, mm => "worn:" + mm.Groups[1].Value); res.NoMagicEdges++; }
-                else if (nomana != null)
-                {
-                    string until = string.IsNullOrEmpty(nomana.Until) ? "flag:__never__" : nomana.Until;
-                    req = SpellTerm.Replace(req, mm => string.Format("((cast:{0} & ({1})) | use:{0})", mm.Groups[1].Value, until));
-                    res.NoManaEdges++;
-                }
+                bool noMagic, noMana, brit;
+                req = CastAt(s, level, facts, req, e.Level, e.X, e.Y, out noMagic, out noMana, out brit);
+                if (noMagic) res.NoMagicEdges++;
+                if (noMana) res.NoManaEdges++;
+                if (brit) res.BritanniaEdges++;
                 string err;
                 var r = Requirement.TryParse(req, out err);
                 e.Requires = r == null ? req : r.ToString();
@@ -1041,6 +1125,8 @@ namespace UwEditor.Core.Randomizer
             sb.AppendLine(string.Format("  No-magic squares (the tile's bit, combat/SPELLS.C anti_magic_p) and UW1's level 9 refuse every spell, cast or from an item; worn enchantments still work. Edges narrowed to worn sources: {0}.", res.NoMagicEdges));
             foreach (var f in res.Facts.OfKind("nomana")) sb.AppendLine(string.Format("  L{0}{4}: {1} Edges where casting needs {2}: {3}.", f.Level, f.Notes, f.Until, res.NoManaEdges,
                 f.Rect != null && f.Rect.Length == 4 ? string.Format(" ({0}, {1}) to ({2}, {3})", f.Rect[0], f.Rect[1], f.Rect[2], f.Rect[3]) : ""));
+            if (res.Facts != null && res.Facts.Game == "UW2")
+                sb.AppendLine(string.Format("  Britannia (levels 1 to 8): no spell above circle {0} is cast from runes (combat/RUNES.C player_cast); scrolls, wands and worn things still work. Edges narrowed: {1}.", BritanniaCircle, res.BritanniaEdges));
             sb.AppendLine();
 
             sb.AppendLine(string.Format("HIDDEN GATES (look triggers that open a wall; with Search {0}{1})", res.Options.SearchSkill, res.Options.SearchRetry ? " and retries" : ", one look"));

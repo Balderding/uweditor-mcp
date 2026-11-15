@@ -129,16 +129,19 @@ namespace UwEditor.Core.Tests
         }
 
         /// <summary>
-        /// Level 7 holds only 8 places: a closed room there (47, 43) runs out of empty places on its
-        /// own level, and places of other levels move in (their objects with them: the totals stay).
-        /// With every circle counted from the start, as the room's way out then takes four items (the
-        /// rune bag and three runes); by default it takes one, a wand made for Flameproof.
+        /// Level 7 holds only 8 places: a start at (1, 59) there runs out of empty places on its own
+        /// level, and places of other levels move in (their objects with them: the totals stay).
+        /// Until 0.1.44 the closed room at (47, 43) with every circle counted showed it, but its way out
+        /// was the runes cast on level 7 while the orb stands, where the player has no mana; the logic
+        /// no longer counts that, and with no circle withheld nothing is made, so that start fails.
         /// </summary>
         [Fact]
         public void Places_of_other_levels_move_in_when_the_starts_level_has_none_left()
         {
             var s = Session(); if (s == null) return;
-            var r = KeyShuffle.Run(s, null, Given(new StartPoint { Level = 7, X = 47.5, Y = 43.5 }, 1, null, AbilityOptions.MaxCircle));
+            var room = KeyShuffle.Run(s, null, Given(new StartPoint { Level = 7, X = 47.5, Y = 43.5 }, 1, null, AbilityOptions.MaxCircle));
+            Assert.False(room.Success);
+            var r = KeyShuffle.Run(s, null, Given(new StartPoint { Level = 7, X = 1.5, Y = 59.5 }, 1, null, AbilityOptions.MaxCircle));
             Assert.True(r.Success, r.Refused ?? string.Join("; ", r.Failures));
             var across = r.Moving.Where(o => o.FromLevel >= 0).ToList();
             Assert.NotEmpty(across);

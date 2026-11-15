@@ -188,7 +188,8 @@ namespace UwEditor.Core.Tests
             var link = Assert.Single(r.FactLinks, k => k.Notes == "facts: ring_of_levitation");
             Assert.Equal(from, link.From);
             Assert.Equal(ring, link.To);
-            Assert.Equal("spell:lava", link.Requires);
+            // the way starts on level 7, where the runes need the orb broken (no mana while it stands); a thing used still works
+            Assert.Equal("(cast:lava & flag:orb_destroyed) | use:lava", link.Requires);
             Assert.True(link.TwoWay);
             var sv = r.Solve;
             Assert.True(sv.ZoneSphere.ContainsKey(ring));

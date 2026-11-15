@@ -1,0 +1,68 @@
+{
+  "format": "uw-randomizer-settings",
+  "version": 1,
+  "editor": "0.1.45",
+  "game": "UW1",
+  "tool": "item-swap",
+  "seed": 1,
+  "levels": "69fbf5e2",
+  "options": {
+    "anyKind": false,
+    "includeInventories": true,
+    "weapons": true,
+    "armour": true,
+    "food": true,
+    "lights": true,
+    "tools": true,
+    "runes": true,
+    "wands": true,
+    "scrolls": true,
+    "potions": true,
+    "rings": true,
+    "bones": false,
+    "scenery": false,
+    "spotOwnership": true,
+    "scope": "game",
+    "range": 1,
+    "swapEnchantments": false,
+    "enchantWeapons": true,
+    "enchantArmour": true,
+    "enchantScrolls": true,
+    "rule": "random",
+    "keepStart": true,
+    "start": [
+      {
+        "level": 1,
+        "index": 934,
+        "label": "L1 #934 loaf of bread (33, 3) in #942 sack"
+      },
+      {
+        "level": 1,
+        "index": 935,
+        "label": "L1 #935 fish (33, 3) in #942 sack"
+      },
+      {
+        "level": 1,
+        "index": 936,
+        "label": "L1 #936 torch (33, 3) in #942 sack"
+      },
+      {
+        "level": 1,
+        "index": 940,
+        "label": "L1 #940 dagger (33, 3) in #942 sack"
+      },
+      {
+        "level": 1,
+        "index": 959,
+        "label": "L1 #959 apple (33, 3) in #942 sack"
+      }
+    ],
+    "ignored": [
+      {
+        "level": 4,
+        "index": 555,
+        "label": "L4 #555 wand of the bullfrog (level 4 puzzle) (46, 47)"
+      }
+    ]
+  }
+}

@@ -51,6 +51,53 @@ namespace UwEditor.App
 
             seed.Value = opt.Seed;
             seed.ValueChanged += (o, e) => { opt.Seed = (int)(seed.Value ?? 1); Changed(); };
+            BuildSettings();
+
+            top = new StackPanel { Spacing = 6, Margin = new Thickness(0, 0, 0, 8) };
+            top.Children.Add(new TextBlock { Text = "Swap monsters", FontSize = 16, FontWeight = FontWeight.SemiBold });
+            top.Children.Add(new TextBlock
+            {
+                TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = 0.75,
+                Text = "The monsters trade places: each spot keeps its position, home, goal and (by default) what lies in its inventory, and takes another monster's kind, hit points, powerful flag and attitude. " +
+                       "Creatures with a conversation stay (the plot finds them by their conversation, on their own level) unless whitelisted, and so do monster templates inside traps and ignored monsters. " +
+                       "Race-bound creatures (liches, guards, Tybal's men…) only swap within their level; swimmers swap with swimmers; a monster only goes where its height fits, and only fliers, swimmers and fire-resistant ones go on water or lava. " +
+                       "Uniform progression instead sorts them by strength and hands them out level by level, the weakest first.",
+            });
+            SettingsButtons = new SettingsBar(() => RandomizerSettings.FileName(RandomizerSettings.GameOf(session), RandomizerSettings.MonsterSwap, opt.Seed), SettingsText, LoadSettings, t => report.Text = t, "Settings");
+            top.Children.Add(SettingsButtons);
+            settingsView = new ScrollViewer { Content = settings, Padding = new Thickness(4, 8, 16, 8) };
+
+            var preview = new Button { Content = "Preview" };
+            preview.Click += (o, e) => { string line = LogLine(); report.Text = "Preview — nothing changed yet.\n\n" + line + Run().Report; };
+            var swap = new Button { Content = "Swap", FontWeight = FontWeight.SemiBold };
+            swap.Click += (o, e) => Swap();
+            undoButton.Click += (o, e) => UndoAll();
+            buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 8, 0, 6) };
+            var world = new Button { Content = "World report" };
+            ToolTip.SetTip(world, "Shows the creatures of the game's levels as saved on disk, before any edits.");
+            world.Click += (o, e) => report.Text = MonsterSwap.WorldReport(session, session.LoadLevel);
+            buttons.Children.Add(preview); buttons.Children.Add(swap); buttons.Children.Add(undoButton); buttons.Children.Add(world);
+            buttons.Children.Add(new TextBlock { Text = "Each swap is also one Edit ▸ Undo step per level; nothing is written to the game until you save.", VerticalAlignment = VerticalAlignment.Center, Opacity = 0.7, FontSize = 12 });
+            report.MinHeight = MinReport;
+
+            BuildTabs();
+            // the tabs keep the settings' natural height (FitTabs), the report takes what is left
+            root = new Grid { Margin = new Thickness(16), RowDefinitions = new RowDefinitions("Auto,Auto,Auto,*") };
+            Grid.SetRow(tabs, 1); Grid.SetRow(buttons, 2); Grid.SetRow(report, 3);
+            root.Children.Add(top); root.Children.Add(tabs); root.Children.Add(buttons); root.Children.Add(report);
+            Content = root;
+            LayoutUpdated += (o, e) => FitTabs();
+            ManualWindow.Attach(this, "Swapping monsters");
+            Closed += (o, e) => Save();
+        }
+
+        /// <summary>The settings tab's rows, built from the options; again after Load settings.</summary>
+        void BuildSettings()
+        {
+            var s = session;
+            settings.Children.Clear();
+            if (seed.Parent is Panel old) old.Children.Remove(seed);
+            seed.Value = opt.Seed;
             var newSeed = new Button { Content = "New seed" };
             newSeed.Click += (o, e) => seed.Value = new Random().Next(1, int.MaxValue);
 
@@ -90,41 +137,6 @@ namespace UwEditor.App
             settings.Children.Add(formula);
             UpdateRule();
             UpdateFormula();
-
-            top = new StackPanel { Spacing = 6, Margin = new Thickness(0, 0, 0, 8) };
-            top.Children.Add(new TextBlock { Text = "Swap monsters", FontSize = 16, FontWeight = FontWeight.SemiBold });
-            top.Children.Add(new TextBlock
-            {
-                TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = 0.75,
-                Text = "The monsters trade places: each spot keeps its position, home, goal and (by default) what lies in its inventory, and takes another monster's kind, hit points, powerful flag and attitude. " +
-                       "Creatures with a conversation stay (the plot finds them by their conversation, on their own level) unless whitelisted, and so do monster templates inside traps and ignored monsters. " +
-                       "Race-bound creatures (liches, guards, Tybal's men…) only swap within their level; swimmers swap with swimmers; a monster only goes where its height fits, and only fliers, swimmers and fire-resistant ones go on water or lava. " +
-                       "Uniform progression instead sorts them by strength and hands them out level by level, the weakest first.",
-            });
-            settingsView = new ScrollViewer { Content = settings, Padding = new Thickness(4, 8, 16, 8) };
-
-            var preview = new Button { Content = "Preview" };
-            preview.Click += (o, e) => report.Text = "Preview — nothing changed yet.\n\n" + Run().Report;
-            var swap = new Button { Content = "Swap", FontWeight = FontWeight.SemiBold };
-            swap.Click += (o, e) => Swap();
-            undoButton.Click += (o, e) => UndoAll();
-            buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 8, 0, 6) };
-            var world = new Button { Content = "World report" };
-            ToolTip.SetTip(world, "Shows the creatures of the game's levels as saved on disk, before any edits.");
-            world.Click += (o, e) => report.Text = MonsterSwap.WorldReport(session, session.LoadLevel);
-            buttons.Children.Add(preview); buttons.Children.Add(swap); buttons.Children.Add(undoButton); buttons.Children.Add(world);
-            buttons.Children.Add(new TextBlock { Text = "Each swap is also one Edit ▸ Undo step per level; nothing is written to the game until you save.", VerticalAlignment = VerticalAlignment.Center, Opacity = 0.7, FontSize = 12 });
-            report.MinHeight = MinReport;
-
-            BuildTabs();
-            // the tabs keep the settings' natural height (FitTabs), the report takes what is left
-            root = new Grid { Margin = new Thickness(16), RowDefinitions = new RowDefinitions("Auto,Auto,Auto,*") };
-            Grid.SetRow(tabs, 1); Grid.SetRow(buttons, 2); Grid.SetRow(report, 3);
-            root.Children.Add(top); root.Children.Add(tabs); root.Children.Add(buttons); root.Children.Add(report);
-            Content = root;
-            LayoutUpdated += (o, e) => FitTabs();
-            ManualWindow.Attach(this, "Swapping monsters");
-            Closed += (o, e) => Save();
         }
 
         ScrollViewer settingsView;
@@ -251,6 +263,36 @@ namespace UwEditor.App
             try { Directory.CreateDirectory(Settings.Folder); File.WriteAllText(PathOf(), opt.ToJson()); } catch (Exception) { }
         }
 
+        // ---- the settings file
+
+        /// <summary>Save, Load, Copy and Paste settings.</summary>
+        public SettingsBar SettingsButtons { get; private set; }
+
+        /// <summary>The settings on screen now (the settings tab, the whitelist, the ignored monsters, the seed, the levels' hash), pretty or on one line.</summary>
+        public string SettingsText(bool compact)
+        {
+            return RandomizerSettings.Write(RandomizerSettings.GameOf(session), RandomizerSettings.MonsterSwap, opt, RandomizerSettings.LevelsHash(session, main.ViewModel.Edits), null, compact);
+        }
+
+        string LogLine() { return RandomizerSettings.LogLine(SettingsText(true)) + "\n\n"; }
+
+        /// <summary>Reads settings text into the options, the settings tab and the lists (what it leaves out takes the defaults, the game's whitelist among them). The report says what was loaded and every warning; gives that message.</summary>
+        public string LoadSettings(string text)
+        {
+            var d = new MonsterSwapOptions { Seed = opt.Seed, Whitelist = MonsterSwap.DefaultWhitelist(session, Level), Ignored = new List<IgnoredObject>() };
+            var r = RandomizerSettings.Read(text, RandomizerSettings.GameOf(session), RandomizerSettings.MonsterSwap, d);
+            if (!r.Ok) return report.Text = SettingsBar.Refused(r);
+            var o = r.As<MonsterSwapOptions>();
+            if (o.Whitelist == null) o.Whitelist = new List<IgnoredObject>();
+            if (o.Ignored == null) o.Ignored = new List<IgnoredObject>();
+            RandomizerSettings.CopyInto(o, opt);
+            BuildSettings();
+            WhitelistPanel.ListReplaced();
+            IgnoredPanel.ListReplaced();
+            Save();
+            return report.Text = SettingsBar.Loaded(r, new[] { RandomizerSettings.LevelsWarning(r, RandomizerSettings.LevelsHash(session, main.ViewModel.Edits)) });
+        }
+
         public MonsterSwapOptions Options { get { return opt; } }
         public bool CanUndoSwap { get { return undoButton.IsEnabled; } }
         public string ReportText { get { return report.Text; } }
@@ -272,13 +314,14 @@ namespace UwEditor.App
         /// <summary>The Swap button.</summary>
         public void Swap()
         {
+            string line = LogLine();
             var r = Run();
             if (r.Changed == 0) { report.Text = "Nothing to change.\n\n" + r.Report; return; }
             MonsterSwap.Apply(r, main.ViewModel.Edits, opt.Seed);
             applied.Add(r);
             undoButton.IsEnabled = true;
             Save();
-            report.Text = "Swapped. " + (applied.Count > 1 ? applied.Count + " swaps so far; Undo swap puts back all of them.\n\n" : "Undo swap puts everything back.\n\n") + r.Report;
+            report.Text = "Swapped. " + (applied.Count > 1 ? applied.Count + " swaps so far; Undo swap puts back all of them.\n\n" : "Undo swap puts everything back.\n\n") + line + r.Report;
             main.RandomizerApplied("Monsters swapped. Edit ▸ Undo (per level) or Undo swap in the monster swap window puts them back.");
         }
 

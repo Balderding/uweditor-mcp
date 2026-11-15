@@ -56,6 +56,10 @@ namespace UwEditor.App
         readonly Button selectedButton = new Button { Content = "The selected square" };
         readonly StackPanel givenRow;
         readonly TextBlock startNote = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = 0.7, MaxWidth = 760 };
+        // the controls Load settings sets
+        readonly LogicOptionsPanel logicPanel;
+        readonly Dictionary<string, CheckBox> moveBoxes = new Dictionary<string, CheckBox>();
+        readonly CheckBox creaturesBox = new CheckBox { Content = "Creature inventories (creatures without a conversation)" };
 
         /// <summary>The last preview or shuffle, or null.</summary>
         public KeyShuffleResult Result { get; private set; }
@@ -107,8 +111,11 @@ namespace UwEditor.App
             retries.Value = opt.Retries;
             retries.ValueChanged += (o, e) => { opt.Retries = (int)(retries.Value ?? 20); };
             head.AddRow("Seed", LogicOptionsPanel.Row(seed, newSeed, LogicOptionsPanel.Label("Retries", 60), retries, LogicOptionsPanel.Note("How many further seeds to try when a fill fails the check.")));
+            SettingsButtons = new SettingsBar(() => RandomizerSettings.FileName(RandomizerSettings.GameOf(session), RandomizerSettings.KeyScatter, opt.Seed), SettingsText, LoadSettings, t => summary.Text = t);
+            head.AddRow("Settings", SettingsButtons);
             // the logic options, as the Automatic zones window has them
-            top.Children.Add(new LogicOptionsPanel(opt.Nav, opt.Logic, true));
+            logicPanel = new LogicOptionsPanel(opt.Nav, opt.Logic, true);
+            top.Children.Add(logicPanel);
             // what moves, three to a row, lined up with the options above
             top.Children.Add(LogicOptionsPanel.Heading("THE SCATTER", "what moves, and what Apply adds"));
             var moves = new OptionGrid(3);
@@ -117,10 +124,12 @@ namespace UwEditor.App
                 string cat = c;
                 var box = new CheckBox { Content = KeyShuffle.CategoryName(c), IsChecked = opt.Move.Contains(c) };
                 box.IsCheckedChanged += (o, e) => { if (box.IsChecked == true) opt.Move.Add(cat); else opt.Move.Remove(cat); };
+                moveBoxes[cat] = box;
                 return (Control)box;
             }).ToList();
             for (int i = 0; i < boxes.Count; i += 3) moves.AddRow(i == 0 ? "Move" : "", boxes.Skip(i).Take(3).Concat(Enumerable.Repeat<Control>(null, Math.Max(0, 3 - (boxes.Count - i)))).ToArray());
-            var creatures = new CheckBox { Content = "Creature inventories (creatures without a conversation)", IsChecked = opt.CreatureInventories };
+            var creatures = creaturesBox;
+            creatures.IsChecked = opt.CreatureInventories;
             creatures.IsCheckedChanged += (o, e) => opt.CreatureInventories = creatures.IsChecked == true;
             // additional items: a row with what is picked and the picker
             var extraButton = new Button { Content = "…", Padding = new Thickness(10, 2) };
@@ -223,7 +232,7 @@ namespace UwEditor.App
         void SetStartAt()
         {
             int l = (int)(startLevel.Value ?? 1), x = (int)(startX.Value ?? 32), y = (int)(startY.Value ?? 32);
-            opt.StartAt = new StartPoint { Level = l, X = x + 0.5, Y = y + 0.5, Z = double.NaN, Description = string.Format("the given start, level {0} ({1}, {2})", l, x, y) };
+            opt.StartAt = KeyShuffleOptions.GivenStart(l, x, y);
             RefreshStart();
         }
 
@@ -263,7 +272,73 @@ namespace UwEditor.App
         KeyShuffleResult Compute()
         {
             PrepareZoning();
-            return KeyShuffle.Run(session, main.ViewModel.Edits, opt);
+            string levels = RandomizerSettings.LevelsHash(session, main.ViewModel.Edits);
+            return Stamp(KeyShuffle.Run(session, main.ViewModel.Edits, opt), levels);
+        }
+
+        // ---- the settings file
+
+        /// <summary>Save, Load, Copy and Paste settings.</summary>
+        public SettingsBar SettingsButtons { get; private set; }
+
+        /// <summary>The zoning a run uses, as the settings file records it: automatic zones, or the Zones window's file and a hash of its zones.</summary>
+        Dictionary<string, string> ZoningInputs()
+        {
+            var d = new Dictionary<string, string>();
+            if (UsesZoning) { d["zoning"] = Path.GetFileName(zoning.Path) + (zoning.Dirty ? " with unsaved changes" : ""); d["zoningHash"] = RandomizerSettings.ShortHash(zoning.ForSolver().ToJson()); }
+            else d["zoning"] = "automatic zones";
+            return d;
+        }
+
+        /// <summary>The settings on screen now (every option, the seed, the levels' hash and the zoning), pretty or on one line.</summary>
+        public string SettingsText(bool compact)
+        {
+            return RandomizerSettings.Write(RandomizerSettings.GameOf(session), RandomizerSettings.KeyScatter, opt, RandomizerSettings.LevelsHash(session, main.ViewModel.Edits), ZoningInputs(), compact);
+        }
+
+        /// <summary>Reads settings text into the options and every control (the logic panel too); the summary line says what was loaded and every warning. Gives that message.</summary>
+        public string LoadSettings(string text)
+        {
+            var r = RandomizerSettings.Read(text, RandomizerSettings.GameOf(session), RandomizerSettings.KeyScatter, new KeyShuffleOptions { Seed = opt.Seed });
+            if (!r.Ok) return summary.Text = SettingsBar.Refused(r);
+            var o = r.As<KeyShuffleOptions>();
+            extraWindow?.Close();
+            RandomizerSettings.CopyInto(o, opt);
+            // the controls follow; their handlers write the same values back
+            seed.Value = opt.Seed;
+            retries.Value = opt.Retries;
+            logicPanel.Refresh();
+            foreach (var kv in moveBoxes) kv.Value.IsChecked = opt.Move.Contains(kv.Key);
+            creaturesBox.IsChecked = opt.CreatureInventories;
+            kitBox.IsChecked = opt.StartKit;
+            mapsBox.IsChecked = opt.ExploreMaps;
+            anywhereBox.IsChecked = opt.Anywhere;
+            notesBox.IsChecked = opt.SpoilerNotes;
+            RefreshExtra();
+            var at = o.StartAt;
+            if (at != null) { startLevel.Value = at.Level; startX.Value = (int)at.X; startY.Value = (int)at.Y; }
+            opt.StartAt = at;
+            scopeBox.SelectedIndex = opt.StartScope == StartScope.AnyLevel ? 1 : 0;
+            startBox.SelectedIndex = (int)opt.Start;
+            RefreshStart();
+            var more = new List<string> { RandomizerSettings.LevelsWarning(r, RandomizerSettings.LevelsHash(session, main.ViewModel.Edits)) };
+            string was, wasHash;
+            r.Inputs.TryGetValue("zoning", out was);
+            r.Inputs.TryGetValue("zoningHash", out wasHash);
+            var now = ZoningInputs();
+            if (was != null && (was == "automatic zones") != (now["zoning"] == "automatic zones"))
+                more.Add("The settings were saved with " + (was == "automatic zones" ? "automatic zones" : "the zoning " + was) + ", and Apply now uses " + (UsesZoning ? "the Zones window's zoning (" + now["zoning"] + ")" : "automatic zones") + ": the result may differ.");
+            else if (!string.IsNullOrEmpty(wasHash) && now.ContainsKey("zoningHash") && wasHash != now["zoningHash"])
+                more.Add("The Zones window's zoning differs from the one the settings were saved with (" + was + "): the result may differ.");
+            return summary.Text = SettingsBar.Loaded(r, more);
+        }
+
+        /// <summary>Puts the settings of a run at the top of its log, so that the log alone makes it again.</summary>
+        KeyShuffleResult Stamp(KeyShuffleResult r, string levels)
+        {
+            if (r?.Options == null) return r;
+            r.Log.Insert(0, RandomizerSettings.LogLine(RandomizerSettings.Write(RandomizerSettings.GameOf(session), RandomizerSettings.KeyScatter, r.Options, levels, ZoningInputs(), true)) + "\n\n");
+            return r;
         }
 
         // ---- the zoning
@@ -448,10 +523,12 @@ namespace UwEditor.App
                 KeyShuffleResult r = null;
                 string error = null;
                 var snap = KeyShuffle.Snapshot(session, main.ViewModel.Edits);
+                string levels = RandomizerSettings.LevelsHash(session, main.ViewModel.Edits);
                 PrepareZoning();
                 var o = opt.Clone();
                 await Task.Run(() => { try { r = KeyShuffle.RunOn(session, snap, o); } catch (Exception ex) { error = ex.Message; } });
                 if (error != null) { summary.Text = "Could not apply: " + error; return; }
+                Stamp(r, levels);
                 if (apply) ApplyResult(r); else Show(r, "Preview. ");
             }
             finally

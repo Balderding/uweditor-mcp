@@ -1,0 +1,31 @@
+{
+  "format": "uw-randomizer-settings",
+  "version": 1,
+  "editor": "0.1.45",
+  "game": "UW1",
+  "tool": "monster-swap",
+  "seed": 1,
+  "levels": "69fbf5e2",
+  "options": {
+    "scope": "level",
+    "measure": "xp",
+    "depthBlend": 0,
+    "spread": 20,
+    "keepHp": false,
+    "lootWithMonster": false,
+    "rerollPowerful": false,
+    "powerfulChance": 5,
+    "powerfulDepth": 50,
+    "talkersInLevel": false,
+    "leaveSpecialKinds": true,
+    "whitelist": [
+      {
+        "level": 2,
+        "index": 251,
+        "label": "L2 #251 gazer (48, 23) hp 40"
+      }
+    ],
+    "ignored": [],
+    "rule": "rank"
+  }
+}
