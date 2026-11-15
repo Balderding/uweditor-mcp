@@ -21,7 +21,8 @@ namespace UwEditor.Core.Randomizer
     /// checkLock, combat/DAMAGE.C damage_object): a door with no lock, or an unlocked one, is free;
     /// a locked one opens with its key (the lock's link &amp; 0x1FF; 0 = no key fits), by picking when
     /// its difficulty z (the lock's Z) is below 15 (3z skill; z 14 needs 31), or by bashing when the
-    /// door can be broken (COMOBJ quality class below 3 and not tenacious). Open doors are free.
+    /// door can be broken (COMOBJ quality class below 3 and not tenacious: id bit 13 in UW1; in UW2,
+    /// where that bit is a door's direction, a door that keeps a strength in its owner field). Open doors are free.
     /// </summary>
     public static class ZoneDoors
     {
@@ -77,7 +78,10 @@ namespace UwEditor.Core.Randomizer
             int key = lockObj.Link & 0x1FF;
             int z = lockObj.Z;
             int qclass = (Races.ComObjByte(s, door.Item, 6) >> 2) & 3;
-            bool tenacious = (door.Record[1] & 0x20) != 0;
+            // UW1: any object with id bit 13 set is indestructible. UW2 excepts doors (combat/DAMAGE.C damage_object: the bit is
+            // a door's direction there); a UW2 door whose owner has bit 0 set keeps a strength in the rest of the owner and is
+            // worn down but never broken
+            bool tenacious = s.IsUw2 ? (door.Owner & 1) != 0 && door.Owner >> 1 > 0 : (door.Record[1] & 0x20) != 0;
             bool breakable = qclass < 3 && !tenacious;
             var alts = new List<string>();
             if (key > 0) { alts.Add("key:" + key); why.Add("key " + key); } else why.Add("no key fits");

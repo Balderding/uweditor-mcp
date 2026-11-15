@@ -65,8 +65,10 @@ namespace UwEditor.Core.Tests
         [InlineData("cast:open", false, true, false)]
         [InlineData("cast:open", false, false, false)]
         [InlineData("worn:open", true, false, true)]
-        [InlineData("worn:open", false, true, false)]
-        public void The_Open_spell_counts_with_Magic_on_only_whatever_lock_picking_is(string source, bool magic, bool picking, bool opens)
+        [InlineData("worn:open", false, true, true)]        // a thing that holds it is no rune magic
+        [InlineData("worn:open", false, false, true)]
+        [InlineData("once:open", false, false, true)]
+        public void The_Open_spell_counts_whatever_lock_picking_is_and_the_runes_cast_it_with_Magic_on_only(string source, bool magic, bool picking, bool opens)
         {
             var zs = Zones(3, 3);
             Link(zs, 2, 3, "pick:5");

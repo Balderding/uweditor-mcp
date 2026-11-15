@@ -91,12 +91,18 @@ namespace UwEditor.App
             var search = Num(logic.SearchSkill, 0, 30, v => logic.SearchSkill = v);
             lg.AddRow("Abilities", Check("Magic (casting from runes)", logic.Magic, v => logic.Magic = v),
                 Check("Single-use items count (scrolls, potions, charged wands)", logic.SingleUseItems, v => logic.SingleUseItems = v));
+            var circle = Num(Math.Min(logic.NewCharacterCircle, AbilityOptions.MaxCircle), 0, AbilityOptions.MaxCircle, v => logic.NewCharacterCircle = v);
+            ToolTip.SetTip(circle, "The highest circle a spell cast from runes may have while the player has not yet left the start's free area (the zones he walks to from the start with nothing). A new character is level 1, and casting from runes asks for level 2 x circle - 1, so 1 (Light, Leap); 8 counts every circle from the start. Once he is out (by a key, a lever, an item, a spell he can cast …) every circle counts. When the way out of the start needs more, the key shuffle makes a wand (or, with single-use items counting, a scroll) of that spell within reach.");
+            lg.AddRow("Runes at start", Row(Label("New character casts up to circle", 210), circle));
             lg.AddRow("Locks, NPCs", Row(Check("Lock picking in logic, skill", logic.LockPicking, v => logic.LockPicking = v), pickSkill),
                 Check("Killing NPCs in logic (to take what they carry)", logic.KillNpcs, v => logic.KillNpcs = v));
             // the damage-trap tiles of the level 7 maze (the facts' area) are always walls; the option for every other one is no longer offered
             lg.AddRow("Search", Row(Label("Search skill", 90), search), Check("Retry until found", logic.SearchRetry, v => logic.SearchRetry = v));
             lg.AddRow("Goal, ring", Check("Ring of Levitation needs lava protection", logic.RingNeedsLava, v => logic.RingNeedsLava = v),
                 Check("Require breaking the orb (level 7)", logic.RequireOrb, v => logic.RequireOrb = v));
+            var blog = Check("The Pits' key gem only by Blog's way (UW2)", logic.PitsGemByBlog, v => logic.PitsGemByBlog = v);
+            ToolTip.SetTip(blog, "Ultima Underworld 2: the key gem of the Pits of Carnage counts only when Blog the troll gets it for you. Befriend Blog on level 59 (give him a grey rock, or lose three games of White Rock Black Rock with the black rocks in his room), then speak to Dorstag, who hands the gem to Blog, and Blog gives it to you. Killing Dorstag, who carries the gem, no longer counts. Unticked, both ways count.");
+            lg.AddRow("Pits gem", blog);
             Children.Add(lg);
         }
 

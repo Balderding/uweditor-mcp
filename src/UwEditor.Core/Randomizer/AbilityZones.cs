@@ -12,8 +12,21 @@ namespace UwEditor.Core.Randomizer
     {
         /// <summary>Casting from runes counts (cast:X).</summary>
         public bool Magic = true;
+        /// <summary>
+        /// The highest circle of a spell cast from runes that counts before the player has left the
+        /// start's free area (the zones the start reaches by ways that need nothing; Timeline's
+        /// solve). A new character is level 1, and casting from runes asks for level 2 * circle - 1
+        /// (combat/RUNES.C player_cast, UW1 and UW2), so 1 by default; 8 for no limit. Once the
+        /// area is left (by a key, a lever, an item, a spell up to this circle …) every circle
+        /// counts again: the logic has no experience model and takes fights as won.
+        /// </summary>
+        public int NewCharacterCircle = 1;
+        /// <summary>The circles a spell from runes can have (UW1 and UW2: 8); NewCharacterCircle at this or above sets no limit.</summary>
+        public const int MaxCircle = 8;
         /// <summary>Scrolls, potions and charged wands count for an ability, besides worn and unlimited items.</summary>
         public bool SingleUseItems;
+        /// <summary>With SingleUseItems: the only abilities whose scrolls, potions and charges count (a stricter solve, say "iron_flesh" alone); null for all.</summary>
+        public HashSet<string> SingleUseOnly;
         /// <summary>Lock picking is in logic, with PickSkill assumed.</summary>
         public bool LockPicking;
         /// <summary>The Pick Lock skill assumed, 0-30.</summary>
@@ -36,6 +49,20 @@ namespace UwEditor.Core.Randomizer
         public bool KillNpcs;
         /// <summary>Karl (Phase D): the goal also needs Tyball's orb on L7 broken (option:require_orb; the goal fact "goal_orb").</summary>
         public bool RequireOrb;
+        /// <summary>
+        /// The logic relies on nothing the game may take away whatever the player does (the facts'
+        /// mayBeLost of kind b or c: Dupre's key at castle plot 0, Altara before plot 14): such a
+        /// source counts only while its window is still open in the solve's own order. Kind a (lost
+        /// only by an avoidable choice) still counts; the walkthrough warns.
+        /// </summary>
+        public bool AvoidLost = true;
+        /// <summary>
+        /// UW2: the Pits of Carnage's key gem (gem 7) comes only by Blog's way (befriend Blog on
+        /// level 59, then Dorstag hands the gem to him and Blog gives it: the facts key_gem_7_blog
+        /// and blog_friend); killing Dorstag, who carries it, no longer counts (option:pits_gem_by_blog;
+        /// key_gem_7 needs nooption:pits_gem_by_blog). Off: both ways count.
+        /// </summary>
+        public bool PitsGemByBlog;
 
         // Bashing is always in the logic (Karl: fists bash any breakable door), so it is no option.
 
@@ -54,6 +81,7 @@ namespace UwEditor.Core.Randomizer
             if (RingNeedsLava) h.Add("ring_needs_lava");
             if (KillNpcs) h.Add("kill_npcs");
             if (RequireOrb) h.Add("require_orb");
+            if (PitsGemByBlog) h.Add("pits_gem_by_blog");
             return h;
         }
 
@@ -62,18 +90,20 @@ namespace UwEditor.Core.Randomizer
         {
             return new SolverOptions
             {
-                AbilitySources = true, AllowSpells = false, Magic = Magic, SingleUseItems = SingleUseItems,
+                AbilitySources = true, AllowSpells = false, Magic = Magic, SingleUseItems = SingleUseItems, SingleUseOnly = SingleUseOnly,
+                NewCharacterCircle = NewCharacterCircle >= MaxCircle ? int.MaxValue : Math.Max(0, NewCharacterCircle),
                 AllowBash = true, LockpickSkill = LockPicking ? PickSkill : -1, PickRetry = PickRetry, PickNeedsLockpick = true,
-                SearchSkill = SearchSkill, SearchRetry = SearchRetry, OptionsOn = Tokens(),
+                SearchSkill = SearchSkill, SearchRetry = SearchRetry, OptionsOn = Tokens(), AvoidLost = AvoidLost,
             };
         }
 
         public override string ToString()
         {
-            return string.Format("Magic {0}, single-use items {1}, lock picking {2}, bashing always, Search {3}{4}, damage-trap tiles are walls {5}, Ring of Levitation {6}, killing NPCs {7}{8}",
-                Magic ? "on" : "off", SingleUseItems ? "count" : "do not count", LockPicking ? "on (skill " + PickSkill + (PickRetry ? ", retry" : "") + ")" : "off",
+            return string.Format("Magic {0}, single-use items {1}, lock picking {2}, bashing always, Search {3}{4}, damage-trap tiles are walls {5}, Ring of Levitation {6}, killing NPCs {7}{8}{9}{10}",
+                Magic ? (NewCharacterCircle >= MaxCircle ? "on" : "on (from runes up to circle " + NewCharacterCircle + " until the start's free area is left)") : "off", SingleUseItems ? "count" : "do not count", LockPicking ? "on (skill " + PickSkill + (PickRetry ? ", retry" : "") + ")" : "off",
                 SearchSkill, SearchRetry ? " with retry" : " without retry", DamageTrapWalls ? "everywhere" : "only in the facts' areas",
-                RingNeedsLava ? "needs lava protection" : "free", KillNpcs ? "in logic" : "not in logic", RequireOrb ? ", the goal needs the orb broken" : "");
+                RingNeedsLava ? "needs lava protection" : "free", KillNpcs ? "in logic" : "not in logic", RequireOrb ? ", the goal needs the orb broken" : "",
+                AvoidLost ? "" : ", things the game takes away count", PitsGemByBlog ? ", the Pits' gem only by Blog's way" : "");
         }
     }
 
@@ -139,6 +169,8 @@ namespace UwEditor.Core.Randomizer
         public NavOptions Nav;
         /// <summary>Placements of items non-hostile NPCs carry (option:kill_npcs), and of items a create trap makes (its flag).</summary>
         public List<Placement> NpcHeld = new List<Placement>(), Created = new List<Placement>();
+        /// <summary>The placements left out because they come from a creature the logic must spare (the facts' kind "spare": what it carries, what its death leaves, a fact granted on it), as "token: why".</summary>
+        public List<string> Spared = new List<string>();
         /// <summary>The spells' names (block 6 0x100 + spell), for the report.</summary>
         public Dictionary<int, string> SpellNames = new Dictionary<int, string>();
     }
@@ -232,12 +264,19 @@ namespace UwEditor.Core.Randomizer
             return res;
         }
 
-        /// <summary>The movement options with the facts' free chains (kind "free": objects and triggers) added.</summary>
+        /// <summary>The movement options with the facts' free chains (kind "free": objects and triggers) and the doors conversations open (kind "door") added.</summary>
         public static NavOptions FreeChains(NavOptions nav, FactSet facts)
         {
             nav = nav.Clone();
             foreach (var f in facts.OfKind("free"))
                 foreach (int i in f.Objects.Concat(f.Triggers)) nav.FreeChains.Add(f.Level + ":" + i);
+            foreach (var f in facts.OfKind("door"))
+            {
+                if (f.Level <= 0 || f.Object < 0 || string.IsNullOrWhiteSpace(f.Requires)) continue;
+                string key = f.Level + ":" + f.Object, before;
+                string r = f.Requires.Trim();
+                nav.DoorAlternatives[key] = nav.DoorAlternatives.TryGetValue(key, out before) ? "(" + before + ") | (" + r + ")" : r;
+            }
             return nav;
         }
 
@@ -451,7 +490,8 @@ namespace UwEditor.Core.Randomizer
         /// square, or anywhere on UW1's level 9, becomes worn:X: do_spell refuses every spell there,
         /// the player's casts and the items he uses alike (combat/SPELLS.C do_spell, anti_magic_p;
         /// obj/USEITEMS.C checkSpell), but a worn enchantment never goes through it
-        /// (game/PLAYDATA.C FixPlayerEquips). On a nomana level (L7 while the orb stands), it
+        /// (game/PLAYDATA.C FixPlayerEquips). On a nomana level (L7 while the orb stands; with the
+        /// fact's rect, only for an edge that starts inside it: UW2 level 48 west of x 25), it
         /// becomes (cast:X &amp; the fact's token) | use:X. An active spell cast before stepping onto
         /// a no-magic square keeps working (nothing there ends it), so this is the strict reading.
         /// </summary>
@@ -468,7 +508,7 @@ namespace UwEditor.Core.Randomizer
                     var m = level(e.Level);
                     noMagic = e.Level == 9 || (e.X >= 0 && e.Y >= 0 && m != null && m.Tiles[e.X, e.Y].NoMagic);
                 }
-                var nomana = facts.OfKind("nomana").FirstOrDefault(f => f.Level == e.Level);
+                var nomana = facts.NoMana(e.Level, e.X, e.Y);
                 if (noMagic) { req = SpellTerm.Replace(req, mm => "worn:" + mm.Groups[1].Value); res.NoMagicEdges++; }
                 else if (nomana != null)
                 {
@@ -486,12 +526,75 @@ namespace UwEditor.Core.Randomizer
 
         static string Slug(string t) { return new string((t ?? "").ToLowerInvariant().Select(c => char.IsLetterOrDigit(c) ? c : '_').ToArray()).Trim('_'); }
 
-        /// <summary>Adds a placement; with perObject (an object of the levels) always, else only when the zone has none like it.</summary>
-        static void Add(ZoneSet zs, int zone, string grants, string requires, string notes, string source, bool perObject = false, List<string> usesUp = null)
+        /// <summary>Adds a placement; with perObject (an object of the levels) always, else only when the zone has none like it. Returns the placement added, or null.</summary>
+        static Placement Add(ZoneSet zs, int zone, string grants, string requires, string notes, string source, bool perObject = false, List<string> usesUp = null)
         {
-            if (zone <= ZoneSet.Unassigned) return;
-            if (!perObject && zs.Placements.Any(p => p.Zone == zone && Requirement.Normalize(p.Grants) == Requirement.Normalize(grants) && (p.Requires ?? "") == (requires ?? ""))) return;
-            zs.Placements.Add(new Placement { Zone = zone, Grants = grants, Requires = requires ?? "", Notes = notes, Source = source, UsesUp = usesUp != null && usesUp.Count > 0 ? usesUp : null });
+            if (zone <= ZoneSet.Unassigned) return null;
+            if (!perObject && zs.Placements.Any(p => p.Zone == zone && Requirement.Normalize(p.Grants) == Requirement.Normalize(grants) && (p.Requires ?? "") == (requires ?? ""))) return null;
+            var added = new Placement { Zone = zone, Grants = grants, Requires = requires ?? "", Notes = notes, Source = source, UsesUp = usesUp != null && usesUp.Count > 0 ? usesUp : null };
+            zs.Placements.Add(added);
+            return added;
+        }
+
+        /// <summary>
+        /// The facts' mayBeLost on the placements (docs/UW2-RANDOMIZER-NEXT-STEPS.md 2.1): a
+        /// "lost" fact naming a token marks every source of it; one naming a place marks the
+        /// placements of the objects of the levels that lie there or are carried by its creature
+        /// (KeyItems and the item scan note them as "#N name ..., level L (x, y)").
+        /// </summary>
+        static void MarkLost(ZoneSet zs, Func<int, LevelModel> level, FactSet facts)
+        {
+            var lost = facts.OfKind("lost").ToList();
+            if (lost.Count == 0) return;
+            var models = new Dictionary<int, LevelModel>();
+            var byId = facts.Facts.Where(f => f.Id.Length > 0).GroupBy(f => f.Id).ToDictionary(g => g.Key, g => g.First());
+            foreach (var p in zs.Placements)
+            {
+                if (p.Grants.Length > 0) p.MarkLost(facts.LostToken(p.Grants));
+                int l, i;
+                Fact own;
+                var mm = PlacedObject.Match(p.Notes ?? "");
+                if (p.Source == "levels" && mm.Success) { l = int.Parse(mm.Groups[2].Value); i = int.Parse(mm.Groups[1].Value); }
+                // a flag fact on an object of a place that may be lost (the key gem of Killorn's lower level)
+                else if ((p.Source ?? "").StartsWith("facts: ") && byId.TryGetValue(p.Source.Substring(7), out own) && own.Kind == "flag" && own.Level > 0 && own.Object >= 0) { l = own.Level; i = own.Object; }
+                else continue;
+                if (!lost.Any(f => f.Level == l)) continue;
+                LevelModel m;
+                if (!models.TryGetValue(l, out m)) { try { m = level(l); } catch (Exception) { m = null; } models[l] = m; }
+                if (m == null || i < 0 || i >= m.Objects.Length) continue;
+                p.MarkLost(facts.LostPlace(l, m, m.Objects[i]));
+            }
+        }
+
+        /// <summary>
+        /// Karl's rule: no solve may depend on the death of a creature the facts' kind "spare" names
+        /// (UW2's brain creatures, whose deaths make Killorn Keep fall). Every placement of an object
+        /// of the levels that is such a creature or lies in one (what it carries, the item its corpse
+        /// leaves, an ability item it holds), and every flag fact granted on one, is left out; this is
+        /// where creatures' deaths become sources (fights are taken as won, so what a creature carries
+        /// is otherwise there to take), so nothing can ask for them later. Each is listed in res.Spared.
+        /// </summary>
+        static void Spare(ZoneSet zs, Func<int, LevelModel> level, FactSet facts, AbilityZoneResult res)
+        {
+            if (!facts.OfKind("spare").Any()) return;
+            var models = new Dictionary<int, LevelModel>();
+            var byId = facts.Facts.Where(f => f.Id.Length > 0).GroupBy(f => f.Id).ToDictionary(g => g.Key, g => g.First());
+            Func<int, LevelModel> model = l => { LevelModel m; if (!models.TryGetValue(l, out m)) { try { m = level(l); } catch (Exception) { m = null; } models[l] = m; } return m; };
+            zs.Placements.RemoveAll(p =>
+            {
+                int l, i;
+                Fact own;
+                var mm = PlacedObject.Match(p.Notes ?? "");
+                if (p.Source == "levels" && mm.Success) { l = int.Parse(mm.Groups[2].Value); i = int.Parse(mm.Groups[1].Value); }
+                else if ((p.Source ?? "").StartsWith("facts: ") && byId.TryGetValue(p.Source.Substring(7), out own) && own.Kind == "flag" && own.Level > 0 && own.Object >= 0) { l = own.Level; i = own.Object; }
+                else return false;
+                var m = model(l);
+                if (m == null || i < 0 || i >= m.Objects.Length || m.Objects[i].Free) return false;
+                var f = facts.Spared(l, m, m.Objects[i]);
+                if (f == null) return false;
+                res.Spared.Add(string.Format("{0}: {1} ({2}): the creature must live (fact {3})", p.Grants.Length > 0 ? p.Grants : p.Counts, p.Notes, p.Source, f.Id));
+                return true;
+            });
         }
 
         static void AddPlacements(GameSession s, Func<int, LevelModel> level, ZoneSet zs, FactSet facts, AbilityZoneResult res)
@@ -500,10 +603,14 @@ namespace UwEditor.Core.Randomizer
             res.Sources = Abilities.Find(s, level, zs);
             foreach (var src in res.Sources)
                 Add(zs, src.Zone, src.Token, "", string.Format("#{0} {1} ({2}, {3}{4}), level {5} ({6}, {7})", src.Index, src.Name, src.Spell, src.Kind, src.Charges >= 0 ? " " + src.Charges + " charges" : "", src.Level, src.TileX, src.TileY), "levels", true);
-            // casting: the runes in the rune bag (combat/RUNES.C try_cast; ignoring character level and mana)
+            // casting: the runes in the rune bag (combat/RUNES.C try_cast; ignoring mana and the casting roll); the spell's circle goes with
+            // it, as player_cast asks for level 2 * circle - 1 and a new character is level 1 (AbilityOptions.NewCharacterCircle, Timeline's solve)
             foreach (var ab in Abilities.Names)
                 foreach (int sp in Abilities.SpellsGiving(s.IsUw2, ab))
-                    Add(zs, zs.StartZone, "cast:" + ab, Abilities.CastRequirement(s, sp), SpellTables.Name(s, sp) + " (" + string.Join(" ", Abilities.Runes(s.IsUw2, sp).Select(r => Abilities.RuneNames[r])) + ")", "facts");
+                {
+                    var cast = Add(zs, zs.StartZone, "cast:" + ab, Abilities.CastRequirement(s, sp), SpellTables.Name(s, sp) + " (" + string.Join(" ", Abilities.Runes(s.IsUw2, sp).Select(r => Abilities.RuneNames[r])) + ")", "facts");
+                    if (cast != null) cast.Circle = SpellTables.Circle(s.IsUw2, sp);
+                }
             // the rune bag, lock picks, and the items the facts name
             var wanted = new HashSet<string> { "item:rune_bag", "item:lockpick" };
             var mustExist = new HashSet<string>();
@@ -563,7 +670,7 @@ namespace UwEditor.Core.Randomizer
                 switch (f.Kind)
                 {
                     case "craft":
-                        Add(zs, zs.StartZone, f.Grants, f.Requires, f.Notes, "facts: " + f.Id, false, f.UsesUp);
+                        Add(zs, zs.StartZone, f.Grants, f.Requires, f.Notes, "facts: " + f.Id, false, f.UsesUp)?.MarkLost(f);
                         break;
                     case "trade":
                         foreach (var p in zs.Placements.Where(p => Requirement.Normalize(p.Grants) == Requirement.Normalize(f.Token)))
@@ -581,17 +688,19 @@ namespace UwEditor.Core.Randomizer
                             {
                                 // a square instead of an object
                                 int at = zs.NearestZone(f.Level, f.X, f.Y);
-                                if (at > ZoneSet.Unassigned) Add(zs, at, f.Grants, f.Requires, f.Notes + string.Format(" (level {0} ({1}, {2}))", f.Level, f.X, f.Y), "facts: " + f.Id, false, f.UsesUp);
+                                if (at > ZoneSet.Unassigned) Add(zs, at, f.Grants, f.Requires, f.Notes + string.Format(" (level {0} ({1}, {2}))", f.Level, f.X, f.Y), "facts: " + f.Id, false, f.UsesUp)?.MarkLost(f);
                                 else res.Warnings.Add("Facts: " + f.Id + ": no zone at L" + f.Level + " (" + f.X + ", " + f.Y + ").");
                                 break;
                             }
                             var o = m != null && f.Object >= 0 && f.Object < m.Objects.Length ? m.Objects[f.Object] : null;
                             if (o == null || o.Free || o.TileX < 0) { res.Warnings.Add("Facts: " + f.Id + ": no object #" + f.Object + " on L" + f.Level + "."); break; }
-                            Add(zs, zs.ZoneOf(f.Level, m, o), f.Grants, f.Requires, f.Notes + " (#" + o.Index + " " + o.Name + ")", "facts: " + f.Id, false, f.UsesUp);
+                            Add(zs, zs.ZoneOf(f.Level, m, o), f.Grants, f.Requires, f.Notes + " (#" + o.Index + " " + o.Name + ")", "facts: " + f.Id, false, f.UsesUp)?.MarkLost(f);
                             break;
                         }
                 }
             }
+            MarkLost(zs, level, facts);
+            Spare(zs, level, facts, res);
             // a thing that works on its own level only: the ways and grants of that level take its flag in place of the ability
             foreach (var src in res.Sources.Where(x => x.OnlyLevel > 0))
             {
@@ -803,7 +912,7 @@ namespace UwEditor.Core.Randomizer
             return !r.Eval(ctx);
         }
 
-        sealed class FixedContext : IRequirementContext
+        internal sealed class FixedContext : IRequirementContext
         {
             readonly HashSet<string> tokens;
             public SolverOptions Options { get; private set; }
@@ -873,6 +982,7 @@ namespace UwEditor.Core.Randomizer
             sb.AppendLine();
             foreach (var w in res.Warnings) sb.AppendLine("Warning: " + w);
             sb.AppendLine("Options: " + res.Options + ".");
+            if (res.Spared.Count > 0) sb.AppendLine("Left out, from creatures the logic must spare (the facts' kind spare): " + string.Join("; ", res.Spared) + ".");
             sb.AppendLine("Casting ignores character level, mana and the casting roll (combat/RUNES.C player_cast): holding the runes and the rune bag is enough.");
             sb.AppendLine();
             if (sv != null)
@@ -929,7 +1039,8 @@ namespace UwEditor.Core.Randomizer
 
             sb.AppendLine("WHERE MAGIC DOES NOT WORK");
             sb.AppendLine(string.Format("  No-magic squares (the tile's bit, combat/SPELLS.C anti_magic_p) and UW1's level 9 refuse every spell, cast or from an item; worn enchantments still work. Edges narrowed to worn sources: {0}.", res.NoMagicEdges));
-            foreach (var f in res.Facts.OfKind("nomana")) sb.AppendLine(string.Format("  L{0}: {1} Edges where casting needs {2}: {3}.", f.Level, f.Notes, f.Until, res.NoManaEdges));
+            foreach (var f in res.Facts.OfKind("nomana")) sb.AppendLine(string.Format("  L{0}{4}: {1} Edges where casting needs {2}: {3}.", f.Level, f.Notes, f.Until, res.NoManaEdges,
+                f.Rect != null && f.Rect.Length == 4 ? string.Format(" ({0}, {1}) to ({2}, {3})", f.Rect[0], f.Rect[1], f.Rect[2], f.Rect[3]) : ""));
             sb.AppendLine();
 
             sb.AppendLine(string.Format("HIDDEN GATES (look triggers that open a wall; with Search {0}{1})", res.Options.SearchSkill, res.Options.SearchRetry ? " and retries" : ", one look"));

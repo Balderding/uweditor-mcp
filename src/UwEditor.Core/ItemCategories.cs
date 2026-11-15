@@ -146,8 +146,8 @@ namespace UwEditor.Core
 
     /// <summary>
     /// What the object list and the find window look for. Text matches the name, the creature's
-    /// NPC name, the object's text (book, scroll, writing, gravestone, text trap), "#index" and
-    /// "0x" item ids. Categories are alternatives; Enchanted narrows them down.
+    /// NPC name, the object's text (book, scroll, writing, gravestone, text trap), the name of
+    /// its enchantment, "#index" and "0x" item ids. Categories are alternatives; Enchanted narrows them down.
     /// </summary>
     public sealed class ObjectQuery
     {
@@ -175,6 +175,8 @@ namespace UwEditor.Core
             if (npc != null && npc.ToLowerInvariant().Contains(f)) { MatchedText = npc; return true; }
             string proper = UwEditor.Core.Editing.NamedItems.Of(s.Kind, o.Item);
             if (proper != null && proper.ToLowerInvariant().Contains(f)) { MatchedText = proper; return true; }
+            string ench = UwEditor.Core.Editing.Enchantments.NameOf(o.Item, o.Enchanted, o.IsQuantity, o.Link, (o.Record[1] & 0x08) != 0, s.Strings);
+            if (ench != null && ench.ToLowerInvariant().Contains(f)) { MatchedText = ench.Trim(); return true; }
             string text = ObjectTexts.TextOf(s, o);
             if (text != null && text.ToLowerInvariant().Contains(f)) { MatchedText = Snippet(text, f); return true; }
             return false;

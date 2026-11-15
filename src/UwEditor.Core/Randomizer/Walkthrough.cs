@@ -36,6 +36,8 @@ namespace UwEditor.Core.Randomizer
         public int EndsIn;
         /// <summary>The zones its requirement names as reached (a switch on the other side, where a trigger is set off).</summary>
         public readonly List<int> Zones = new List<int>();
+        /// <summary>What not to do, for a source the game may take away (the facts' mayBeLost: Placement.Lost), or "".</summary>
+        public string Warning = "";
     }
 
     /// <summary>
@@ -118,6 +120,7 @@ namespace UwEditor.Core.Randomizer
                 foreach (var r in st.Route) l.Add("       " + r);
                 l.Add(string.Format("  {0,3}. {1}", st.Number, st.Text));
                 if (st.Why.Length > 0) l.Add("       Why: " + st.Why);
+                if (st.Warning.Length > 0) l.Add("       Beware: " + st.Warning);
             }
             return l;
         }
@@ -415,7 +418,7 @@ namespace UwEditor.Core.Randomizer
             double Cost(string leaf, int at)
             {
                 string head = Head(leaf);
-                if (head == "bash" || head == "pick" || head == "search" || head == "option") return 1e7;
+                if (head == "bash" || head == "pick" || head == "search" || head == "option" || head == "nooption") return 1e7;
                 if (head == "spell" && !So.AbilitySources) { int i; return FirstToken.TryGetValue(leaf, out i) && i < at ? i : 1e7; }
                 var dummy = new List<string>();
                 var p = Resolve(leaf, at, -1, -1, "", dummy);
@@ -474,6 +477,10 @@ namespace UwEditor.Core.Randomizer
                     case "option":
                         p.Text = "the logic option " + tail + " is on";
                         p.Option = "option " + tail;
+                        return p;
+                    case "nooption":
+                        p.Trivial = true;
+                        p.Text = "the logic option " + tail + " is off";
                         return p;
                     case "zone":
                     case "now_zone":
@@ -871,6 +878,20 @@ namespace UwEditor.Core.Randomizer
                 // a spell's runes and what is done in the inventory lie in the start zone: no need to go there
                 bool anywhere = e.Zone == zs.StartZone && (e.Token.StartsWith("cast:") || f2 != null && sp == null || p != null && (p.Source ?? "") == "facts");
                 st.Why = WhyOf(x, stepOf, st, self, anywhere ? null : zoneLead) + spent + (fight ? " A fight: the logic takes it as won, whatever the creature." : "");
+                st.Warning = LostWarning(p);
+            }
+
+            /// <summary>
+            /// The warning for a source the game may take away (the facts' mayBeLost): kind a, lost
+            /// only by a choice, says what not to do; kinds b and c, which the logic counts only
+            /// inside their window, say until when.
+            /// </summary>
+            static string LostWarning(Placement p)
+            {
+                if (p == null || string.IsNullOrEmpty(p.Lost)) return "";
+                string why = (p.LostWhy ?? "").Trim().TrimEnd('.');
+                if (p.Lost == "a") return "this may be lost for good: " + why + ".";
+                return "this is only there for a time" + (string.IsNullOrEmpty(p.LostWhen) ? "" : " (gone at " + p.LostWhen + ")") + ": " + why + ".";
             }
 
             // ---- the reverse check

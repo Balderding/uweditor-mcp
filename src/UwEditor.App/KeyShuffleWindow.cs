@@ -47,6 +47,15 @@ namespace UwEditor.App
         KeyShuffleExtraWindow extraWindow;
         readonly CheckBox anywhereBox = new CheckBox { Content = "Place anywhere (random squares, not where items lay)" };
         readonly CheckBox notesBox = new CheckBox { Content = "Spoiler log in the map notes (pages 9, 10 …)" };
+        // where the game starts: the game's own square, a random one (level 1 only or any level), or one given
+        readonly ComboBox startBox = new ComboBox { ItemsSource = new[] { "The game's own square", "A random square", "This square" }, SelectedIndex = 0, Width = 190 };
+        readonly ComboBox scopeBox = new ComboBox { Width = 150 };
+        readonly NumericUpDown startLevel = new NumericUpDown { Minimum = 1, Maximum = 9, Increment = 1, FormatString = "0", Width = 100 };
+        readonly NumericUpDown startX = new NumericUpDown { Minimum = 1, Maximum = 62, Increment = 1, FormatString = "0", Width = 100 };
+        readonly NumericUpDown startY = new NumericUpDown { Minimum = 1, Maximum = 62, Increment = 1, FormatString = "0", Width = 100 };
+        readonly Button selectedButton = new Button { Content = "The selected square" };
+        readonly StackPanel givenRow;
+        readonly TextBlock startNote = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = 0.7, MaxWidth = 760 };
 
         /// <summary>The last preview or shuffle, or null.</summary>
         public KeyShuffleResult Result { get; private set; }
@@ -54,6 +63,8 @@ namespace UwEditor.App
         public KeyShuffleOptions Options { get { return opt; } }
         /// <summary>The spoiler log on show.</summary>
         public string Spoiler { get { return report.Text ?? ""; } }
+        /// <summary>The line under the buttons: what the last run did, or why it could not.</summary>
+        public string SummaryText { get { return summary.Text ?? ""; } }
 
         public KeyShuffleWindow(MainWindow main, GameSession s)
         {
@@ -71,6 +82,7 @@ namespace UwEditor.App
                 Text = "Moves the key items to new places so that the game stays beatable with the logic chosen below. The zones (the Zones window's zoning, or automatic zones when there is none) and the time-aware solver decide what is reachable. " +
                        "The key items are placed one by one, each somewhere the solver can reach while it counts the items not yet placed as held (assumed fill); the other items fill the rest. " +
                        "A fresh solve of the shuffled levels must then reach level 9 without a one-way trap, or the next seed is tried. Items move whole (keys keep their lock numbers); with Place anywhere, the places on the floor are random squares the logic reaches. " +
+                       "Start: the game can begin on another square, random or given; its first step then teleports the player there, and the items the way out needs are placed within reach. " +
                        "Nothing is written until you press Apply, which makes one undoable step per level; the changes are saved with the levels." + (s.IsUw2 ? " This works for Ultima Underworld 1 only, whose facts and solver it uses." : ""),
             });
             // the zoning: the Zones window's, or Quick autozone when there is none
@@ -135,6 +147,26 @@ namespace UwEditor.App
             ToolTip.SetTip(notesBox, "At Apply, the log goes into the game's own map notes, which a new game copies from DATA: page 9 (the Ethereal Void's map) gets a warning, from page 10 the hints (each artifact, and each item the game cannot be finished without, by the name of the zone it lies in, or its level and the part of it), then a page saying SOLUTIONS NEXT, then the solutions (level and square). The map screen's up arrow goes past level 9 to these pages.");
             more.AddRow("Places", anywhereBox, notesBox);
             top.Children.Add(more);
+            // where the game starts
+            scopeBox.ItemsSource = s.IsUw2 ? new[] { "the castle", "any world" } : new[] { "level 1 only", "any level" };
+            scopeBox.SelectedIndex = opt.StartScope == StartScope.AnyLevel ? 1 : 0;
+            startLevel.Maximum = Math.Max(1, s.LevelSlots().Where(x => x.Present).Select(x => x.Level).DefaultIfEmpty(9).Max());
+            startLevel.Value = 1; startX.Value = 32; startY.Value = 32;
+            givenRow = LogicOptionsPanel.Row(LogicOptionsPanel.Label("Level", 40), startLevel, LogicOptionsPanel.Label("X", 14), startX, LogicOptionsPanel.Label("Y", 14), startY, selectedButton);
+            startBox.SelectionChanged += (o, e) => { opt.Start = (StartChoice)Math.Max(0, startBox.SelectedIndex); RefreshStart(); };
+            scopeBox.SelectionChanged += (o, e) => { opt.StartScope = scopeBox.SelectedIndex == 1 ? StartScope.AnyLevel : StartScope.FirstLevels; RefreshStart(); };
+            startLevel.ValueChanged += (o, e) => SetStartAt();
+            startX.ValueChanged += (o, e) => SetStartAt();
+            startY.ValueChanged += (o, e) => SetStartAt();
+            selectedButton.Click += (o, e) => UseSelectedSquare();
+            ToolTip.SetTip(startBox, "Where the game starts. The game still puts the player on its own square; Apply puts a teleport there that his first step takes, once, to the start chosen. A random start is drawn from each attempt's seed among the squares the game can be finished from; the key items the way out needs are placed within reach.");
+            ToolTip.SetTip(scopeBox, s.IsUw2 ? "Where a random start may lie: the castle (levels 1 to 5), or any of the nine worlds." : "Where a random start may lie: level 1, or any level but level 9 (reaching it is the goal).");
+            ToolTip.SetTip(selectedButton, "Takes the square selected in the main window, on the level shown there.");
+            var startGrid = new OptionGrid(1);
+            startGrid.AddRow("Start", LogicOptionsPanel.Row(startBox, scopeBox, givenRow));
+            startGrid.AddRow("", startNote);
+            top.Children.Add(startGrid);
+            RefreshStart();
 
             previewButton.Click += async (o, e) => await RunAsync(false);
             shuffleButton.Click += async (o, e) => await RunAsync(true);
@@ -175,6 +207,57 @@ namespace UwEditor.App
         void RefreshExtra()
         {
             extraText.Text = opt.Extra.Count == 0 ? "none" : KeyShuffleExtraWindow.Summary(ExtraItems.Offered(session, l => main.ViewModel.Edits.Model(l)), opt.Extra);
+        }
+
+        // ---- the start
+
+        /// <summary>The start's choice (the game's own square, a random one, this square), its scope (shown with a random start) and the square's level, x and y (shown with a given one).</summary>
+        public ComboBox StartBox { get { return startBox; } }
+        public ComboBox ScopeBox { get { return scopeBox; } }
+        public NumericUpDown StartLevelBox { get { return startLevel; } }
+        public NumericUpDown StartXBox { get { return startX; } }
+        public NumericUpDown StartYBox { get { return startY; } }
+        /// <summary>The line under the start's controls: what the choice does, or why a given square was refused.</summary>
+        public string StartNote { get { return startNote.Text ?? ""; } }
+
+        void SetStartAt()
+        {
+            int l = (int)(startLevel.Value ?? 1), x = (int)(startX.Value ?? 32), y = (int)(startY.Value ?? 32);
+            opt.StartAt = new StartPoint { Level = l, X = x + 0.5, Y = y + 0.5, Z = double.NaN, Description = string.Format("the given start, level {0} ({1}, {2})", l, x, y) };
+            RefreshStart();
+        }
+
+        /// <summary>This square: the square selected in the main window, on the level shown there. False (and a note) when none is selected.</summary>
+        public bool UseSelectedSquare()
+        {
+            var vm = main.ViewModel;
+            if (vm.Level == null || vm.SelectedTileX < 0) { startNote.Text = "Select a square in the main window first."; return false; }
+            startBox.SelectedIndex = (int)StartChoice.Given;
+            startLevel.Value = vm.Level.Level; startX.Value = Math.Max(1, Math.Min(62, vm.SelectedTileX)); startY.Value = Math.Max(1, Math.Min(62, vm.SelectedTileY));
+            SetStartAt();
+            return true;
+        }
+
+        void RefreshStart()
+        {
+            scopeBox.IsVisible = opt.Start == StartChoice.Random;
+            givenRow.IsVisible = opt.Start == StartChoice.Given;
+            if (opt.Start == StartChoice.Given && opt.StartAt == null) SetStartAt();
+            var own = opt.Nav.BaseStartOf(session);
+            string from = own != null ? string.Format("level {0} ({1}, {2})", own.Level, (int)own.X, (int)own.Y) : "the game's square";
+            switch (opt.Start)
+            {
+                case StartChoice.Random:
+                    startNote.Text = "Each attempt draws a square from its seed (" + (session.IsUw2 ? (opt.StartScope == StartScope.AnyLevel ? "any world" : "the castle") : (opt.StartScope == StartScope.AnyLevel ? "any level but level 9" : "level 1")) +
+                        ") among those the game can be finished from. The first step at " + from + " teleports the player there, once.";
+                    break;
+                case StartChoice.Given:
+                    startNote.Text = string.Format("The game starts at level {0} ({1}, {2}): the first step at {3} teleports the player there, once. Preview says whether the square can be used.", opt.StartAt.Level, (int)opt.StartAt.X, (int)opt.StartAt.Y, from);
+                    break;
+                default:
+                    startNote.Text = "The game starts where it always does (" + from + ").";
+                    break;
+            }
         }
 
         KeyShuffleResult Compute()
@@ -272,6 +355,8 @@ namespace UwEditor.App
             if (r == null || !r.Success || r.IsApplied) return false;
             var o = r.Options;
             if (o.Seed != opt.Seed || o.Retries != opt.Retries || o.Anywhere != opt.Anywhere || o.Filler != opt.Filler || !o.Extra.SetEquals(opt.Extra) || o.CreatureInventories != opt.CreatureInventories || !o.Move.SetEquals(opt.Move)) return false;
+            if (o.Start != opt.Start || (opt.Start == StartChoice.Random && o.StartScope != opt.StartScope)) return false;
+            if (opt.Start == StartChoice.Given && (o.StartAt == null || opt.StartAt == null || o.StartAt.Level != opt.StartAt.Level || (int)o.StartAt.X != (int)opt.StartAt.X || (int)o.StartAt.Y != (int)opt.StartAt.Y)) return false;
             if (o.Logic.ToString() != opt.Logic.ToString() || o.Nav.TickLength != opt.Nav.TickLength || o.Nav.JumpMargin != opt.Nav.JumpMargin || o.Nav.GapJumps != opt.Nav.GapJumps
                 || o.Nav.DiagonalJumps != opt.Nav.DiagonalJumps
                 || o.Nav.CutAtLevelChanges != opt.Nav.CutAtLevelChanges || o.Nav.FoldEmptyDeadEnds != opt.Nav.FoldEmptyDeadEnds || o.Nav.ShippedStart != opt.Nav.ShippedStart) return false;
@@ -292,12 +377,25 @@ namespace UwEditor.App
             Result = r;
             report.Text = r.Log.ToString();
             exportButton.IsEnabled = r.Log.Length > 0;
-            if (r.Refused != null) { summary.Text = r.Refused; return; }
+            if (r.Refused != null)
+            {
+                summary.Text = r.Refused;
+                if (r.Options != null && r.Options.Start == StartChoice.Given) startNote.Text = r.Refused;
+                return;
+            }
             summary.Text = prefix + (r.Success
-                ? string.Format("Seed {0}{1}: {2} items move ({3} key items), {4} levels change; the shuffled game reaches level 9 in {5} spheres (the original in {6}).{7}",
+                ? string.Format("Seed {0}{1}: {2} items move ({3} key items), {4} levels change; the shuffled game reaches level 9 in {5} spheres (the original in {6}).{7}{8}",
                     r.UsedSeed, r.UsedSeed != r.Options.Seed ? " (after " + (r.Attempts - 1) + " failed)" : "", r.Moves.Count(m => m.Item != m.Place), r.Moves.Count(m => m.ByFill && m.Item != m.Place), r.After.Count,
-                    r.SpheresAfter, r.SpheresBefore, r.Unlocked.Count > 0 ? " " + r.Unlocked.Count + " door(s) unlocked." : "")
+                    r.SpheresAfter, r.SpheresBefore, r.Unlocked.Count > 0 ? " " + r.Unlocked.Count + " door(s) unlocked." : "", StartLine(r))
                 : "No shuffle passed the check in " + r.Attempts + " attempts; see the log.");
+        }
+
+        /// <summary>Where a shuffled game with a random or given start begins, in a sentence (empty with the game's own start).</summary>
+        static string StartLine(KeyShuffleResult r)
+        {
+            if (r.Start == null || r.StartFrom == null) return "";
+            return string.Format(" The game starts at level {0} ({1}, {2}): the first step at level {3} ({4}, {5}) teleports the player there{6}.", r.Start.Level, (int)r.Start.X, (int)r.Start.Y,
+                r.StartFrom.Level, (int)r.StartFrom.X, (int)r.StartFrom.Y, r.MovedIntoReach.Count > 0 ? "; " + r.MovedIntoReach.Count + " key item(s) went to squares within its reach, as no place there was left" : "");
         }
 
         /// <summary>Preview: computes a shuffle and shows its spoiler log; nothing changes.</summary>

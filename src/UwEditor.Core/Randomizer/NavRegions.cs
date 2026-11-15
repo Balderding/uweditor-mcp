@@ -36,8 +36,23 @@ namespace UwEditor.Core.Randomizer
         /// <summary>The start is the game's own new-game square (UW1 (32, 2)), not the one the executable now holds (moved in the editor).</summary>
         public bool ShippedStart;
 
-        /// <summary>Where the player starts with these options: the new-game square in the executable (or, with ShippedStart, the game's own), else the start of the game opened.</summary>
-        public StartPoint StartOf(GameSession s) { return ShippedStart ? s.ShippedNewGameStart() : s.NewGameStart ?? s.Start; }
+        /// <summary>A start square to solve from instead of the game's own (to try other starting positions, the key item shuffle's random start).</summary>
+        public StartPoint StartOverride;
+        /// <summary>Where the player starts with these options: StartOverride, else the new-game square in the executable (or, with ShippedStart, the game's own), else the start of the game opened.</summary>
+        public StartPoint StartOf(GameSession s) { return StartOverride ?? BaseStartOf(s); }
+        /// <summary>The square the game puts the player on (the new-game square, or with ShippedStart the game's own), whatever StartOverride says.</summary>
+        public StartPoint BaseStartOf(GameSession s) { return ShippedStart ? s.ShippedNewGameStart() : s.NewGameStart ?? s.Start; }
+        /// <summary>
+        /// Where the player starts, the levels looked at: StartOverride; else, when a start teleport
+        /// lies at the game's square (StartTeleport.Find: the first step there sends the player
+        /// once to another square), its destination; else the game's square.
+        /// </summary>
+        public StartPoint StartOf(GameSession s, Func<int, LevelModel> level)
+        {
+            if (StartOverride != null || level == null) return StartOf(s);
+            var t = StartTeleport.Find(s, level, this);
+            return t != null ? t.Destination() : BaseStartOf(s);
+        }
 
         // ---- Phase C
 
@@ -45,6 +60,8 @@ namespace UwEditor.Core.Randomizer
         public HashSet<string> FreeChains = new HashSet<string>();
         /// <summary>A door that a move or pick-up trigger closes behind the player (with a lock) is passed freely only towards the trigger; away from it the closed door's requirement holds (<see cref="NavGraph.Closers"/>).</summary>
         public bool ClosersOneWay;
+        /// <summary>Other ways doors open ("level:door index" to a requirement): a conversation that opens the door (the facts' kind "door"), an "or" beside its lock.</summary>
+        public Dictionary<string, string> DoorAlternatives = new Dictionary<string, string>();
 
         public bool IsFree(int level, int index) { return FreeChains != null && FreeChains.Contains(level + ":" + index); }
 
@@ -52,6 +69,7 @@ namespace UwEditor.Core.Randomizer
         {
             var o = (NavOptions)MemberwiseClone();
             o.FreeChains = new HashSet<string>(FreeChains ?? new HashSet<string>());
+            o.DoorAlternatives = new Dictionary<string, string>(DoorAlternatives ?? new Dictionary<string, string>());
             return o;
         }
     }
@@ -314,9 +332,14 @@ namespace UwEditor.Core.Randomizer
 
         // ---------------------------------------------------------------- building
 
-        /// <summary>Builds the regions, edges, levers and mechanisms of every level present.</summary>
+        /// <summary>
+        /// Builds the regions, edges, levers and mechanisms of every level present (or of those
+        /// given). UW2's slots past the nine worlds (slot 73, a leftover level no way leads to)
+        /// are left out unless asked for by name, as the item walk leaves them (<see cref="Progression.InWalk"/>).
+        /// </summary>
         public static NavGraph Build(GameSession s, Func<int, LevelModel> level, NavOptions options = null, IEnumerable<int> only = null)
         {
+            if (only == null && s.IsUw2) only = s.LevelSlots().Where(x => Progression.InWalk(s, x.Level)).Select(x => x.Level).ToList();
             var g = new NavGraph { Options = options ?? new NavOptions(), Levels = s.Profile.LevelSlots };
             g.RegionAt = new int[g.Levels][];
             g.decksAt = new Dictionary<int, List<NavDeck>>[g.Levels];
@@ -335,7 +358,7 @@ namespace UwEditor.Core.Randomizer
             var lv = new Dictionary<int, LevelNav>();
             // the squares a two-state control opens are regions of their own: open while the graph is built, put back after
             var put = new List<Action>();
-            if (s.IsUw2) foreach (var kv in models) g.FindToggles(kv.Value, put);
+            if (s.IsUw2) foreach (var kv in models) { g.FindToggles(kv.Value, put); g.FindOscillators(kv.Value, put); }
             try { BuildRest(g, s, models, lv, terrain); }
             finally { foreach (var back in put) back(); }
             return g;
@@ -376,7 +399,75 @@ namespace UwEditor.Core.Randomizer
         {
             public int Level, X, Y, Height, Control, Trigger;
             public string ControlName = "";
-            public string Flag { get { return string.Format("flag:terrain_L{0}_{1}", Level, Trigger); } }
+            /// <summary>The kind of the mechanism whose flag opens it: terrain (a two-state control) or oscillator.</summary>
+            public string Kind = "terrain";
+            /// <summary>An oscillator's square: the heights it steps between.</summary>
+            public int Low, High;
+            public string Flag { get { return string.Format("flag:{0}_L{1}_{2}", Kind, Level, Trigger); } }
+        }
+
+        /// <summary>UW2: the squares that controls step up and down (FindOscillators), by level.</summary>
+        public readonly Dictionary<int, List<ToggleTile>> OscillatorTiles = new Dictionary<int, List<ToggleTile>>();
+
+        /// <summary>
+        /// UW2: an oscillator trap (item 0x195, event/TRIGGER.C TRAP_OSCILLATOR) in its height
+        /// mode steps its square's floor by one each time it runs, between its quality and its
+        /// owner, turning at the ends. Run from a control the player uses (a lever), the square
+        /// stands at whichever of those heights he likes: it becomes a region of its own at
+        /// the height most of its neighbours have, passed with the flag of the control's
+        /// trigger (the two squares between the east ledge and the bridge to the Ice Caverns'
+        /// control island, level 25 (53, 16) and (54, 16), which the lever at (53, 15) steps
+        /// from 14 down to 10).
+        /// </summary>
+        void FindOscillators(LevelModel m, List<Action> put)
+        {
+            var found = new Dictionary<int, ToggleTile>();
+            // a use trigger held by a thing on a square (a lever of either kind, a button), which the player may set off
+            foreach (var t in m.Objects)
+            {
+                if (t == null || t.Free || t.Item != 0x1A2 || t.Parent < 0 || !PlayerSetsOff(t)) continue;
+                var c = m.Objects[t.Parent];
+                if (c.Free || !c.OnTile || c.IsTrapOrTrigger) continue;
+                var seen = new HashSet<int> { t.Index };
+                var trap = Triggers.LinksTo(m, t);
+                while (trap != null && !trap.Free && trap.IsTrapOrTrigger && seen.Add(trap.Index) && seen.Count < 64)
+                {
+                    int k = trap.TileY * 64 + trap.TileX;
+                    if (trap.Item == 0x195 && ((trap.FineX & 6) >> 1) == 0 && trap.TileX >= 0 && trap.Quality < trap.Owner && trap.Owner <= 15
+                        && !found.ContainsKey(k) && !toggleAt.ContainsKey(m.Level << 16 | k))
+                        found[k] = new ToggleTile { Level = m.Level, X = trap.TileX, Y = trap.TileY, Control = c.Index, ControlName = c.Name, Trigger = t.Index, Kind = "oscillator", Low = trap.Quality, High = trap.Owner };
+                    trap = Triggers.LinksTo(m, trap);
+                }
+            }
+            foreach (var kv in found)
+            {
+                var tt = kv.Value;
+                var tile = m.Tiles[tt.X, tt.Y];
+                if (tile.IsSolid || tile.Height < tt.Low || tile.Height > tt.High) continue;
+                // the height most neighbours stand at, other oscillators aside; as it stands when none is better
+                int best = tile.Height, bestCount = 0;
+                for (int h = tt.Low; h <= tt.High; h++)
+                {
+                    int count = 0;
+                    for (int d = 0; d < 4; d++)
+                    {
+                        int nx = tt.X + Dx[d], ny = tt.Y + Dy[d];
+                        if (nx < 0 || ny < 0 || nx > 63 || ny > 63 || found.ContainsKey(ny * 64 + nx)) continue;
+                        var nt = m.Tiles[nx, ny];
+                        if (!nt.IsSolid && nt.Height == h) count++;
+                    }
+                    if (count > bestCount || (count == bestCount && h == tile.Height)) { best = h; bestCount = count; }
+                }
+                if (best == tile.Height) continue;
+                tt.Height = best;
+                List<ToggleTile> list;
+                if (!OscillatorTiles.TryGetValue(m.Level, out list)) OscillatorTiles[m.Level] = list = new List<ToggleTile>();
+                list.Add(tt);
+                toggleAt[m.Level << 16 | kv.Key] = tt;
+                int h0 = tile.Height;
+                tile.Height = best;
+                put.Add(() => { tile.Height = h0; });
+            }
         }
 
         /// <summary>UW2: the squares the two-state controls open (FindToggles), by level.</summary>
@@ -726,7 +817,8 @@ namespace UwEditor.Core.Randomizer
                         // a square a two-state control opens: passed once that state can be set
                         var tt = toggleAt[m.Level << 16 | k];
                         r = new NavRegion { Id = Regions.Count, Level = m.Level, IsDoor = true, KeepApart = true, DoorIndex = tt.Control, DoorKind = "toggle", DoorRequires = tt.Flag };
-                        r.DoorNotes = string.Format("the wall at ({0}, {1}) that {2} #{3} moves", tt.X, tt.Y, tt.ControlName, tt.Control);
+                        r.DoorNotes = tt.Kind == "oscillator" ? string.Format("the floor at ({0}, {1}) that {2} #{3} steps between heights {4} and {5}", tt.X, tt.Y, tt.ControlName, tt.Control, tt.Low, tt.High)
+                            : string.Format("the wall at ({0}, {1}) that {2} #{3} moves", tt.X, tt.Y, tt.ControlName, tt.Control);
                         Regions.Add(r);
                     }
                     else if (n.Barrier[k] != 0)
@@ -1368,7 +1460,9 @@ namespace UwEditor.Core.Randomizer
         {
             if (!n.Open(x, y) || n.Closed(y * 64 + x)) return false;
             double low = Math.Min(feetA, feetB);
-            if (LevelGeometry.CornerHeights(n.M.Tiles[x, y]).Max() >= low) return false;
+            // a stream is jumped over at its own level too: its water is nothing to stand on against the current (UW2 level 26 (33, 33) to (33, 36))
+            double level = n.Flow[y * 64 + x] >= 0 ? 0.02 : 0;
+            if (LevelGeometry.CornerHeights(n.M.Tiles[x, y]).Max() >= low + level) return false;
             List<NavDeck> l;
             if (n.Decks.TryGetValue(y * 64 + x, out l))
                 foreach (var c in l)
@@ -1521,9 +1615,13 @@ namespace UwEditor.Core.Randomizer
                 Levers.Add(lv);
                 leverOf[o.Index] = lv;
             }
+            // the start teleport (StartTeleport): used once at the first step, it is where the solve starts, not a way of the level
+            var startPoint = Options.BaseStartOf(s);
+            var startTele = startPoint != null && startPoint.Level == L ? StartTeleport.Find(m, (int)startPoint.X, (int)startPoint.Y) : null;
             foreach (var t in m.Objects)
             {
                 if (!IsRoot(m, t)) continue;
+                if (startTele != null && startTele.Triggers.Contains(t.Index)) continue;
                 int ti = t.Item - 0x1A0;
                 if (!s.IsUw2 && ti == 4) continue;      // UW1's step-on trigger never goes off (no code reports mode 1)
                 var holder = t.Parent >= 0 ? m.Objects[t.Parent] : null;
@@ -1552,9 +1650,33 @@ namespace UwEditor.Core.Randomizer
                 }
                 else
                 {
-                    int r = NearestRegion(L, t.TileX, t.TileY, 2, true);
-                    if (r >= 0) fromRegions.Add(r);
-                    setOff = r >= 0 ? "region:" + r : "";
+                    // UW2 sets a move trigger into a wall square, at the edge the player walks against: it is touched from the square beyond
+                    // that edge and from no other, though another room may lie nearer (the sewers' walls that are walked through, level 5
+                    // (17, 22): one trigger at each edge, each sending to the far side)
+                    var beyond = new List<int>();
+                    if (s.IsUw2 && (ti & 0xF) == 0 && t.OnTile && m.Tiles[t.TileX, t.TileY].IsSolid)
+                    {
+                        var sides = new List<int[]>();
+                        if (t.FineX == 0) sides.Add(new[] { -1, 0 }); else if (t.FineX == 7) sides.Add(new[] { 1, 0 });
+                        if (t.FineY == 0) sides.Add(new[] { 0, -1 }); else if (t.FineY == 7) sides.Add(new[] { 0, 1 });
+                        foreach (var d in sides)
+                        {
+                            int bx = t.TileX + d[0], by = t.TileY + d[1];
+                            int br = bx < 0 || by < 0 || bx > 63 || by > 63 ? -1 : RegionOf(L, bx, by);
+                            if (br >= 0 && !beyond.Contains(br)) beyond.Add(br);
+                        }
+                    }
+                    if (beyond.Count > 0)
+                    {
+                        fromRegions.AddRange(beyond);
+                        setOff = Or(beyond.Select(b => "region:" + b));
+                    }
+                    else
+                    {
+                        int r = NearestRegion(L, t.TileX, t.TileY, 2, true);
+                        if (r >= 0) fromRegions.Add(r);
+                        setOff = r >= 0 ? "region:" + r : "";
+                    }
                 }
                 // UW2's trigger kinds come twice (0x1A0.. and 0x1B0..): 9 a timer, 12 a scheduled trigger; neither is set off by the player's own action,
                 // so the flag that lets the player set a trigger off (event/TRIGGER.C UseTrigger, ID_FLAG11) is not asked of them
@@ -1638,7 +1760,9 @@ namespace UwEditor.Core.Randomizer
                     {
                         if (!player) { Notes.Add(string.Format("L{0} trigger #{1} at ({2}, {3}) teleports, but the player cannot set it off (no flag 11).", L, t.Index, t.TileX, t.TileY)); continue; }
                         int to = trap.Z == 0 ? L : trap.Z;
-                        int dest = NearestRegion(to, trap.Quality, trap.Owner);
+                        // landing in a doorway is landing there, not in the room nearest by (UW2 level 1 (37, 40), with a cell beside it)
+                        int own = trap.Quality < 64 && trap.Owner < 64 && all.ContainsKey(to) ? RegionOf(to, trap.Quality, trap.Owner) : -1;
+                        int dest = s.IsUw2 && own >= 0 && Regions[own].IsDoor && !Regions[own].IsBarrier ? own : NearestRegion(to, trap.Quality, trap.Owner);
                         if (dest < 0) { Notes.Add(string.Format("L{0} teleport #{1} (trigger #{2}) lands on L{3} ({4}, {5}): no open square there.", L, trap.Index, t.Index, to, trap.Quality, trap.Owner)); continue; }
                         // past a proximity trap the player stands in its rectangle, wherever the trigger is
                         var starts = fromRegions;
@@ -1768,6 +1892,13 @@ namespace UwEditor.Core.Randomizer
                 case 0x188:
                     me.Kind = "door";
                     me.What = Triggers.Short(s, trap) + string.Format(" at ({0}, {1})", me.X, me.Y);
+                    break;
+                case 0x195:
+                    // UW2: an oscillator in its height mode; the square it steps is a way that asks for this flag (FindOscillators)
+                    if (!s.IsUw2 || ((trap.FineX & 6) >> 1) != 0) return null;
+                    me.Kind = "oscillator";
+                    me.X = trap.TileX; me.Y = trap.TileY;
+                    me.What = string.Format("steps the floor of ({0}, {1}) between heights {2} and {3}", me.X, me.Y, trap.Quality, trap.Owner);
                     break;
                 default:
                     return null;
@@ -1938,6 +2069,15 @@ namespace UwEditor.Core.Randomizer
                     if (req.StartsWith("flag:door_")) req = by;
                     else if (req != "free") req = req + " | " + (alts.Count == 1 && by.Contains("&") ? "(" + by + ")" : by);
                     r.DoorNotes += (r.DoorNotes.Length > 0 ? "; " : "") + "opened by a trap chain (" + by + ")";
+                }
+                // a conversation that opens the door (the facts' kind "door"): an "or" beside the lock
+                string alt;
+                if (!r.IsBarrier && r.DoorKind != "toggle" && Options.DoorAlternatives != null && Options.DoorAlternatives.TryGetValue(r.Level + ":" + r.DoorIndex, out alt) && !string.IsNullOrWhiteSpace(alt))
+                {
+                    string a = alt.Contains("|") || alt.Contains("&") ? "(" + alt + ")" : alt;
+                    if (req.StartsWith("flag:door_")) req = alt;
+                    else if (req != "free") req = (req.Contains("&") ? "(" + req + ")" : req) + " | " + a;
+                    r.DoorNotes += (r.DoorNotes.Length > 0 ? "; " : "") + "opened by a conversation (" + alt + ")";
                 }
                 r.DoorRequires = req;
                 reqOf[r.Id] = req;

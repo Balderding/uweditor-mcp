@@ -299,6 +299,7 @@ namespace UwEditor.App
         void OnLevelChanged(LevelModel level)
         {
             EndPaintStroke();
+            DropTerrainPreview(null);
             scene = level == null ? null : LevelScene.Build(level, atlas, vm.Options);
             if (View.FirstPerson) View.SetFirstPerson(false);
             View.SetScene(scene);
@@ -370,7 +371,7 @@ namespace UwEditor.App
             if (vm.Level == null || scene == null) return;
             if (rebuildMesh)
             {
-                scene = LevelScene.Build(vm.Level, atlas, vm.Options);
+                scene = LevelScene.Build(ShownLevel, atlas, vm.Options);
                 View.SetScene(scene);
             }
             else
@@ -386,7 +387,7 @@ namespace UwEditor.App
 
         void UpdateGrid()
         {
-            View.SetGrid(vm.Level != null && vm.Options.Grid ? GridOverlay.Lines(vm.Level, vm.Options.GridStep) : null);
+            View.SetGrid(vm.Level != null && vm.Options.Grid ? GridOverlay.Lines(ShownLevel, vm.Options.GridStep) : null);
             UpdateGridLabels();
         }
 
@@ -851,9 +852,12 @@ namespace UwEditor.App
             if (ctrl && !typing && e.Key == Key.V) { PasteClip(-1, -1, -1); e.Handled = true; return; }
             if (ctrl && !typing && e.Key == Key.D) { Duplicate(); e.Handled = true; return; }
             if (ctrl && !typing && e.Key == Key.H) { ShowUndoHistory(); e.Handled = true; return; }
+            if (ctrl && e.Key == Key.G) { ShowGoTo(""); e.Handled = true; return; }
             if (e.Key == Key.Tab && !typing && e.KeyModifiers == KeyModifiers.None && (View.IsFocused || View.IsPointerOver)) { ToggleMap(); e.Handled = true; return; }
             if (typing || (e.KeyModifiers & (KeyModifiers.Control | KeyModifiers.Alt)) != 0) return;
             if (View.FirstPerson && e.Key == Key.Escape) { View.SetFirstPerson(false); e.Handled = true; return; }
+            // typing a number opens the Go to box with it
+            if (e.KeyModifiers == KeyModifiers.None && DigitOf(e.Key) != null && vm.Session != null) { ShowGoTo(DigitOf(e.Key)); e.Handled = true; return; }
             // the camera keys work whichever panel has the focus (the arrows stay with lists)
             if (!View.IsFocused && (e.Key == Key.W || e.Key == Key.A || e.Key == Key.S || e.Key == Key.D || e.Key == Key.Q || e.Key == Key.E || e.Key == Key.R || e.Key == Key.V))
             {

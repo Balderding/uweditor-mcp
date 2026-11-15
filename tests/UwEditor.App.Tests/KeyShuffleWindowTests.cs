@@ -82,6 +82,66 @@ namespace UwEditor.App.Tests
             w.Close();
         }
 
+        [AvaloniaFact]
+        public void The_pits_gem_option_is_in_both_windows_with_its_tooltip()
+        {
+            if (Uw1 == null) return;
+            var w = Ui.Open(Uw1);
+            w.AskBeforeDiscarding = false;
+            var aw = w.ShowAutoZones();
+            Ui.Pump();
+            var box = Box(aw, "The Pits' key gem only by Blog's way");
+            Assert.False(box.IsChecked);
+            Assert.Contains("Killing Dorstag", ToolTip.GetTip(box) as string);
+            box.IsChecked = true;
+            Ui.Pump();
+            Assert.True(aw.LogicOptions.PitsGemByBlog);
+            Assert.Contains("pits_gem_by_blog", aw.LogicOptions.Tokens());
+            box.IsChecked = false;
+            Ui.Pump();
+            Assert.False(aw.LogicOptions.PitsGemByBlog);
+            aw.Close();
+            var kw = w.ShowKeyShuffle();
+            Ui.Pump();
+            Assert.False(Box(kw, "The Pits' key gem").IsChecked);
+            Box(kw, "The Pits' key gem").IsChecked = true;
+            Ui.Pump();
+            Assert.True(kw.Options.Logic.PitsGemByBlog);
+            kw.Close();
+            w.Close();
+        }
+
+        /// <summary>The circle a new character casts from runes (AbilityOptions.NewCharacterCircle): a number in both windows, 1 at first, with its tooltip.</summary>
+        [AvaloniaFact]
+        public void The_new_character_circle_is_in_both_windows_with_its_tooltip()
+        {
+            if (Uw1 == null) return;
+            var w = Ui.Open(Uw1);
+            w.AskBeforeDiscarding = false;
+            Func<Window, NumericUpDown> circle = win => win.GetLogicalDescendants().OfType<NumericUpDown>().First(n => (ToolTip.GetTip(n) as string ?? "").Contains("start's free area"));
+            var aw = w.ShowAutoZones();
+            Ui.Pump();
+            var n = circle(aw);
+            Assert.Equal(1, (int)n.Value);
+            Assert.Contains("level 2 x circle - 1", ToolTip.GetTip(n) as string);
+            n.Value = 8;
+            Ui.Pump();
+            Assert.Equal(8, aw.LogicOptions.NewCharacterCircle);
+            Assert.Equal(int.MaxValue, aw.LogicOptions.ToSolver().NewCharacterCircle);
+            n.Value = 1;
+            Ui.Pump();
+            aw.Close();
+            var kw = w.ShowKeyShuffle();
+            Ui.Pump();
+            var k = circle(kw);
+            Assert.Equal(1, (int)k.Value);
+            k.Value = 6;
+            Ui.Pump();
+            Assert.Equal(6, kw.Options.Logic.NewCharacterCircle);
+            kw.Close();
+            w.Close();
+        }
+
         static void Wait(System.Threading.Tasks.Task task)
         {
             var until = DateTime.UtcNow.AddMinutes(2);
@@ -228,6 +288,96 @@ namespace UwEditor.App.Tests
             var r = kw.PreviewNow();
             Assert.True(r.Success, string.Join("; ", r.Failures));
             Assert.Equal(1, r.Attempts);
+            kw.Close();
+            w.Close();
+        }
+
+        [AvaloniaFact]
+        public void The_start_is_the_games_own_a_random_or_a_given_square_and_a_refused_square_says_why()
+        {
+            if (Uw1 == null) return;
+            var w = Ui.Open(Uw1);
+            w.AskBeforeDiscarding = false;
+            var kw = w.ShowKeyShuffle();
+            Ui.Pump();
+            // the game's own square at first: no scope, no square
+            Assert.Equal(StartChoice.Own, kw.Options.Start);
+            Assert.False(kw.ScopeBox.IsVisible);
+            Assert.False(kw.StartLevelBox.IsEffectivelyVisible);
+            Assert.Contains("level 1 (32, 2)", kw.StartNote);
+            // random: the scope in the game's words
+            kw.StartBox.SelectedIndex = 1;
+            Ui.Pump();
+            Assert.Equal(StartChoice.Random, kw.Options.Start);
+            Assert.True(kw.ScopeBox.IsVisible);
+            Assert.False(kw.StartLevelBox.IsEffectivelyVisible);
+            Assert.Equal(new[] { "level 1 only", "any level" }, kw.ScopeBox.ItemsSource.Cast<string>());
+            Assert.Equal(StartScope.FirstLevels, kw.Options.StartScope);
+            kw.ScopeBox.SelectedIndex = 1;
+            Ui.Pump();
+            Assert.Equal(StartScope.AnyLevel, kw.Options.StartScope);
+            Assert.Contains("teleports the player there", kw.StartNote);
+            // this square: the one selected in the main window
+            var vm = w.ViewModel;
+            vm.LoadLevel(3);
+            Ui.Pump();
+            vm.Select(-1, 9, 55, true);
+            Ui.Pump();
+            Assert.True(kw.UseSelectedSquare());
+            Ui.Pump();
+            Assert.Equal(StartChoice.Given, kw.Options.Start);
+            Assert.False(kw.ScopeBox.IsVisible);
+            Assert.True(kw.StartLevelBox.IsEffectivelyVisible);
+            Assert.Equal((3, 9, 55), (kw.Options.StartAt.Level, (int)kw.Options.StartAt.X, (int)kw.Options.StartAt.Y));
+            Assert.Contains("level 3 (9, 55)", kw.StartNote);
+            // a square on water: refused, with the picker's reason, under the start and under the buttons
+            kw.StartLevelBox.Value = 1; kw.StartXBox.Value = 40; kw.StartYBox.Value = 30;
+            Ui.Pump();
+            Assert.Equal((1, 40, 30), (kw.Options.StartAt.Level, (int)kw.Options.StartAt.X, (int)kw.Options.StartAt.Y));
+            var r = kw.PreviewNow();
+            Ui.Pump();
+            Assert.False(r.Success);
+            Assert.Contains("water", r.Refused);
+            Assert.Contains("water", kw.StartNote);
+            Assert.Contains("water", kw.SummaryText);
+            kw.Close();
+            w.Close();
+        }
+
+        [AvaloniaFact]
+        public void Apply_with_a_random_start_writes_the_teleport_and_the_kit_there_and_undo_takes_all_back()
+        {
+            if (Uw1 == null) return;
+            var w = Ui.Open(Uw1);
+            w.AskBeforeDiscarding = false;
+            var vm = w.ViewModel;
+            var before = vm.Session.LevelSlots().Where(x => x.Present).ToDictionary(x => x.Level, x => (byte[])vm.Edits.Model(x.Level).Block.Data.Clone());
+            var kw = w.ShowKeyShuffle();
+            Ui.Pump();
+            kw.GetLogicalDescendants().OfType<NumericUpDown>().First().Value = 3;
+            kw.StartBox.SelectedIndex = 1;
+            Box(kw, "A full torch").IsChecked = true;
+            Ui.Pump();
+            var r = kw.PreviewNow();
+            Ui.Pump();
+            Assert.True(r.Success, r.Refused ?? string.Join("; ", r.Failures));
+            Assert.Equal(1, r.Start.Level);
+            Assert.Contains(string.Format("The game starts at level 1 ({0}, {1}): the first step at level 1 (32, 2) teleports the player there", (int)r.Start.X, (int)r.Start.Y), kw.SummaryText);
+            // Apply writes the preview on show: the teleport to the start, the torch and the map beside it
+            Assert.True(kw.ShuffleNow());
+            Ui.Pump();
+            Assert.Same(r, kw.Result);
+            var tele = StartTeleport.Find(vm.Session, vm.Edits.Model);
+            Assert.NotNull(tele);
+            Assert.Equal((r.Start.Level, (int)r.Start.X, (int)r.Start.Y), (tele.ToLevel, tele.ToX, tele.ToY));
+            Assert.Contains("teleports the player there", kw.Spoiler);
+            var m = vm.Edits.Model(1);
+            Assert.Contains(m.Objects, o => !o.Free && o.TileX >= 0 && o.Item == StartAids.Map && Math.Abs(o.TileX - (int)r.Start.X) <= 1 && Math.Abs(o.TileY - (int)r.Start.Y) <= 1);
+            // Undo apply puts every byte of every level back, the teleport and the kit with the items
+            Assert.True(kw.UndoNow());
+            Ui.Pump();
+            foreach (var kv in before) Assert.True(vm.Edits.Model(kv.Key).Block.Data.AsSpan().SequenceEqual(kv.Value), "level " + kv.Key);
+            Assert.Null(StartTeleport.Find(vm.Session, vm.Edits.Model));
             kw.Close();
             w.Close();
         }

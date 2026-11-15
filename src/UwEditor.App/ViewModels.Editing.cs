@@ -29,6 +29,9 @@ namespace UwEditor.App
 
         string editStatus = "";
         public string EditStatus { get { return editStatus; } set { Set(ref editStatus, value); } }
+        string previewStatus = "";
+        /// <summary>Shown over the view for as long as it draws a terrain preview instead of the level (Tools ▸ Preview changed terrain).</summary>
+        public string PreviewStatus { get { return previewStatus; } set { Set(ref previewStatus, value ?? ""); } }
 
         public bool CanUndo { get { var e = level == null ? null : Edits?.Existing(level.Level); return e != null && e.CanUndo; } }
         public bool CanRedo { get { var e = level == null ? null : Edits?.Existing(level.Level); return e != null && e.CanRedo; } }

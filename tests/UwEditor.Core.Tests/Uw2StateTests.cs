@@ -327,7 +327,10 @@ namespace UwEditor.Core.Tests
             var f = FactSet.Shipped(true);
             Assert.Empty(f.Check());
             Assert.Equal("UW2", f.Game);
-            Assert.Contains(f.Facts, x => x.Grants == "plotstep:miranda_tower" && x.Requires == "plot:3" && x.Level == 1);
+            Assert.Contains(f.Facts, x => x.Grants == "plotstep:miranda_tower" && x.Requires == "plot:3 & flag:lord_british_speech" && x.Level == 1);
+            // the castle's people talk only after Lord British's opening speech (quest 109, conversation 142), granted at his object
+            Assert.Contains(f.Facts, x => x.Id == "lord_british_speech" && x.Grants == "flag:lord_british_speech" && x.Level == 1 && x.Object == 235);
+            Assert.Contains(f.Facts, x => x.Kind == "trade" && x.Token == "npc:nystul" && x.Requires == "flag:lord_british_speech");
             Assert.All(f.Facts, x => Assert.False(string.IsNullOrEmpty(x.Source)));
             // UW1's facts stay UW1's
             Assert.DoesNotContain(FactSet.Shipped(false).Facts, x => x.Grants.StartsWith("plot"));
@@ -410,7 +413,161 @@ namespace UwEditor.Core.Tests
             Assert.Contains(t.Solve.ZoneSphere.Keys, z => z < 1000000 && t.Set.LevelsOf(z).Contains(48));
             Assert.Contains(t.Solve.ZoneSphere.Keys, z => z < 1000000 && t.Set.LevelsOf(z).Contains(51));
             Assert.Empty(t.Solve.CutOff);
-            Assert.True(Requirement.PlotClock(t.Solve.TokenSphere.Keys) >= 14);
+            // the whole game, with no spell from the runes
+            Assert.True(t.Solve.GoalReached, string.Join(", ", t.Solve.GoalMissing));
+            Assert.Equal(16, Requirement.PlotClock(t.Solve.TokenSphere.Keys));
+        }
+
+        [Fact]
+        public void Mors_Gothas_book_waits_for_her_and_her_door_is_bashed()
+        {
+            string game = GameData.Game("UW2"); if (game == null) return;
+            var s = GameSession.Open(game);
+            var m = s.LoadLevel(17);
+            // the book lies invisible on the square where a scheduled trigger creates her; another on the same square shows it (hack 39)
+            Assert.True(m.Objects[818].Invisible);
+            Assert.Equal(0x138, m.Objects[818].Item);
+            Assert.Equal(818, m.Objects[834].Link);
+            Assert.Equal(39, m.Objects[834].Quality);
+            var t = Timeline.Build(s, l => s.LoadLevel(l), new NavOptions(), new AbilityOptions { Magic = false, SingleUseItems = true }, null, null, variants: false);
+            var fact = t.Abilities.Facts.Facts.Single(f => f.Id == "mors_gotha_book");
+            Assert.Contains("flag:hack_L17_819", fact.Requires);
+            Assert.Contains("flag:create_L17_861", fact.Requires);
+            Assert.True(t.Solve.TokenSphere["item:mors_gotha_book"] >= t.Solve.TokenSphere["flag:hack_l17_819"]);
+            // her room's door, (21, 41): no key fits; picked, or bashed, since in UW2 id bit 13 is a door's direction and not "indestructible"
+            string notes;
+            var door = m.Objects.Single(o => !o.Free && o.OnTile && o.TileX == 21 && o.TileY == 41 && o.Item >= 0x140 && o.Item <= 0x147);
+            Assert.NotEqual(0, door.Record[1] & 0x20);
+            Assert.Equal("pick:3 | bash", ZoneDoors.Requirement(s, m, door, out notes));
+            // no scheduled trigger of the level acts on a door or a lock
+            Assert.DoesNotContain(t.Abilities.Auto.Graph.Mechanisms, x => x.Level == 17 && x.Kind == "door");
+            var locks = new HashSet<int>(m.Objects.Where(o => !o.Free && o.Item == 0x10F).Select(o => o.Index));
+            Assert.DoesNotContain(m.Objects, o => !o.Free && o.IsTrapOrTrigger && !o.IsQuantity && locks.Contains(o.Link));
+        }
+
+        [Fact]
+        public void A_weapon_of_Entry_is_a_lasting_source_of_Open_and_the_search_finds_it_by_that_name()
+        {
+            string game = GameData.Game("UW2"); if (game == null) return;
+            var s = GameSession.Open(game);
+            // the Tomb's cudgel, level 57 #484: class 12 effect 13, special weapon 6, which opens the door it hits (combat/COMBAT.C player_attack)
+            var o = s.LoadLevel(57).Objects[484];
+            Assert.Equal(0x007, o.Item);
+            Assert.Equal(0xCD, o.Link & 0x1FF);
+            var hits = LevelSearch.Run(s, new ObjectQuery { Text = "entry" });
+            Assert.Contains(hits, h => h.Level == 57 && h.Index == 484 && h.Matched == "Entry");
+            // only iron flesh among the scrolls and potions: the cudgel still counts, as a thing kept
+            var t = Timeline.Build(s, l => s.LoadLevel(l), new NavOptions(), new AbilityOptions { Magic = false, SingleUseItems = true, SingleUseOnly = new HashSet<string> { "iron_flesh" } }, null, null, variants: false);
+            var src = t.Abilities.Sources.Single(x => x.Level == 57 && x.Index == 484);
+            Assert.Equal("open", src.Ability);
+            Assert.True(src.Permanent);
+            Assert.Equal("Entry", src.Spell);
+            Assert.Contains("perm:open", t.Solve.TokenSphere.Keys);
+            Assert.DoesNotContain(t.Solve.TokenSphere.Keys, k => k.StartsWith("once:") && k != "once:iron_flesh");
+            Assert.All(t.Solve.OnceSpent, x => Assert.Equal("once:iron_flesh", x));
+            // a pure fighter ends the game: no rune magic, and of the scrolls and potions only Iron Flesh for the djinn
+            Assert.True(t.Solve.GoalReached, string.Join(", ", t.Solve.GoalMissing));
+            Assert.Equal(16, Requirement.PlotClock(t.Solve.TokenSphere.Keys));
+            Assert.Empty(t.Solve.CutOff);
+            Assert.Equal(new[] { "once:iron_flesh" }, t.Solve.OnceSpent.ToArray());
+            // Talorus: the Historian sends the Avatar to the island of the key gem once the new Ductosnore is made, and the brass plate's bridge leads off it
+            var facts = t.Abilities.Facts.Facts;
+            var island = facts.Single(f => f.Id == "talorus_historian_island");
+            Assert.Equal("link", island.Kind);
+            Assert.Equal("flag:talorus_new_ductosnore", island.Requires);
+            Assert.Single(facts, f => f.Id == "talorus_island_bridge");
+            int isle = t.Set.ZoneAt(34, 31, 35);
+            Assert.Contains(isle, t.Solve.ZoneSphere.Keys);
+            Assert.Contains("item:key_gem_4", t.Solve.TokenSphere.Keys);
+            // the Void's key gem by the dream plant, and the Ice Caverns' line past the stream the schedule opens
+            Assert.Contains("item:key_gem_8", t.Solve.TokenSphere.Keys);
+            Assert.Contains("flag:line_3", t.Solve.TokenSphere.Keys);
+        }
+
+        [Fact]
+        public void A_stream_one_square_wide_is_jumped_over()
+        {
+            string game = GameData.Game("UW2"); if (game == null) return;
+            var s = GameSession.Open(game);
+            // level 26 once the schedule has opened (33, 33) to (33, 36): water flowing east, with ice to its east and the floor of the north to its west
+            var m = s.LoadLevel(26);
+            for (int y = 33; y <= 36; y++) { var tile = m.Tiles[33, y]; tile.Type = TileType.Open; tile.Height = 4; tile.FloorIndex = 11; }
+            var g = NavGraph.Build(s, l => l == 26 ? m : s.LoadLevel(l), new NavOptions(), new[] { 26 });
+            int ice = g.RegionOf(26, 34, 34), north = g.RegionOf(26, 32, 34), stream = g.RegionOf(26, 33, 34);
+            Assert.True(ice >= 0 && north >= 0 && stream >= 0);
+            Assert.NotEqual(ice, north);
+            // walking in against the current asks for more
+            Assert.Contains(g.Edges, e => e.From == ice && e.To == stream && e.Requires.Contains("spell:waterwalk"));
+            // the jump over it asks for nothing
+            var jump = g.Edges.Single(e => e.From == ice && e.To == north && e.Kind == "jump");
+            Assert.Equal("free", jump.Requires);
+            Assert.Contains("over 1 tile", jump.Notes);
+        }
+
+        [Fact]
+        public void A_move_trigger_in_a_wall_is_set_off_from_the_square_beyond_its_edge()
+        {
+            string game = GameData.Game("UW2"); if (game == null) return;
+            var s = GameSession.Open(game);
+            var g = NavGraph.Build(s, l => s.LoadLevel(l), new NavOptions(), new[] { 1, 2, 5 });
+            // the sewers' wall at level 5 (17, 22) is walked through both ways: a trigger at each edge, each sending to the far side
+            int west = g.RegionOf(5, 16, 22), east = g.RegionOf(5, 18, 22);
+            Assert.True(west >= 0 && east >= 0 && west != east);
+            Assert.Contains(g.Edges, e => e.Level == 5 && e.From == east && e.To == west && e.Kind == "teleport" && e.Trigger == 863);
+            Assert.Contains(g.Edges, e => e.Level == 5 && e.From == west && e.To == east && e.Kind == "teleport" && e.Trigger == 865);
+            Assert.DoesNotContain(g.Edges, e => e.Level == 5 && e.Trigger == 863 && e.From != east);
+            // the wall at the end of the passage at level 1 (37, 40) leads down to Nystul's hidden room, not the cell beside it
+            int passage = g.RegionOf(1, 37, 40), cell = g.RegionOf(1, 38, 39), room = g.RegionOf(2, 11, 42);
+            Assert.True(passage >= 0 && cell >= 0 && room >= 0 && passage != cell);
+            Assert.Contains(g.Edges, e => e.Level == 1 && e.Trigger == 667 && e.From == passage && e.To == room);
+            Assert.DoesNotContain(g.Edges, e => e.Level == 1 && e.Trigger == 667 && e.From == cell);
+            // and the way back lands in that passage's doorway, not in the cell
+            Assert.Contains(g.Edges, e => e.Level == 2 && e.Trigger == 1011 && e.From == room && e.To == passage);
+            Assert.DoesNotContain(g.Edges, e => e.Level == 2 && e.Trigger == 1011 && e.To == cell);
+        }
+
+        [Fact]
+        public void No_spell_is_cast_from_runes_on_the_Academys_middle_levels()
+        {
+            string game = GameData.Game("UW2"); if (game == null) return;
+            var s = GameSession.Open(game);
+            var t = Timeline.Build(s, l => s.LoadLevel(l), new NavOptions(), new AbilityOptions(), null, null, variants: false);
+            // Bishop's cell is entered with fraznium on, and Altara's dagger waits for Bishop or Mystell
+            var field = t.Facts.Facts.Single(f => f.Id == "bishop_force_field");
+            Assert.Contains("item:fraznium_gauntlets", field.Requires);
+            Assert.Contains(t.Set.ZoneAt(16, 27, 33), t.Solve.ZoneSphere.Keys);
+            Assert.Contains("npc:bishop", t.Solve.TokenSphere.Keys);
+            Assert.Equal("npc:bishop | npc:mystell", t.Facts.Facts.Single(f => f.Id == "altara_dagger").Requires);
+            Assert.Empty(t.Abilities.Warnings.Where(w => w.StartsWith("Facts:")));
+            var no = t.Facts.OfKind("nomana").Select(f => f.Level).OrderBy(l => l).ToArray();
+            Assert.Equal(new[] { 42, 43, 44, 45, 46, 47, 48 }, no);
+            // level 48's only west of x 25 (combat/SPELLS.C restore_mana)
+            Assert.Equal(new[] { 0, 0, 24, 63 }, t.Facts.Facts.Single(f => f.Id == "academy_no_casting_48").Rect);
+            Assert.True(t.Abilities.NoManaEdges > 0);
+            // a way of those levels that asks for a spell takes it from a thing used, never from the runes; the first and last levels are as elsewhere
+            var links = t.Set.Links.Where(k => k.Requires.Contains("cast:") || k.Requires.Contains("use:") || k.Requires.Contains("spell:")).ToList();
+            Assert.Contains(links, k => k.Level >= 42 && k.Level <= 47);
+            Assert.All(links.Where(k => k.Level >= 42 && k.Level <= 47 && k.Requires.Contains("cast:")), k => Assert.Contains("flag:__never__", k.Requires));
+            Assert.DoesNotContain(links, k => (k.Level == 41 || (k.Level == 48 && k.X >= 25)) && k.Requires.Contains("flag:__never__"));
+            // and the game is still ended
+            Assert.True(t.Solve.GoalReached, string.Join(", ", t.Solve.GoalMissing));
+        }
+
+        [Fact]
+        public void A_thing_that_holds_Open_opens_a_lock_with_the_runes_off()
+        {
+            var held = new HashSet<string>();
+            System.Func<bool, bool, bool> opens = (magic, once) =>
+                Requirement.Parse("pick:3").Eval(new AbilityZones.FixedContext(new SolverOptions { AllowBash = true, LockpickSkill = -1, AbilitySources = true, Magic = magic, SingleUseItems = once }, held));
+            Assert.False(opens(true, true));
+            held.Add("cast:open");                  // the runes
+            Assert.True(opens(true, false));
+            Assert.False(opens(false, true));
+            held.Clear(); held.Add("perm:open");    // a weapon or wand that holds it
+            Assert.True(opens(false, false));
+            held.Clear(); held.Add("once:open");    // a scroll
+            Assert.True(opens(false, true));
+            Assert.False(opens(false, false));
         }
 
         [Fact]

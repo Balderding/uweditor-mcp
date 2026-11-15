@@ -32,11 +32,33 @@ namespace UwEditor.Core.Randomizer
         }
     }
 
+    /// <summary>
+    /// The object a conversation's gift is (a fact's "gift"): {"item": 0x10D, "owner": 28} for a
+    /// key (a key keeps its lock number in its owner field), with quality, link, flags and
+    /// is-quantity as an object record holds them; the defaults are what conv/BARTER.C
+    /// npc_inv_create makes (quality 0x3F, a quantity of 1).
+    /// </summary>
+    public sealed class FactGift
+    {
+        public int Item = -1;
+        public int Quality = 0x3F, Owner, Link = 1, Flags;
+        public bool IsQuantity = true, Enchanted;
+        public bool Valid { get { return Item >= 0 && Item < 0x140; } }
+
+        /// <summary>The new object's fields for the editing API (LevelEditor.AddObject).</summary>
+        public UwEditor.Core.Editing.ObjectSpec Spec()
+        {
+            return new UwEditor.Core.Editing.ObjectSpec { Item = Item, Quality = Quality, Owner = Owner, Link = Link, Flags = Flags, IsQuantity = IsQuantity, Enchanted = Enchanted };
+        }
+
+        public override string ToString() { return string.Format("item 0x{0:X}, quality {1}, owner {2}", Item, Quality, Owner); }
+    }
+
     /// <summary>One hand-written fact of a facts file (docs/facts/uw1-*.json).</summary>
     public sealed class Fact
     {
         public string Id = "";
-        /// <summary>craft, trade, flag, nomana, walls, hidden; Phase C: link, warp, goal, free, needs; Phase D: count.</summary>
+        /// <summary>craft, trade, flag, nomana, walls, hidden; Phase C: link, warp, goal, free, needs, door; Phase D: count; lost (a token or a place that may be lost: mayBeLost); spare (creatures the logic must never kill: nothing they carry or their deaths give counts, and their token may never be required).</summary>
         public string Kind = "";
         /// <summary>craft, flag: the token granted.</summary>
         public string Grants = "";
@@ -48,11 +70,11 @@ namespace UwEditor.Core.Randomizer
         /// <summary>nomana: the token that lifts it.</summary>
         public string Until = "";
         public int Level;
-        /// <summary>flag: the object whose zone grants it; hidden: the look trigger.</summary>
+        /// <summary>flag: the object whose zone grants it; door: the door that Requires also opens; hidden: the look trigger.</summary>
         public int Object = -1, Trigger = -1;
         /// <summary>A tile given at the top level (goal, free, flag): x and y, or -1.</summary>
         public int X = -1, Y = -1;
-        /// <summary>walls: the rectangle x0, y0, x1, y1 (inclusive).</summary>
+        /// <summary>walls, nomana (optional: only there): the rectangle x0, y0, x1, y1 (inclusive).</summary>
         public int[] Rect;
         /// <summary>walls: which tiles of the rectangle (damage: move triggers whose chain hurts the player).</summary>
         public string Tiles = "";
@@ -91,6 +113,35 @@ namespace UwEditor.Core.Randomizer
         /// <summary>count: the total that grants the token.</summary>
         public int AtLeast;
 
+        // ---- things the game takes away for good (docs/UW2-RANDOMIZER-NEXT-STEPS.md 2.1)
+
+        /// <summary>
+        /// "mayBeLost": how what the fact gives (or, for kind "lost", the token or place it names)
+        /// may be lost for good: "a" only by a choice the player can always avoid (a wrong answer,
+        /// joining Mors Gotha), so the logic may rely on it and the walkthrough warns; "b" with time
+        /// whatever the player does (a window of the castle plot); "c" a place that closes with what
+        /// lies in it. "" when it lasts.
+        /// </summary>
+        public string Lost = "";
+        /// <summary>mayBeLost: why, in a few words (the walkthrough's warning).</summary>
+        public string LostWhy = "";
+        /// <summary>mayBeLost: a requirement that holds once it is gone (kind b: "plot:14"); "" when no window is known (then never counted with the option on).</summary>
+        public string LostWhen = "";
+
+        // ---- creatures the logic must never kill, and gifts the randomizer can make anew
+
+        /// <summary>spare: the whoami of the creatures (with Level: only on that level; with Object: that one), or -1.</summary>
+        public int Whoami = -1;
+        /// <summary>
+        /// "gift": the object that stands for what a conversation hands over (a flag fact's token),
+        /// so that the key item shuffle can make a new one when the start cannot get the gift in
+        /// time (TimedGifts); null when the fact names none.
+        /// </summary>
+        public FactGift Gift;
+
+        /// <summary>The rank of a may-be-lost kind: "" 0, a 1, b 2, c 3 (a mark only ever moves up).</summary>
+        public static int LostRank(string kind) { return kind == "c" ? 3 : kind == "b" ? 2 : kind == "a" ? 1 : 0; }
+
         public bool InRect(int x, int y) { return Rect != null && Rect.Length == 4 && x >= Rect[0] && x <= Rect[2] && y >= Rect[1] && y <= Rect[3]; }
         public override string ToString() { return Id + " (" + Kind + ")"; }
 
@@ -126,10 +177,48 @@ namespace UwEditor.Core.Randomizer
         public static readonly string[] KnownOptions =
         {
             "magic", "single_use", "lockpick", "pick_retry", "search_retry", "damage_walls", "ring_needs_lava", "kill_npcs",
-            "cut_levels", "gap_jumps", "diagonal_jumps", "glitches", "require_orb",
+            "cut_levels", "gap_jumps", "diagonal_jumps", "glitches", "require_orb", "pits_gem_by_blog",
         };
 
+        /// <summary>
+        /// The "spare" fact naming a creature the logic must never kill, when the object is that
+        /// creature or lies in one (however deep): by its whoami (and level, if the fact gives one)
+        /// or by level and object. Null when none.
+        /// </summary>
+        public Fact Spared(int level, LevelModel m, ObjectInfo o)
+        {
+            if (m == null || o == null) return null;
+            var spare = OfKind("spare").ToList();
+            if (spare.Count == 0) return null;
+            var at = o;
+            for (int g = 0; at != null && g < 64; g++, at = at.Parent >= 0 && at.Parent < m.Objects.Length ? m.Objects[at.Parent] : null)
+            {
+                if (at.IsCritter && at.Record != null)
+                {
+                    int who = at.Record.Length > 0x1A ? at.Record[0x1A] : 0;
+                    foreach (var f in spare)
+                    {
+                        if (f.Level > 0 && f.Level != level) continue;
+                        if (f.Object >= 0 ? at.Index == f.Object : f.Whoami > 0 && who == f.Whoami) return f;
+                    }
+                }
+            }
+            return null;
+        }
+
+        /// <summary>The tokens that stand for the deaths of creatures the logic must spare (the spare facts' "token"): no requirement may ask for them.</summary>
+        public HashSet<string> SpareTokens()
+        {
+            return new HashSet<string>(OfKind("spare").Where(f => f.Token.Length > 0).Select(f => Requirement.Normalize(f.Token)));
+        }
+
         public IEnumerable<Fact> OfKind(string kind) { return Facts.Where(f => f.Kind == kind); }
+
+        /// <summary>The nomana fact that covers a square of a level (one with a 'rect' only inside it; an unknown square, x or y below 0, counts as inside), or null.</summary>
+        public Fact NoMana(int level, int x, int y)
+        {
+            return OfKind("nomana").FirstOrDefault(f => f.Level == level && (f.Rect == null || x < 0 || y < 0 || f.InRect(x, y)));
+        }
 
         /// <summary>
         /// The extra conditions the facts give a mechanism (kind "needs" by its flag or its level
@@ -142,6 +231,45 @@ namespace UwEditor.Core.Randomizer
             var terms = Facts.Where(f => (f.Kind == "needs" && ((f.Token.Length > 0 && Requirement.Normalize(f.Token) == fl) || (f.Token.Length == 0 && f.Level == level && f.Trigger == trigger)))
                 || (f.Kind == "trade" && Requirement.Normalize(f.Token) == fl)).Select(f => f.Requires).Where(r => !string.IsNullOrWhiteSpace(r)).ToList();
             return ZoneLink.JoinAnd(terms);
+        }
+
+        /// <summary>
+        /// The "lost" fact (the strongest kind) whose place holds an object of a level: the object
+        /// itself or a creature or container it lies in is the fact's object (what a creature
+        /// carries goes when the schedule takes it off the map: event/SCDEVENT.C ev_remove), or
+        /// its square (or its holder's) lies in the fact's rect, or the fact names the level
+        /// alone. Null when none.
+        /// </summary>
+        public Fact LostPlace(int level, LevelModel m, ObjectInfo o)
+        {
+            Fact best = null;
+            if (m == null || o == null) return null;
+            foreach (var f in OfKind("lost"))
+            {
+                if (f.Level != level || f.Token.Length > 0 || Fact.LostRank(f.Lost) <= (best == null ? 0 : Fact.LostRank(best.Lost))) continue;
+                bool inside;
+                if (f.Object >= 0)
+                {
+                    inside = o.Index == f.Object;
+                    for (int up = o.Parent, g = 0; !inside && up >= 0 && up < m.Objects.Length && g < 64; up = m.Objects[up].Parent, g++) inside = up == f.Object;
+                }
+                else if (f.Rect != null)
+                {
+                    var at = o;
+                    for (int g = 0; at.TileX < 0 && at.Parent >= 0 && at.Parent < m.Objects.Length && g < 64; g++) at = m.Objects[at.Parent];
+                    inside = f.InRect(at.TileX, at.TileY);
+                }
+                else inside = true;
+                if (inside) best = f;
+            }
+            return best;
+        }
+
+        /// <summary>The "lost" fact (the strongest kind) that names a token (every source of it), or null.</summary>
+        public Fact LostToken(string token)
+        {
+            string t = Requirement.Normalize(token);
+            return OfKind("lost").Where(f => f.Token.Length > 0 && Requirement.Normalize(f.Token) == t).OrderByDescending(f => Fact.LostRank(f.Lost)).FirstOrDefault();
         }
 
         /// <summary>The tokens the facts grant (craft, flag, free flags).</summary>
@@ -306,6 +434,18 @@ namespace UwEditor.Core.Randomizer
                 }
                 if (n?["usesUp"] is JsonArray uu) foreach (var x in uu) if (x != null && x.GetValueKind() == JsonValueKind.String) f.UsesUp.Add(Requirement.Normalize((string)x));
                 if (f.Kind == "goal" && f.To == null) f.To = f.TopSpot;
+                // mayBeLost: {"kind": "a" | "b" | "c", "why": "...", "when": "plot:14"}, or the kind alone
+                var lost = n?["mayBeLost"];
+                if (lost is JsonObject lo) { f.Lost = S(lo, "kind").Trim().ToLowerInvariant(); f.LostWhy = S(lo, "why"); f.LostWhen = S(lo, "when"); }
+                else if (lost != null) f.Lost = S(n, "mayBeLost").Trim().ToLowerInvariant();
+                f.Whoami = I(n, "whoami", -1);
+                // gift: {"item": "0x10D", "owner": 28, "quality": 63, "link": 1, "flags": 0, "isQuantity": true, "enchanted": false}
+                if (n?["gift"] is JsonObject go)
+                    f.Gift = new FactGift
+                    {
+                        Item = I(go, "item", -1), Quality = I(go, "quality", 0x3F), Owner = I(go, "owner", 0), Link = I(go, "link", 1), Flags = I(go, "flags", 0),
+                        IsQuantity = go["isQuantity"] == null || B(go, "isQuantity"), Enchanted = B(go, "enchanted"),
+                    };
                 if (f.Kind == "count")
                 {
                     if (n?["items"] is JsonArray items) foreach (var x in items) { int k = Int(x, -1); if (k >= 0) f.Items.Add(k); }
@@ -332,12 +472,37 @@ namespace UwEditor.Core.Randomizer
             var list = new List<string>(LoadErrors);
             foreach (var g in Facts.GroupBy(f => f.Id).Where(g => g.Key.Length > 0 && g.Count() > 1))
                 list.Add(g.Key + ": the id is used " + g.Count() + " times (" + string.Join(", ", g.Select(f => f.File).Distinct()) + ").");
+            var spared = SpareTokens();
             foreach (var f in Facts)
             {
-                Action<string> req = r => { string e; if (Requirement.TryParse(r, out e) == null) list.Add(f.Id + ": " + e); };
+                Action<string> req = r =>
+                {
+                    string e;
+                    var parsed = Requirement.TryParse(r, out e);
+                    if (parsed == null) { list.Add(f.Id + ": " + e); return; }
+                    // Karl: no solve may depend on the death of a creature the logic must spare (Killorn's brain creatures)
+                    var toks = new List<string>();
+                    parsed.Tokens(toks);
+                    foreach (var t in toks.Where(spared.Contains)) list.Add(f.Id + ": requires " + t + ", which stands for killing a creature the logic must spare.");
+                };
+                if (f.Gift != null && !f.Gift.Valid) list.Add(f.Id + ": a gift needs 'item', an object item id below 0x140.");
+                if (f.Gift != null && (f.Kind != "flag" || f.Grants.Length == 0)) list.Add(f.Id + ": only a flag fact with 'grants' names a gift.");
                 Action<string> option = o => { if (o.Length > 0 && !KnownOptions.Contains(o)) list.Add(f.Id + ": unknown option '" + o + "' (known: " + string.Join(", ", KnownOptions) + ")."); };
+                if (f.Lost.Length > 0 && Fact.LostRank(f.Lost) == 0) list.Add(f.Id + ": mayBeLost's kind is a, b or c (not '" + f.Lost + "').");
+                if (f.Lost.Length > 0 && f.LostWhy.Trim().Length == 0) list.Add(f.Id + ": mayBeLost needs 'why'.");
+                // a window may name the fall (it says when a thing is gone, not what progress needs)
+                if (f.LostWhen.Length > 0) { string e; if (Requirement.TryParse(f.LostWhen, out e) == null) list.Add(f.Id + ": " + e); }
                 switch (f.Kind)
                 {
+                    case "spare":
+                        if (f.Whoami <= 0 && (f.Level <= 0 || f.Object < 0)) list.Add(f.Id + ": a spare fact names the creatures by 'whoami' (and 'level') or by 'level' and 'object'.");
+                        if (f.Notes.Trim().Length == 0) list.Add(f.Id + ": a spare fact needs 'notes' (why they must live).");
+                        break;
+                    case "lost":
+                        if (f.Lost.Length == 0) list.Add(f.Id + ": a lost fact needs 'mayBeLost'.");
+                        if (f.Token.Length == 0 && f.Level <= 0) list.Add(f.Id + ": a lost fact names a 'token' (every source of it) or a place ('level', with 'object' or 'rect', or the whole level).");
+                        if (f.Rect != null && f.Rect.Length != 4) list.Add(f.Id + ": 'rect' is [x0, y0, x1, y1].");
+                        break;
                     case "craft":
                     case "flag":
                         if (f.Grants.Length == 0) list.Add(f.Id + ": no 'grants'.");
@@ -350,6 +515,7 @@ namespace UwEditor.Core.Randomizer
                         break;
                     case "nomana":
                         if (f.Level <= 0) list.Add(f.Id + ": no 'level'.");
+                        if (f.Rect != null && f.Rect.Length != 4) list.Add(f.Id + ": 'rect' is [x0, y0, x1, y1].");
                         break;
                     case "walls":
                         if (f.Level <= 0 || f.Rect == null || f.Rect.Length != 4) list.Add(f.Id + ": walls need 'level' and 'rect' [x0, y0, x1, y1].");
@@ -378,6 +544,10 @@ namespace UwEditor.Core.Randomizer
                     case "count":
                         if (f.Grants.Length == 0) list.Add(f.Id + ": no 'grants'.");
                         if (f.Items.Count == 0 || f.AtLeast <= 0) list.Add(f.Id + ": a count needs 'items' [ids] and 'atLeast' N.");
+                        break;
+                    case "door":
+                        if (f.Level <= 0 || f.Object < 0) list.Add(f.Id + ": a door needs 'level' and 'object' (the door's index).");
+                        req(f.Requires);
                         break;
                     case "needs":
                         if (f.Token.Length == 0 && (f.Level <= 0 || f.Trigger < 0)) list.Add(f.Id + ": 'needs' names a mechanism by 'token' (its flag) or by 'level' and 'trigger'.");

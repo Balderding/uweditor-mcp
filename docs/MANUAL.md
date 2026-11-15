@@ -146,6 +146,13 @@ go up and down a floor step. F frames the selection, T looks straight down, and 
 to the start or the player. A double click selects something and moves the view to it. Going
 up or down a level keeps the camera over the same X and Y, at the new level's floor height.
 
+**Go to a square.** Typing a number in the main window opens a small box with that number
+already in it (so do Ctrl+G and **View ▸ Go to a square…**). Type `level, x, y`, or `x, y`
+for a square of the level shown, and press Enter: the editor opens the level, selects the
+square and centres the view on it. Commas, semicolons or blanks may stand between the
+numbers, and `L26 (33, 33)` reads too. Esc, or a click elsewhere, closes the box; a text
+that does not read leaves it open and says why.
+
 ## Finding and selecting
 
 **Finding objects:**
@@ -153,7 +160,8 @@ up or down a level keeps the camera over the same X and Y, at the new level's fl
   as in "fighter (Corby)" and "shiny sword (Caliburn, the Sword of Justice)".
   Enchanted objects show their enchantment.
 - The search box matches item names, NPC names ("human (Lord British)"), the text of
-  books, scrolls, writings, gravestones and text traps, and `#index` or `0x` item ids.
+  books, scrolls, writings, gravestones and text traps, the name of an object's own
+  enchantment ("Entry" finds the cudgel of Entry), and `#index` or `0x` item ids.
 - The chips narrow the list to weapons, food, monsters, keys, traps or triggers (any of
   the chosen kinds); Enchanted narrows it to enchanted objects.
 - Each line shows the object's picture as the game shows it.
@@ -1589,6 +1597,24 @@ there.
 
 ## Triggers and traps
 
+**Tools ▸ Preview changed terrain…** shows how the level on screen looks after some of its
+change-terrain traps have run. The window lists every change-terrain trap of the level, and
+in UW2 every oscillator trap in height mode, one row each with a tick box. A row gives the
+trap's number, the triggers that run it (number, kind and the square each lies on, or "no
+trigger" when only a schedule, a conversation or the game's code can run it) and what it
+does: the squares, and what they become (rock, open, a diagonal or slope, height N, floor
+texture N, wall texture N). A trap that several triggers run at different squares has a row
+for each square. An oscillator's row has a number box for the height to show it at, between
+its two ends. **All** and **None** tick or untick every row. While any row is ticked, the 2D
+and 3D views (and first-person walking) show a copy of the level with the ticked traps
+applied in the order of their numbers, and an amber line at the bottom of the view says
+"Preview: N terrain changes applied; the level itself is unchanged." The level itself is
+never changed, and the panels still show its real tiles. Only tiles change in the preview:
+objects stay at their own heights, and a condition on a trap's chain is not looked at.
+Unticking everything, closing the window or going to another level shows the level itself
+again. An edit made during a preview goes to the level itself, not the preview, and ends
+the preview at once.
+
 **Tools ▸ Triggers and traps…** (Ctrl+Shift+T) lists every trigger of the level, where it
 lies, the square its chain runs on and each trap in the chain, then the wandering-monster
 spawners (create-object traps the game runs by itself; see Trap recipes ▸ Wandering
@@ -2161,7 +2187,9 @@ because 80 levels need more than 254 zones. A zone is shown as its level and num
 map is still one number a tile, so a level is painted here, or exported as a picture and
 painted elsewhere, exactly as in Ultima Underworld 1. **Add zone** makes a zone of the level
 open in the view, and the brush paints a zone only on its own level. The file carries
-`"perLevel": true`; a UW1 file has one numbering for the whole game, as before.
+`"perLevel": true`; a UW1 file has one numbering for the whole game, as before. The
+automatic zones leave out UW2's slot 73, a leftover level outside the nine worlds that no way
+leads to, as the item walk does.
 
 **Ultima Underworld 2's state.** The automatic zones read UW2's trap chains as the game runs
 them. A check variable trap goes on when its variables match and runs its other chain when
@@ -2230,6 +2258,72 @@ gates** draw their destination at random from a table kept in the map's own squa
 destination of a table is a way, and that is how levels 65 and 68 are entered. All are ways
 of the automatic zones.
 
+**No casting in the Academy's test (UW2).** On the middle levels of the Scintillus Academy
+(its levels 2 to 7, levels 42 to 47) casting spells is forbidden: no mana comes back
+there, by time, by sleep or by potion. The same holds on its eighth level (48) west of
+x 25. The solve counts no spell cast from runes on a way that starts there; a scroll, a
+wand, a potion or a worn thing still works, as on UW1's level 7 while the orb stands. The
+facts file carries one `nomana` fact a level; level 48's has a `rect` ([0, 0, 24, 63]), and
+a `nomana` fact with a rect holds only inside it.
+
+**A move trigger in a wall (UW2).** UW2 sets many move triggers into a wall square, at the
+edge the player walks against: the stairs, and the walls that are walked through. Such a
+trigger is set off from the square beyond that edge and from no other, even when another
+room lies nearer. The sewers' rooms around the oubliette (level 5 (12, 17) to (21, 23)),
+the lurker's pool of level 3 (38, 20), a bedroom of Killorn Keep (level 17 (24, 47)) and
+Nystul's hidden room under the castle (level 2 (11, 42), entered by the wall at the end of
+the passage at level 1 (37, 40)) are reached this way.
+
+**Bishop's force field (UW2).** A fact carries the way through the force field before
+Bishop's cell (level 16 (31, 33)): fraznium gauntlets or the fraznium circlet. Altara's
+dagger asks for Bishop or Mystell met, as her conversation does.
+
+**A stream jumped over (UW2).** Water with a current is not walked into against the
+current, but a stream is jumped over at its own level as a gap is: the jump from one bank
+to the other clears it (the squares the schedule opens on level 26, (33, 33) to (33, 36)).
+
+**Talorus (UW2).** The way to the key gem in the middle of the lava lake of level 34: the
+Historian sends the Avatar to the island once the new Ductosnore is made (quest 38), and the
+brass plate at (30, 33) lays a bridge north to the shore, one way. The new Ductosnore is
+made as the game makes it: Bliy Skup Ductosnore killed (a fight, taken as won), the
+Delgnizator (level 34 (31, 20)) and the two crystals the chamber takes, E0Y2 among the
+debris north of the lava (level 34 (30, 42)) and the controller crystal in the Futurian's
+chamber (level 33 (2, 5)), laid in the Bliy Skup Chamber, and its pull chain worked. The
+Dialogicians' scroll and the Data Integrator only tell the player how; the game checks
+neither, so the solve does not ask for them.
+
+**Doors a conversation opens (UW2).** A fact of kind `door` names a door by its level and
+index and gives another way it opens, an "or" beside its lock: a key shuffle that moves the
+key leaves the solve that way. The Prison Tower's gate (level 10 (30, 34)) opens for the
+password or the forged delivery voucher (level 9 (31, 33)) shown to the gate guards, and
+the door on Borne's floor (level 14 (29, 32)) for the password told to the guard there. The
+password comes from Borne at the first meeting or from the goblin armorer (levels 14 and
+13), both inside the gate, so in the shipped game it matters for the door on level 14 and
+for a key shuffle. The guards' bribe is gold, which is not counted. The castle's jail is no
+such door: Lord British opens the Avatar's cell (level 1 (42, 38)) only in a talk he holds
+with one the castle guards have jailed (quest 112), so a start in a cell stays shut.
+
+**Zoranthus's bottle (UW2).** Zoranthus gives his djinn bottle for the Sceptre of the
+Deadly Seeker, a sceptre on level 65 (60, 57); the other bottle lies in the Void.
+
+**Only some single-use things.** A solve can be told which abilities' scrolls, potions and
+charges count (`AbilityOptions.SingleUseOnly`); there is no control for it in the windows
+yet. With rune magic off and Iron Flesh alone, the solve of UW2 still reaches the end: a
+pure fighter needs nothing else.
+
+**A floor a lever steps (UW2).** An oscillator trap in its height mode steps its square's
+floor by one each time it runs, between two heights. Run from a lever or button the player
+uses, the square stands at whichever of those heights he likes, so it is a way of its own
+at the height its neighbours have, open once the lever is reached (the two squares east of
+the bridge to the Ice Caverns' control island, level 25 (53, 16) and (54, 16), which the
+lever at (53, 15) steps between 14 and 10). Oscillators that plain triggers run are left
+as they stand.
+
+**Doors that can be bashed (UW2).** In UW1 an object with id bit 13 set is indestructible.
+In UW2 that bit is a door's direction and takes nothing from it: a locked door is bashed
+unless its kind cannot be broken or it keeps a strength in its owner field (worn down, never
+broken).
+
 **A pit with its way out (UW2).** Where a pit's square has a low switch that throws the
 player straight up and a higher switch that fills the pit (the Academy, level 46 (41, 52)),
 the open pit is left for free: the second switch, used in the air, puts the floor back
@@ -2276,13 +2370,17 @@ of UW2 reaches the end of the game:
   reaches two squares: level 16's marker lies behind a force field and is cut from before it.
 - *The gems.* Each world's key gem is a fact where it lies or with the creature that
   carries it; all eight, treated by Nystul and fused, are asked for.
+- *Mors Gotha's book.* It lies invisible in her room on level 17 until the schedule fires
+  the triggers of (16, 43): one shows the book, the other creates her on its square. Her
+  room's door has no key: it is picked, opened with Open, or bashed.
 - *Nystul* (plot 15 and 16). Given Mors Gotha's book (level 17) at plot 14 with the gems
   fused, the lines cut and Praecor Loth's horn; then the hour the gem appeared.
 - *The goal.* Nystul at plot 16 with the horn. Mors Gotha's attack is a fight the logic
   takes as won.
 
 The fights (the goblin and the pit fighter who carry gems, Mors Gotha) and character level
-and mana for the spells are not weighed.
+and mana for the spells are not weighed. The pit fighter is Dorstag, and the game lets him
+be struck down anywhere, not only in an arena, so the Pits' gem asks for nothing more.
 **Load the UW1 example** starts from Karl's UW1 zoning, built from his painted maps and
 notes: 91 zones, 139 links and 50 grants.
 
@@ -2525,7 +2623,15 @@ locks as with skill 45), **telekinesis** (Ort Por Ylem; it counts wherever the p
 **gate travel**. `spell:X` holds when the ability can be **cast** or **used** there:
 
 - **Cast** (`cast:X`), only with **Magic** on: the rune bag and the spell's runestones are
-  held. Character level, mana and the casting roll are ignored.
+  held. The game also asks for an experience level of at least 2 x circle - 1, mana of at
+  least 3 x circle and a Casting roll (combat/RUNES.C player_cast; UW1 has six spells to a
+  circle, UW2 eight). Mana and the roll are ignored, and so is the level, but for one rule: a
+  new character is level 1 and casts circle 1 only (Light, Leap in UW1), so until the solve
+  has left the start's **free area** (the start zone and the zones it reaches by ways that
+  need nothing: walking, free jumps and drops, doors that open or are bashed) no spell above
+  **New character casts up to circle** (1) counts from runes. Once a zone outside it is
+  reached (by a key, a lever, an item, a spell of circle 1 …), every circle counts: the logic
+  has no experience model and takes fights as won. The solve report says when that happened.
 - **Used** (`use:X`): an item gives it. `worn:X` is a worn enchantment (the Ring of
   Levitation, the Ring of Leap, the dragon skin boots); it works everywhere. `perm:X` is an
   item that casts without charges. `once:X` is a scroll, a potion or a charged wand; these
@@ -2641,6 +2747,105 @@ beside Zak, and those stay where they are too.
 The spoiler log names each place by the zones of the hand-made zoning (the zone file in
 `DATA`, or else Karl's painted UW1 map), with its level and square.
 
+#### 7a. A random starting position
+
+The key item shuffle can start the game somewhere else (UW1; the **Start** row of the Apply
+window). The options are the game's own square, a random square (level 1 only, or any level),
+or a square given by hand (or the square selected in the main window).
+
+- **Which squares.** An open square of a zoned level, not on the map's edge, its floor
+  neither water nor lava (and in UW2 not an ice slope, which slides the player away at
+  once), with no door, trap or trigger on it (a move trigger would go off at the first step),
+  not UW1's level 5 maze, not beside a force field, not in an empty pit or ledge the zones
+  fold into a neighbour, not on UW1's level 9 (reaching it is the goal), and not on or beside
+  the game's own start, where the start teleport goes. Hostile creatures nearby are not a
+  reason: about one viable square in ten has one on or beside it.
+- **Whether the game can still be finished.** The solver runs from the square's zone with
+  every item that moves counted as held, as in the shuffle's fill. It must reach the goal with
+  no cut-off it does not get back from. One solve serves a whole zone (every square of a zone
+  reaches every other freely), and only the zones drawn are solved. On UW1 all 163 zones with
+  candidate squares pass (12,036 squares; level 1 alone: 16 zones, 1,348 squares). Three
+  ledges of level 7 used to fail: from them a walk-on trigger closes the door at (7, 35) in the
+  sphere the solve first reaches the area at (43, 18), and the way back to it runs through
+  level 8, which the solve reaches only in the next sphere. It gets back there then, so the
+  area was lost only for a while (since 0.1.42 such a zone does not count as cut off).
+- **The draw.** A zone is chosen with a weight of the square root of its number of squares,
+  so that the great halls do not take most starts and the one-square ledges not as many as
+  the towns; then a square of it at random. The same seed gives the same square.
+- **Each attempt draws its own start.** When a fill fails, the next seed draws another start.
+- **Places in reach.** A start whose way out needs key items gets them within reach. When the
+  fill finds no free place the logic reaches for a key item (a small closed room has none), it
+  moves an empty place to a square within reach and puts the item there: a square as Place
+  anywhere chooses them (open, not water or lava, nothing in the way), in the zones reached
+  earliest (the start's own first). The place keeps its object: on the same level it is only
+  moved; with no empty place left on that level (UW1 level 7 has only 8) one of another level
+  goes there (that level has one object less, this one one more; a level whose object list is
+  full makes the attempt fail). Every moving item still ends up in exactly one place. This is
+  only a fallback: a fill that finds its places draws as before, and with the game's own start
+  it is off, so old seeds give the same shuffle. The log lists each place moved ("a square
+  within reach").
+- **A new character's way out.** A new character cannot cast Gate Travel (circle 6: level 11)
+  or any spell above circle 1 from runes, and the logic counts none until he has left the
+  start's free area (**New character casts up to circle**, 1 by default). Many closed rooms are
+  left only by Gate Travel (the sealed room of level 1 at (30, 32)). When the solve from the
+  start with every moving item held stays in the free area and misses the goal, the shuffle
+  makes an object holding the spell that leads out, as it makes the timed gifts: a **wand of
+  Gate Travel** (item 0x98, enchanted with the spell itself: link 0x200 + 32, flags 4, a
+  quantity, as UW2's own wand of Light at level 67 #899), which casts as often as wanted and
+  never breaks (obj/USEITEMS.C UseWand, checkSpell, useNSpellCharges), or, when single-use
+  items count, a scroll of the spell with the fields of the game's own scrolls of Gate Travel
+  (level 5 #899, level 7 #760). A scroll or wand needs no level, mana or skill (checkSpell); it
+  still fails on a no-magic square and on level 9. The start check counts the made object
+  ("an object made for gate travel"), the fill puts it within reach (on a place moved into
+  the room if need be), Apply creates it and Undo takes it away, and the log lists it under
+  "Made anew" and says why. The runes stay ordinary key items. With single-use items counting,
+  the game's own four scrolls of Gate Travel move as key items and one is put in the room;
+  nothing is made. The moonstone stays on level 2 at (9, 35), in the sealed moonorb room, whose
+  floor opens the way into level 2 (trigger #869); the walkthrough from the sealed room takes
+  the wand, travels there and walks out. Other abilities work the same way: the level 7 room
+  at (47, 43) gets a wand of Flameproof. With the option at 8 every circle counts from the
+  start and the fill puts the rune bag and Vas, Rel and Por in the room, as before 0.1.43.
+- **The return check from another start.** The game's own start can always be gone back to;
+  a random one may be a room or a ledge the player leaves one way, which would make every zone
+  a trap. When nothing in the start's pocket (the start and what leads back to it) is needed
+  after the player leaves it, and the zones it leads out into reach one another, being back in
+  one of them counts as being back at the start. As for a one-way way into the goal's area, a
+  player who leaves without taking what lies at the start is not covered.
+- **How often a start fills.** A sweep (a square of each of the 163 UW1 zones, three seeds
+  each, no retries) fills 473 of 489 runs (97 %; at 0.1.41, 44 %): every run on levels 1 to 6,
+  119 of 132 on level 7, 72 of 75 on level 8. 147 zones fill with every seed, none with no
+  seed. Of the 16 failures, 15 are one seed (3) putting the sword's broken blade in the area of
+  level 8 at (2, 2), which a free jump enters one way and which cannot be left without what
+  the player gets later: a real strand, which the next seed avoids. The last is a fill the
+  fresh check does not confirm (level 7 (55, 51), seed 3). With the retries (20 by default) a
+  random or given start is found. Since a new character's casting is limited (0.1.43), a
+  sample of 18 starts (the sealed room, level 6 (16, 10), three starts each of levels 7 and 8,
+  ten random zones; 3 seeds) fills 51 of 54 runs, with the same three failures; 7 of the 18
+  get a made wand (Gate Travel or Flameproof).
+- **How the player gets there.** The game still puts the player on its own square (UW1 level
+  1 (32, 2), UW2 level 1 (19, 48)). Apply puts a teleport trap there and a move trigger on that
+  square and each open square round it: the first step sends the player to the start, and the
+  triggers and the trap delete themselves after one use (they lack the trigger's "reusable"
+  flag, and the trap counts them). The solver starts at the teleport's destination and does not
+  take the teleport as a way. Undo takes the teleport back with the rest. In UW1 a thrown
+  object landing on one of those squares before the first step would use the teleport up.
+- **The log.** The spoiler log says where the game starts and that the first step teleports
+  there; the walkthrough begins at the new start.
+
+- **Gifts only there for a time.** Some gifts come only while a window is open (UW2:
+  Dupre's key 28 at castle plot 0, Charles's key 2 at 9 to 11, Altara's dagger and rod before
+  14). When the solve from the start does not get such a gift, nothing else gives its token,
+  the logic needs it and its fact names the object (`gift`), the shuffle makes a new one: a
+  key item with no place of its own, which the fill puts on the floor of a place within reach
+  (beside what the place holds). Apply creates it there; Undo takes it away. The log lists it
+  under "Made anew" and says that a player who does reach the giver in time gets a second one.
+  Tried on UW1 with a test fact only. On UW2 the case comes up for Dupre's key from most
+  starts (the solve steps into level 3's sewers, which moves the plot to 1, before Lord
+  British's speech lets Dupre speak), but no way needs key 28, so no key is made.
+
+Not yet played in the game. `StartPicker` and `StartTeleport` work on UW2 too, but the key
+shuffle itself still refuses UW2.
+
 #### 8. The options at a glance
 
 | Option | Default | What it changes |
@@ -2653,16 +2858,20 @@ The spoiler log names each place by the zones of the hand-made zoning (the zone 
 | Fold empty dead ends | on | fewer, larger zones |
 | Consider the current starting square in the editor | on | off: the game's own start, level 1 (32, 2) |
 | Magic | on | casting from runes counts |
+| New character casts up to circle | 1 | the highest circle cast from runes that counts before the start's free area is left; 8: every circle |
 | Single-use items count | off | scrolls, potions and charged wands count |
 | Lock picking in logic, skill | off, 30 | doors may be picked |
 | Search skill, retry | 0, on | look gates by Search |
 | Killing NPCs in logic | off | an NPC's items by killing it |
 | Ring of Levitation needs lava protection | on | the ring's area needs the lava ability |
 | Require breaking the orb | off | the goal also needs Tyball's orb broken |
+| Avoid what may be lost (in code only) | on | a source the game takes away with time counts only before it goes |
+| The Pits' key gem only by Blog's way (UW2) | off | gem 7 only through Blog; killing Dorstag does not count |
 
 #### 9. What the logic simplifies
 
-- Casting ignores level, mana and the casting roll.
+- Casting ignores mana and the casting roll, and the level but for a new character's (circle 1
+  until the start's free area is left).
 - A spell cast before stepping onto a no-magic tile is assumed not to carry over (in the
   game it does).
 - Jumps follow the game's own arithmetic, but only straight along the tiles (and the
@@ -2776,7 +2985,12 @@ The window also decides what the logic may expect of the player. The **Player lo
 solver)** rows:
 
 - **Magic.** Casting from runes counts. A spell can be cast once the rune bag and its runes
-  are reached. Character level, mana and the casting roll are ignored.
+  are reached. Mana and the casting roll are ignored.
+- **New character casts up to circle.** The game asks for level 2 x circle - 1 to cast from
+  runes, and a new character is level 1: until the solve has left the start's free area (the
+  zones reached from the start by ways that need nothing), no spell above this circle counts
+  from runes (1 by default; 8 counts every circle). Scrolls, wands and enchanted things are not
+  limited.
 - **Single-use items count.** Scrolls, potions and wands with charges count. With it off,
   only items that keep working count: a worn enchantment, or an item enchanted to cast without
   charges. Each such item is one use. Every way, item or change that only a single-use item
@@ -2786,7 +3000,10 @@ solver)** rows:
   lock pick is reached. A lock of difficulty Z can be picked when skill − 3Z + 30 is above 15
   (with retries; the pick does not break). Difficulty 14 needs skill 31, and 15 never opens.
   The Open spell picks with skill 45. It counts whenever **Magic** is on, with lock picking on
-  or off, and never with Magic off.
+  or off. With Magic off the runes do not cast it, but a thing that holds it still opens the
+  lock: a weapon or wand, or a scroll when single-use things count. UW2's weapons of Door
+  Opening and of Entry (special weapons 5 and 6) open the door they hit, so one is a lasting
+  source of Open (the cudgel of Entry in the Tomb, level 57 (6, 60)).
 - **Search skill** and **Retry until found.** These apply to walls that a look opens (below).
 
 The tiles of the damaging maze on level 7 that hold a move trigger hurting the player are
@@ -2850,6 +3067,40 @@ only the doors that need picking, when lock picking is off. Three more options:
 - **Require breaking the orb** (off). The goal also needs Tyball's orb on level 7 broken (an
   orb rock used on it). With it off, the goal is reaching level 9 by the ritual, which ends
   the game.
+- **The Pits' key gem only by Blog's way** (UW2, off). Dorstag carries the Pits of Carnage's
+  key gem (level 57) and dies anywhere, so with it off the gem counts once he is reached
+  (fights are taken as won). Blog's way needs no fight: Blog the troll on level 59 becomes a
+  friend when given a grey rock or after losing three games of White Rock Black Rock (the
+  black rocks lie in his room); Dorstag, spoken to then, hands the gem to Blog, who appears in
+  Dorstag's room and gives it to the player. With it on, only Blog's way counts (with the
+  default options the gem then comes at sphere 16 instead of 14; the game still ends). The
+  walkthrough warns not to kill Blog or Dorstag before the handover.
+
+**Creatures the logic must spare.** A fact of kind `spare` names creatures whose deaths no
+solve may need: UW2's two brain creatures on level 18, which hold Killorn Keep up (killing
+both makes it fall). Nothing they carry counts (each holds two eyeballs), nor anything a fact
+grants on them, and no requirement may ask for the token that would stand for the fall
+(`flag:killorn_fallen`): the facts check refuses one. The automatic zones' report lists what
+was left out.
+
+**Things the game takes away.** A fact can say that what it gives may be lost for good
+(`mayBeLost`, with a kind, the reason, and for kind b when it goes), and a fact of kind `lost`
+says the same of every source of a token or of a place (a level, a rectangle of it, or a
+creature with what it carries). Three kinds:
+
+- **a**, lost only by a choice the player can always avoid (a wrong answer to the Prison
+  Tower's goblins, offering to join Mors Gotha, killing both brain creatures that hold Killorn
+  Keep up). The logic counts it; the walkthrough warns at the step ("Beware: ...").
+- **b**, lost with time whatever the player does (Dupre's key only at castle plot 0, Charles's
+  at 9 to 11, Altara leaving at 14).
+- **c**, a place that closes with what lies in it.
+
+The logic option **Avoid what may be lost** (on; in code only, `AbilityOptions.AvoidLost`)
+counts a source of kind b or c only while its `when` does not hold yet, as the solve stands
+when it is reached; one with no `when` never counts. The solve takes each step of the plot as
+soon as it can, so a window met in its order can be met by the player too. The key item
+shuffle never puts a key item in a place of kind b or c (filler may go there). UW1's facts
+carry no such marks; for UW2 see `docs/UW2-RANDOMIZER-NEXT-STEPS.md`, 2.1.
 
 The pole and the Telekinesis spell (Ort Por Ylem) count the same: a lever out of the hand's
 reach needs `item:pole | spell:telekinesis | spell:levitate`. A lever is only used from its
@@ -3437,6 +3688,21 @@ step, so **Undo apply** takes them back too:
   notes are kept. Edit ▸ Undo of the apply and **Undo apply** both take back the maps with the
   levels (Undo apply leaves the maps of levels changed since); Edit ▸ Redo explores them again.
 
+**Start** says where the game begins (see **A random starting position** under How the
+randomizer's logic works):
+- **The game's own square** (at first): level 1 (32, 2), or the new-game square in `UW.EXE`.
+- **A random square**, with **level 1 only** or **any level** (UW2: **the castle** or **any
+  world**). Each attempt draws its own square from its seed.
+- **This square**: a level and a square typed in, or **The selected square**, the one selected
+  in the main window on the level shown there.
+- The line under the row says what the choice does. A square that cannot be used (water, a
+  trigger, a start the game cannot be finished from …) is refused when you press Preview or
+  Apply, and the line and the summary say why.
+- With a random or given start the summary after Preview says where the game starts and that
+  the first step at the game's square teleports the player there; Apply writes the teleport,
+  and **A full torch … beside the start** puts the kit beside the new start. **Undo apply**
+  takes all of it back.
+
 The options are laid out in columns: the checkboxes of a group start at the same places.
 
 Some objects always stay where they are. The log lists them with the reason: items carried
@@ -3455,7 +3721,8 @@ are being made, Apply asks before replacing it. **Zones window…** opens that w
 
 **The logic** rows are the same as in the Automatic zones window, with one more:
 **Require breaking the orb (level 7)**. With it on, finishing also needs Tyball's orb broken
-with an orb rock. The goal is reaching level 9, through the ritual in the Slasher's chamber,
+with an orb rock. (The row **The Pits' key gem only by Blog's way** is for UW2, which the
+shuffle does not run on yet.) The goal is reaching level 9, through the ritual in the Slasher's chamber,
 or a square that ends the game (see the Zones window's **Mark as goal**). Stepping on such a
 square plays the ending at once, so it needs only this option's orb, not what level 9's goal
 needs.
@@ -3619,6 +3886,7 @@ the files themselves, so it can be shared without the game's data:
 | Anywhere | T | look straight down |
 | Anywhere | G, H, M | ceiling, grid, 3D models on or off |
 | Anywhere | Home | back to the start or the player |
+| Anywhere | a digit, or Ctrl+G | the Go to box: `level, x, y` or `x, y`, then Enter |
 | Anywhere | Esc | cancel a target choice, or clear the selection |
 | Anywhere | F1 | this manual |
 | Properties | − +, held | step a field down or up |

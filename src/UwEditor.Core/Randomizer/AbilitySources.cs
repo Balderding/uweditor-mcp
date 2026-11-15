@@ -208,6 +208,26 @@ namespace UwEditor.Core.Randomizer
             return string.Join(" & ", terms.Distinct());
         }
 
+        /// <summary>
+        /// The circle of the spell a cast:X placement stands for: its Circle, or else (a placement
+        /// read from a zone file) the spell of that ability whose runes its requirement names
+        /// (kept in Circle); 0 for any other placement or when none matches.
+        /// </summary>
+        public static int CircleOf(GameSession s, Placement p)
+        {
+            if (p == null || p.Circle > 0 || s == null) return p == null ? 0 : p.Circle;
+            string g = Requirement.Normalize(p.Grants);
+            if (!g.StartsWith("cast:")) return 0;
+            var want = Requirement.TryParse(p.Requires ?? "", out _);
+            if (want == null) return 0;
+            foreach (int sp in SpellsGiving(s.IsUw2, g.Substring(5)))
+            {
+                var r = Requirement.TryParse(CastRequirement(s, sp), out _);
+                if (r != null && r.ToString() == want.ToString()) return p.Circle = SpellTables.Circle(s.IsUw2, sp);
+            }
+            return 0;
+        }
+
         static string Slug(string t) { return new string((t ?? "").ToLowerInvariant().Select(c => char.IsLetterOrDigit(c) ? c : '_').ToArray()).Trim('_'); }
 
         static bool Flag11(ObjectInfo o) { return o.Record != null && o.Record.Length > 1 && ((o.Record[1] >> 3) & 1) != 0; }
@@ -303,6 +323,12 @@ namespace UwEditor.Core.Randomizer
                     string ab = OfEffect(link >> 4, link & 0xF);
                     if (ab != null) yield return new AbilitySource { Ability = ab, Kind = "worn", Permanent = true, Worn = true, Spell = (s.Strings.Get(6, link) ?? "").Trim() };
                     yield break;
+                }
+                else if (s.IsUw2 && item < 0x10 && (link >> 4) == 12 && ((link & 0xF) == 12 || (link & 0xF) == 13))
+                {
+                    // UW2's special weapons 5 and 6 (class 12 effects 12 and 13: Door Opening, Entry) cast Open on a door they hit and
+                    // open it, the first on a critical hit, the second on every hit (combat/COMBAT.C player_attack); as often as wanted
+                    yield return new AbilitySource { Ability = "open", Kind = "weapon", Permanent = true, Spell = (s.Strings.Get(6, 0x1C0 + (link & 0xF)) ?? "").Trim() };
                 }
             }
             if (!s.IsUw2 && item == 0x2F && !(o.IsQuantity && o.Enchanted && o.Link >= 0x200 && !Flag11(o)))

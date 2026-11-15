@@ -43,6 +43,19 @@ namespace UwEditor.Core.Randomizer
         public bool Anywhere = true;
         /// <summary>At Apply: the spoiler log in the map notes: a warning on page 9, the hints from page 10, a page saying the solutions come next, then the solutions (SpoilerNotes).</summary>
         public bool SpoilerNotes;
+        /// <summary>Where the game starts: the game's own square, a random one (StartScope, drawn from each attempt's seed by StartPicker), or StartAt. UW1 only, as the shuffle.</summary>
+        public StartChoice Start = StartChoice.Own;
+        /// <summary>With a random start: level 1 only or any level.</summary>
+        public StartScope StartScope = StartScope.FirstLevels;
+        /// <summary>With StartChoice.Given: the square.</summary>
+        public StartPoint StartAt;
+        /// <summary>
+        /// When the fill finds no free place the logic reaches for a key item, it moves an empty
+        /// place to the floor of a square within reach (the zones reached earliest first) and puts
+        /// the item there, instead of failing (KeyShuffle.MoveIntoReach). Null (the default): on with
+        /// a random or given start, off with the game's own, so its seeds give what they gave.
+        /// </summary>
+        public bool? PlacesInReach;
 
         public KeyShuffleOptions Clone()
         {
@@ -54,6 +67,9 @@ namespace UwEditor.Core.Randomizer
             return o;
         }
     }
+
+    /// <summary>Where a shuffled game starts: the game's own square, a random one, or a given one (the first step at the game's square then teleports there once: StartTeleport).</summary>
+    public enum StartChoice { Own, Random, Given }
 
     /// <summary>An object the shuffle looked at: one that moves (an item, and its place a location) or one that stays, and why.</summary>
     public sealed class ShuffleObject
@@ -84,11 +100,27 @@ namespace UwEditor.Core.Randomizer
         public bool Container;
         /// <summary>For an object inside such a container: the container (level:index); it goes where the container goes.</summary>
         public string RidesIn;
+        /// <summary>Its place may be lost (a "lost" fact of the facts names it, its holder or its square: Fact.Lost a, b or c), or "".</summary>
+        public string Lost = "";
+        /// <summary>Why its place may be lost.</summary>
+        public string LostWhy = "";
         /// <summary>Its square before Place anywhere moved its place (-1: not moved).</summary>
         public int FromX = -1, FromY = -1;
+        /// <summary>Its level before the fill moved its place to a square of another level (MoveIntoReach), or -1.</summary>
+        public int FromLevel = -1;
         public bool Relocated { get { return FromX >= 0; } }
+        /// <summary>The fill moved this place (empty then) to the floor of a square within reach, as no free place the logic reached was left (KeyShuffleOptions.PlacesInReach).</summary>
+        public bool InReach;
         /// <summary>Where the item was in the levels (before Place anywhere).</summary>
-        public string WasWhere { get { return Relocated ? string.Format("L{0} ({1}, {2})", Level, FromX, FromY) : Where; } }
+        public string WasWhere { get { return Relocated ? string.Format("L{0} ({1}, {2})", FromLevel >= 0 ? FromLevel : Level, FromX, FromY) : Where; } }
+        /// <summary>
+        /// A made item: a new object standing for a gift the start cannot get in time (TimedGifts),
+        /// or for an ability the start's way out needs that a new character cannot cast from runes
+        /// (StartAbilities: MissedGift.Ability set), with no original place; the fill places it like a
+        /// key item and Apply creates it on the floor of its place (the place keeps its own item).
+        /// Null for an object of the levels.
+        /// </summary>
+        public MissedGift Made;
         public string Key2 { get { return Level + ":" + Index; } }
         public string Where { get { return string.Format("L{0} ({1}, {2}){3}", Level, X, Y, Holder.Length > 0 ? " " + Holder : ""); } }
         public string Tokens { get { return string.Join(", ", Gives.Select(p => p.Grants.Length > 0 ? p.Grants : p.Quantity + " towards " + p.Counts).Distinct()); } }
@@ -158,8 +190,15 @@ namespace UwEditor.Core.Randomizer
         /// <summary>Place anywhere: the places moved to random squares, and the levels that had no square for them.</summary>
         public int Relocated;
         public readonly List<string> AnywhereNotes = new List<string>();
+        /// <summary>The places the fill moved into reach (KeyShuffleOptions.PlacesInReach), in words, in the order it moved them.</summary>
+        public readonly List<string> MovedIntoReach = new List<string>();
         /// <summary>What Apply did besides moving the items (the torch and map, the maps explored).</summary>
         public readonly List<string> AppliedAids = new List<string>();
+        /// <summary>With a random or given start: where the game starts (the solve's start), the square the game puts the player on (where the start teleport goes), and what the start check said; null with the game's own start.</summary>
+        public StartPoint Start, StartFrom;
+        public StartCheck StartCheck;
+        /// <summary>The start teleport Apply wrote, or null.</summary>
+        public StartTeleportInfo Teleport;
         public bool IsApplied { get { return Applied.Count > 0; } }
 
         /// <summary>The categories whose items are always worth a hint: the talismans and the Key of Infinity's parts.</summary>
@@ -204,7 +243,20 @@ namespace UwEditor.Core.Randomizer
     /// quantity, owner, enchantment; a key keeps its lock number in its owner field), across
     /// levels; nothing is written until Apply, one undoable step a level, and Undo puts back every
     /// byte. With lock picking off, a door only picking opens is unlocked when something the
-    /// logic needs and that does not move lies behind it (Karl's rule).
+    /// logic needs and that does not move lies behind it (Karl's rule). With a random or given
+    /// start (KeyShuffleOptions.Start) the solves start there (RunWithStart) and Apply writes the
+    /// start teleport at the game's square (StartTeleport); the fill needs nothing else: it places
+    /// each key item among the places the solver reaches from the start. A gift a conversation hands
+    /// over only for a time (a fact of kind b with a "gift") that the unshuffled game's solve from the
+    /// start does not get, and that the logic needs, is made anew: a key item with no original place
+    /// (ShuffleObject.Made), placed by the fill on the floor of a place and created there by Apply
+    /// (TimedGifts). A new character casts from runes only up to AbilityOptions.NewCharacterCircle until
+    /// he leaves the start's free area (Timeline's solve); when the way out of it needs more (a sealed
+    /// room left only by Gate Travel), a scroll or a wand of that spell is made the same way
+    /// (StartAbilities, MadeAbilities). When the fill finds no free place the logic reaches for a key item (a start in a
+    /// small closed room, say), it moves an empty place to a square within reach, the start's own
+    /// sphere first, and puts the item there (KeyShuffleOptions.PlacesInReach, on by default with a
+    /// random or given start: MoveIntoReach).
     /// </summary>
     public static class KeyShuffle
     {
@@ -235,6 +287,8 @@ namespace UwEditor.Core.Randomizer
         internal sealed class World
         {
             public GameSession S;
+            /// <summary>Where a level not in Data is read from (null: the session's archive).</summary>
+            public Func<int, LevelModel> From;
             public readonly Dictionary<int, byte[]> Data = new Dictionary<int, byte[]>(), Tex = new Dictionary<int, byte[]>();
             readonly Dictionary<int, LevelModel> models = new Dictionary<int, LevelModel>();
             public List<int> Levels = new List<int>();
@@ -244,7 +298,7 @@ namespace UwEditor.Core.Randomizer
                 LevelModel m;
                 if (models.TryGetValue(level, out m)) return m;
                 byte[] d;
-                if (!Data.TryGetValue(level, out d)) return S.LoadLevel(level);
+                if (!Data.TryGetValue(level, out d)) return From != null ? From(level) : S.LoadLevel(level);
                 m = LevelModel.FromBytes(S, level, d, Tex[level]);
                 models[level] = m;
                 return m;
@@ -254,7 +308,7 @@ namespace UwEditor.Core.Randomizer
 
             public World Copy()
             {
-                var w = new World { S = S, Levels = Levels };
+                var w = new World { S = S, Levels = Levels, From = From };
                 foreach (var kv in Data) w.Data[kv.Key] = (byte[])kv.Value.Clone();
                 foreach (var kv in Tex) w.Tex[kv.Key] = kv.Value == null ? null : (byte[])kv.Value.Clone();
                 return w;
@@ -361,6 +415,24 @@ namespace UwEditor.Core.Randomizer
             return h;
         }
 
+        /// <summary>
+        /// Whether the fill may put a key item in a place: not one the game may take away whatever
+        /// the player does (a "lost" fact of kind b or c names it, its holder or its square: a
+        /// creature the schedule takes off the map with what it carries, a place that closes).
+        /// Filler may still go there; a place lost only by an avoidable choice (kind a) is allowed.
+        /// </summary>
+        public static bool KeyPlaceAllowed(ShuffleObject place)
+        {
+            return place != null && place.Lost != "b" && place.Lost != "c";
+        }
+
+        /// <summary>Marks a place with the facts' "lost" fact that names it, its holder or its square (FactSet.LostPlace), if any.</summary>
+        public static void MarkLost(ShuffleObject place, FactSet facts, LevelModel m, ObjectInfo o)
+        {
+            var lost = facts.LostPlace(place.Level, m, o);
+            if (lost != null) { place.Lost = lost.Lost; place.LostWhy = lost.LostWhy; }
+        }
+
         static bool IsNeeded(HashSet<string> needed, Placement p, TimelineResult t)
         {
             if (p.Grants.Length > 0)
@@ -444,6 +516,7 @@ namespace UwEditor.Core.Randomizer
                     List<Placement> inside;
                     if (cat == null && boxes.TryGetValue(o.Index, out inside)) { so.Container = true; so.Gives.AddRange(inside); }
                     so.OnFloor = o.OnTile;
+                    MarkLost(so, t.Facts, m, o);
                     so.Requires = AbilityZones.ContainerLock(m, o) ?? "";
                     if (so.Requires.Length > 0) so.Holder += " (locked: " + so.Requires + ")";
                     // who holds it, and whether that keeps it
@@ -471,6 +544,8 @@ namespace UwEditor.Core.Randomizer
                     else if (!o.IsQuantity && o.Link != 0 && !so.Container) so.Stays = extra.Contains(o.Item) && ExtraItems.IsContainer(s, o.Item)
                         ? "a container holding something the logic needs or a key item (its contents take part instead)" : "it holds other objects (its list stays on its level)";
                     else if (o.IsMobile) so.Stays = "a mobile record";
+                    // Karl: no solve may need such a creature killed, so what it carries is no place for a key item and gives nothing (AbilityZones.Spare)
+                    else if (carrier != null && t.Facts.Spared(level, m, carrier) is Fact spare) so.Stays = "carried by a creature the logic must spare (the fact " + spare.Id + ")";
                     else if (carrier != null && !opt.CreatureInventories) so.Stays = "carried by a creature (creature inventories off)";
                     else if (carrier != null && carrier.Record.Length > 0x1A && carrier.Record[0x1A] != 0) so.Stays = "carried by an NPC with a conversation (it may hand it over)";
                     else if (factNamed.TryGetValue(key, out factId)) so.Stays = "the fact " + factId + " names it by its object";
@@ -532,6 +607,68 @@ namespace UwEditor.Core.Randomizer
                     if (boxes.ContainsKey(up)) { boxes.Remove(b); break; }
             return boxes;
         }
+
+        /// <summary>
+        /// The made items for a start (TimedGifts): every gift only there for a time that the
+        /// unshuffled game's solve from the start does not get (sv), whose token the logic asks for
+        /// and whose fact names its object ("gift"), becomes a new key item with no original place.
+        /// </summary>
+        internal static List<ShuffleObject> MadeItems(GameSession s, TimelineResult t, TimelineSolve sv, HashSet<string> needed)
+        {
+            var list = new List<ShuffleObject>();
+            foreach (var m in TimedGifts.Missed(t, sv))
+            {
+                if (m.Gift == null || !m.Gift.Valid || !needed.Contains(m.Token)) continue;
+                var g = m.Gift;
+                var o = new ShuffleObject
+                {
+                    Level = -1, Index = -1, Item = g.Item, Name = s.Names.Get(g.Item), Category = KeyIndex.IsKey(g.Item, s.Kind) ? "keys" : "plot", Key = true, Made = m,
+                    Holder = "(made anew)", Zone = -1,
+                    Record = new ItemRewrite { Index = -1, Item = g.Item, Quality = g.Quality, Flags = g.Flags & 7, Link = g.Link, Owner = g.Owner, Enchanted = g.Enchanted, IsQuantity = g.IsQuantity, Exact = true },
+                };
+                o.Gives.Add(new Placement { Grants = m.Token, Notes = "made for " + m.Fact.Id, Source = "made" });
+                list.Add(o);
+            }
+            return list;
+        }
+
+        /// <summary>The items a shuffle with these logic options would make for the start t was built from (its own solve, the logic's needs).</summary>
+        internal static List<ShuffleObject> MadeFor(GameSession s, TimelineResult t, AbilityOptions logic)
+        {
+            return MadeItems(s, t, t.Solve, Needed(t, Timeline.SolverFor(t, logic, null)));
+        }
+
+        /// <summary>
+        /// The objects made for the start's way out (StartAbilities): when the solve from the start
+        /// with every moving item held (and the made gifts) stays in the start's free area and misses
+        /// the goal, because a new character cannot cast from runes what leads out, a scroll or a wand
+        /// of each spell that does it (StartAbilities.Needed) becomes a new key item with no original
+        /// place, which the fill puts within reach as it puts the made gifts.
+        /// </summary>
+        internal static List<ShuffleObject> MadeAbilities(GameSession s, TimelineResult t, AbilityOptions logic, IEnumerable<ShuffleObject> moving)
+        {
+            var list = new List<ShuffleObject>();
+            if (StartAbilities.Withheld(s, logic).Count == 0) return list;
+            foreach (var ab in StartAbilities.Needed(s, t, logic, GivesTokens(t, moving.Where(o => o.Stays == null)).ToList()))
+            {
+                string token;
+                int spell;
+                var g = StartAbilities.ObjectFor(s, logic, ab, out token, out spell);
+                if (g == null) continue;
+                var o = new ShuffleObject
+                {
+                    Level = -1, Index = -1, Item = g.Item, Name = s.Names.Get(g.Item) + " of " + SpellTables.Name(s, spell), Category = "abilities", Key = true, Holder = "(made anew)", Zone = -1,
+                    Made = new MissedGift { Ability = ab, Object = g, Token = token, Reason = StartAbilities.Why(s, logic, ab) },
+                    Record = new ItemRewrite { Index = -1, Item = g.Item, Quality = g.Quality, Flags = g.Flags & 7, Link = g.Link, Owner = g.Owner, Enchanted = g.Enchanted, IsQuantity = g.IsQuantity, Exact = true },
+                };
+                o.Gives.Add(new Placement { Grants = token, Notes = "made for the start's way out: " + ab, Source = "made" });
+                list.Add(o);
+            }
+            return list;
+        }
+
+        /// <summary>Whether the fill may put a made item in a place: one allowed to key items, on the floor (Apply adds the new object on the place's square; the place keeps its own item).</summary>
+        static bool MadePlaceAllowed(ShuffleObject place) { return KeyPlaceAllowed(place) && place.OnFloor; }
 
         // ---------------------------------------------------------------- the solves
 
@@ -614,18 +751,96 @@ namespace UwEditor.Core.Randomizer
         public static KeyShuffleResult RunOn(GameSession s, LevelSnapshot levels, KeyShuffleOptions opt, FactSet facts = null)
         {
             opt = opt.Clone();
+            if (s.IsUw2) { var u = new KeyShuffleResult { Options = opt }; u.Refused = "The key item shuffle works on Ultima Underworld 1 only: its facts and solver cover no other game."; u.Log.AppendLine(u.Refused); return u; }
+            if (opt.Start != StartChoice.Own) return RunWithStart(s, levels, opt, facts);
+            TimelineResult t;
+            var r = RunCore(s, levels, opt, facts, out t);
+            if (r.Refused != null) r.Log.AppendLine(r.Refused);
+            else WriteLog(s, r, t);
+            return r;
+        }
+
+        /// <summary>
+        /// The tokens every item that moves gives, with these options (the shuffle's "every moving
+        /// item held"): what the start picker's zone solves assume.
+        /// </summary>
+        internal static List<string> MovingTokens(GameSession s, Func<int, LevelModel> level, TimelineResult t, KeyShuffleOptions opt)
+        {
+            var w = new World { S = s, From = level, Levels = s.LevelSlots().Where(x => x.Present).Select(x => x.Level).ToList() };
+            var needed = Needed(t, Timeline.SolverFor(t, opt.Logic, null));
+            return GivesTokens(t, Survey(s, w, t, opt, needed).Where(o => o.Stays == null)).ToList();
+        }
+
+        /// <summary>
+        /// A shuffle with a random or given start: each attempt (the seed, then seed + 1 …) draws a
+        /// start through StartPicker from its seed (a given start is checked once), then shuffles
+        /// with the solve starting there (NavOptions.StartOverride) and that seed alone, so a failed
+        /// fill draws another start; the seed the log names gives the run again. The result's Start
+        /// is where the game starts, StartFrom the square the game puts the player on, where Apply
+        /// writes the start teleport.
+        /// </summary>
+        static KeyShuffleResult RunWithStart(GameSession s, LevelSnapshot levels, KeyShuffleOptions opt, FactSet facts)
+        {
+            var w0 = levels.W.Copy();
+            var baseOpt = opt.Clone();
+            baseOpt.Nav.StartOverride = null;
+            var from = baseOpt.Nav.BaseStartOf(s);
+            StartPicker picker;
+            try { picker = StartPicker.For(s, w0.Model, baseOpt, facts); }
+            catch (Exception ex) { var u = new KeyShuffleResult { Options = opt, Refused = "The start could not be checked: " + ex.Message }; u.Log.AppendLine(u.Refused); return u; }
+            var failures = new List<string>();
+            KeyShuffleResult r = null;
+            TimelineResult t = null;
+            StartCheck c = null;
+            int tries = Math.Max(1, opt.Retries + 1);
+            for (int attempt = 0; attempt < tries; attempt++)
+            {
+                int seed = unchecked(opt.Seed + attempt);
+                if (c == null || opt.Start == StartChoice.Random)
+                    c = opt.Start == StartChoice.Given && opt.StartAt != null ? picker.Check(opt.StartAt.Level, (int)opt.StartAt.X, (int)opt.StartAt.Y) : picker.Pick(seed, opt.StartScope);
+                if (!c.Viable)
+                {
+                    var u = new KeyShuffleResult { Options = opt, Refused = opt.Start == StartChoice.Given ? "The given start " + c + " cannot be used: " + c.Reason + "." : "No random start: " + c.Reason + "." };
+                    u.Log.AppendLine(u.Refused);
+                    return u;
+                }
+                var o = opt.Clone();
+                o.Seed = seed; o.Retries = 0; o.FailAttempts = attempt < opt.FailAttempts ? 1 : 0;
+                o.Nav.StartOverride = c.Point(string.Format("{0} start, level {1} ({2}, {3}): the first step at level {4} ({5}, {6}) teleports the player there", opt.Start == StartChoice.Random ? "the random" : "the given", c.Level, c.X, c.Y, from.Level, (int)from.X, (int)from.Y));
+                r = RunCore(s, levels, o, facts, out t);
+                if (r.Refused != null) { r.Log.AppendLine(r.Refused); return r; }
+                foreach (var f in r.Failures) failures.Add(f + " (start L" + c.Level + " (" + c.X + ", " + c.Y + "))");
+                r.Start = o.Nav.StartOverride; r.StartFrom = from; r.StartCheck = c;
+                if (r.Success) break;
+            }
+            r.Failures.Clear();
+            r.Failures.AddRange(failures);
+            r.Attempts = failures.Count + (r.Success ? 1 : 0);
+            // the options as asked (the seed, the retries), with the solve's start: Apply puts the start kit beside it
+            var shown = opt.Clone();
+            shown.Nav.StartOverride = r.Start;
+            r.Options = shown;
+            WriteLog(s, r, t);
+            return r;
+        }
+
+        static KeyShuffleResult RunCore(GameSession s, LevelSnapshot levels, KeyShuffleOptions opt, FactSet facts, out TimelineResult t)
+        {
             var r = new KeyShuffleResult { Options = opt };
-            if (s.IsUw2) { r.Refused = "The key item shuffle works on Ultima Underworld 1 only: its facts and solver cover no other game."; r.Log.AppendLine(r.Refused); return r; }
             var w0 = levels.W.Copy();
             foreach (int l in w0.Levels) { r.Before[l] = (byte[])w0.Data[l].Clone(); r.Textures[l] = w0.Tex[l]; }
             var w = w0.Copy();
-            var t = Timeline.Build(s, w.Model, opt.Nav, opt.Logic, null, facts, false, opt.Zoning);
+            t = Timeline.Build(s, w.Model, opt.Nav, opt.Logic, null, facts, false, opt.Zoning);
             var so0 = Timeline.SolverFor(t, opt.Logic, null);
             var needed = Needed(t, so0);
             var objs = Survey(s, w, t, opt, needed);
+            // ---- gifts only there for a time that the start cannot get: made anew, placed by the fill (TimedGifts)
+            var made = MadeItems(s, t, t.Solve, needed);
+            // ---- what leads out of the start's free area that a new character cannot cast from runes: a scroll or a wand made, placed by the fill (StartAbilities)
+            made.AddRange(MadeAbilities(s, t, opt.Logic, objs.Concat(made)));
 
             // ---- doors only picking opens (lock picking off): unlock those in front of something needed that does not move
-            if (!opt.Logic.LockPicking) Unlock(s, w, ref t, opt, facts, objs, r);
+            if (!opt.Logic.LockPicking) Unlock(s, w, ref t, opt, facts, objs.Concat(made).ToList(), r);
             if (r.Unlocked.Count > 0)
             {
                 so0 = Timeline.SolverFor(t, opt.Logic, null);
@@ -633,20 +848,26 @@ namespace UwEditor.Core.Randomizer
                 objs = Survey(s, w, t, opt, needed);
             }
             // Place anywhere: the squares are worked out once; each attempt scatters the places with its own seed
-            var anywhere = opt.Anywhere ? PrepareAnywhere(s, w, t, opt, objs) : null;
+            var anywhere = opt.Anywhere ? PrepareAnywhere(s, w, t, opt, objs.Concat(made).ToList()) : null;
             r.Objects.AddRange(objs);
+            r.Objects.AddRange(made);
             var solver = MakeSolver(t, opt, objs);
             var places = solver.Places;
-            if (places.Count == 0) { r.Refused = "Nothing moves with these categories."; r.Log.AppendLine(r.Refused); return r; }
+            if (places.Count == 0) { r.Refused = "Nothing moves with these categories."; return r; }
 
-            var keys = places.Where(o => o.Key).OrderBy(o => o.Level).ThenBy(o => o.Index).ToList();
+            var keys = places.Where(o => o.Key).OrderBy(o => o.Level).ThenBy(o => o.Index).Concat(made).ToList();
             var rest = places.Where(o => !o.Key).OrderBy(o => o.Level).ThenBy(o => o.Index).ToList();
             var assumedRest = GivesTokens(t, rest).ToList();
+            // places moved into reach by the fill (PlacesInReach): where each was, put back before each attempt
+            bool inReach = opt.PlacesInReach ?? opt.Start != StartChoice.Own;
+            var terrain = inReach ? CreatureTerrain.TryLoad(s) : null;
+            var movedHome = new Dictionary<ShuffleObject, PlaceHome>();
             int tries = Math.Max(1, opt.Retries + 1);
             for (int attempt = 0; attempt < tries; attempt++)
             {
                 int seed = unchecked(opt.Seed + attempt);
                 r.Attempts = attempt + 1;
+                PutBack(movedHome, r);
                 // the places on their squares for this seed, so the seed the log names gives this run again
                 var wa = w;
                 if (anywhere != null) { wa = w.Copy(); anywhere.Scatter(s, wa, t, seed, r); }
@@ -670,11 +891,26 @@ namespace UwEditor.Core.Randomizer
                     var item = order[k];
                     var assumed = GivesTokens(t, order.Skip(k + 1)).Concat(assumedRest);
                     var sv = solver.Run(placed, empty, assumed, "fill");
-                    var reach = empty.Where(i => sv.TokenSphere.ContainsKey("loc:" + i)).ToList();
-                    if (reach.Count == 0) { fail = "no place left that the logic reaches for " + item; break; }
+                    var reach = empty.Where(i => sv.TokenSphere.ContainsKey("loc:" + i) && (item.Made != null ? MadePlaceAllowed(places[i]) : KeyPlaceAllowed(places[i]))).ToList();
+                    string inReachWhy = null;
+                    // none left: an empty place on the floor moves to a square within reach (only then, so a fill that found places draws as before)
+                    if (reach.Count == 0 && inReach)
+                    {
+                        string why;
+                        int moved = MoveIntoReach(s, ref wa, w, t, facts ?? t.Facts, sv, places, empty, rng, terrain, movedHome, out why);
+                        if (moved >= 0)
+                        {
+                            reach.Add(moved);
+                            r.MovedIntoReach.Add(string.Format("place #{0} (was {1}) moved to L{2} ({3}, {4}), zone {5}, reached in sphere {6} of the fill, for {7}",
+                                places[moved].Index, places[moved].WasWhere, places[moved].Level, places[moved].X, places[moved].Y, places[moved].Zone, sv.ZoneSphere[places[moved].Zone], item.Made != null ? "the made " + item.Name : item.ToString()));
+                        }
+                        else inReachWhy = why;
+                    }
+                    if (reach.Count == 0) { fail = "no place left that the logic reaches for " + (item.Made != null ? "the made " + item.Name + " (" + item.Made.Id + ")" : item.ToString()) + (inReachWhy != null ? ", and none could be moved into reach (" + inReachWhy + ")" : ""); break; }
                     int at = reach[rng.Next(reach.Count)];
                     placed[item] = places[at];
-                    empty.Remove(at);
+                    // a made item shares its place: the place keeps its own item, which the fill or the rest still moves
+                    if (item.Made == null) empty.Remove(at);
                 }
                 if (fail != null) { r.Failures.Add("seed " + seed + ": " + fail); continue; }
                 // the rest at random: containers first, each to a place on its own level (their contents list is the level's)
@@ -695,11 +931,27 @@ namespace UwEditor.Core.Randomizer
                 var wv = wa.Copy();
                 foreach (var kv in placed)
                 {
-                    if (kv.Key == kv.Value) continue;
+                    if (kv.Key == kv.Value || kv.Key.Made != null) continue;
                     var rec = kv.Key.Record;
                     rec.Index = kv.Value.Index;
                     Write(wv.Data[kv.Value.Level], rec);
                 }
+                // the made items: new objects on the floor of their places (a scratch editor over the copy's bytes, as Anywhere moves objects)
+                foreach (var kv in placed.Where(kv => kv.Key.Made != null).OrderBy(kv => kv.Value.Level).ThenBy(kv => kv.Value.Index))
+                {
+                    var o = kv.Key;
+                    try
+                    {
+                        var ed = new LevelEditor(s, kv.Value.Level, wv.Data[kv.Value.Level], wv.Tex[kv.Value.Level]);
+                        o.Index = ed.AddObject(o.Made.Gift.Spec(), kv.Value.X, kv.Value.Y);
+                        wv.Data[kv.Value.Level] = ed.Data;
+                        wv.Changed(kv.Value.Level);
+                    }
+                    catch (Exception ex) { fail = "the made " + o.Name + " could not be put on level " + kv.Value.Level + ": " + ex.Message; break; }
+                    o.Level = kv.Value.Level; o.X = kv.Value.X; o.Y = kv.Value.Y; o.Zone = kv.Value.Zone;
+                    var rec = o.Record; rec.Index = o.Index; o.Record = rec;
+                }
+                if (fail != null) { r.Failures.Add("seed " + seed + ": " + fail); continue; }
                 TimelineResult tv;
                 try { tv = Timeline.Build(s, wv.Model, opt.Nav, opt.Logic, null, facts, false, opt.Zoning); }
                 catch (Exception ex) { r.Failures.Add("seed " + seed + ": the check failed: " + ex.Message); continue; }
@@ -730,9 +982,117 @@ namespace UwEditor.Core.Randomizer
                 break;
             }
             // no shuffle found: the places are where the items lie, as nothing is written
+            if (!r.Success) PutBack(movedHome, r);
             if (!r.Success && anywhere != null) anywhere.Restore(r);
-            WriteLog(s, r, t);
             return r;
+        }
+
+        /// <summary>The places an attempt moved into reach put back where they were before it (Place anywhere's square, or the item's own).</summary>
+        static void PutBack(Dictionary<ShuffleObject, PlaceHome> home, KeyShuffleResult r)
+        {
+            foreach (var kv in home) kv.Value.Restore(kv.Key);
+            home.Clear();
+            r.MovedIntoReach.Clear();
+        }
+
+        /// <summary>A place as it was before the fill moved it into reach.</summary>
+        sealed class PlaceHome
+        {
+            readonly int level, index, x, y, zone, fromX, fromY, fromLevel;
+            readonly bool onFloor;
+            readonly string holder;
+            public PlaceHome(ShuffleObject o) { level = o.Level; index = o.Index; x = o.X; y = o.Y; zone = o.Zone; fromX = o.FromX; fromY = o.FromY; fromLevel = o.FromLevel; onFloor = o.OnFloor; holder = o.Holder; }
+            public void Restore(ShuffleObject o) { o.Level = level; o.Index = index; o.X = x; o.Y = y; o.Zone = zone; o.FromX = fromX; o.FromY = fromY; o.FromLevel = fromLevel; o.OnFloor = onFloor; o.Holder = holder; o.InReach = false; }
+        }
+
+        /// <summary>Whether a "lost" fact of kind b or c names a square by its rectangle or its whole level (FactSet.LostPlace without an object): no key item goes there.</summary>
+        static bool SquareLost(FactSet facts, int level, int x, int y)
+        {
+            return facts != null && facts.OfKind("lost").Any(f => f.Level == level && (f.Token ?? "").Length == 0 && f.Object < 0 && (f.Lost == "b" || f.Lost == "c") && (f.Rect == null || f.InRect(x, y)));
+        }
+
+        /// <summary>
+        /// Places in reach (KeyShuffleOptions.PlacesInReach): when the fill finds no free place the
+        /// logic reaches (sv, the fill's solve), an empty place (needing nothing, allowed to key items,
+        /// not a container) is moved to a square within reach, on the floor, and its index returned
+        /// (-1: none could, why says why). The square is chosen as Place anywhere chooses
+        /// (Anywhere.Qualifies: open, not water or lava, no door, trap or trigger; not on or beside a
+        /// barrier, not in a folded dead end; and no square a "lost" fact names) in the zones reached
+        /// at the earliest sphere that has such a square (the start's own sphere first), on a level
+        /// that holds an empty place if one of that sphere's levels does, at random.
+        /// <para>An empty place of the same level (one on the floor first, else one in a container or
+        /// carried) keeps its slot: its record moves to the square in wa (the attempt's copy of the
+        /// levels; copied here if it is still w), so the level keeps its number of objects. With no
+        /// empty place on the square's level, one of another level goes there: its object is deleted
+        /// on its level and a new one with its record made on the square (LevelEditor.DeleteObject,
+        /// AddObject), so that level has one object less and this one one more; a level whose object
+        /// list is full refuses the new object and the attempt fails with the reason.</para>
+        /// <para>Either way the place is then taken by the item as any place is: every moving item
+        /// still ends in exactly one place, every place gets exactly one item, and no object is made
+        /// or lost (the made items aside, which add one each).</para>
+        /// </summary>
+        static int MoveIntoReach(GameSession s, ref World wa, World w, TimelineResult t, FactSet facts, TimelineSolve sv, List<ShuffleObject> places, List<int> empty, Random rng, TerrainTable terrain,
+            Dictionary<ShuffleObject, PlaceHome> home, out string why)
+        {
+            why = "no empty place left to move";
+            var free = empty.Where(i => !places[i].Container && places[i].RidesIn == null && places[i].Requires.Length == 0 && KeyPlaceAllowed(places[i]))
+                .GroupBy(i => places[i].Level).ToDictionary(g => g.Key, g => g.ToList());
+            if (free.Count == 0) return -1;
+            why = "no square within reach qualifies";
+            var graph = t.Abilities.Auto.Graph;
+            foreach (var sphere in sv.ZoneSphere.Where(kv => kv.Key > ZoneSet.Unassigned && kv.Key < Timeline.FreshZoneIds).GroupBy(kv => kv.Value).OrderBy(g => g.Key))
+            {
+                var zones = new HashSet<int>(sphere.Select(kv => kv.Key));
+                var squares = new List<(int Level, int X, int Y)>();
+                var world = wa;
+                foreach (int level in zones.SelectMany(z => t.Set.LevelsOf(z)).Distinct().OrderBy(l => l))
+                    foreach (var sq in Anywhere.Squares(s, world.Model(level), terrain, (x, y) =>
+                    {
+                        if (!zones.Contains(t.Set.ZoneAt(level, x, y)) || graph.NearBarrier(level, x, y)) return false;
+                        int reg = graph.RegionOf(level, x, y);
+                        return (reg < 0 || !graph.Regions[reg].Folded) && !SquareLost(facts, level, x, y);
+                    }))
+                        squares.Add((level, sq.X, sq.Y));
+                if (squares.Count == 0) continue;
+                var same = squares.Where(q => free.ContainsKey(q.Level)).ToList();
+                if (same.Count == 0) same = squares;
+                var to = same[rng.Next(same.Count)];
+                List<int> cands;
+                if (free.TryGetValue(to.Level, out cands)) { var floor = cands.Where(i => places[i].OnFloor).ToList(); if (floor.Count > 0) cands = floor; }
+                else cands = free.Values.SelectMany(x => x).OrderBy(i => i).ToList();
+                int at = cands[rng.Next(cands.Count)];
+                var p = places[at];
+                if (ReferenceEquals(wa, w)) wa = w.Copy();
+                var spot = Anywhere.Spots(rng, wa.Model(to.Level), new[] { (to.X, to.Y) }, 1)[0];
+                var was = new PlaceHome(p);
+                int index = p.Index;
+                try
+                {
+                    if (p.Level != to.Level)
+                    {
+                        // to another level: made new there (a full object list refuses it), deleted where it was
+                        var rec = p.Record;
+                        var add = new LevelEditor(s, to.Level, wa.Data[to.Level], wa.Tex[to.Level]);
+                        index = add.AddObject(new ObjectSpec { Item = rec.Item, Quality = rec.Quality, Owner = rec.Owner, Link = rec.Link, IsQuantity = rec.IsQuantity, Enchanted = rec.Enchanted, Flags = rec.Flags & 7, FineX = spot.FineX, FineY = spot.FineY }, to.X, to.Y);
+                        wa.Data[to.Level] = add.Data;
+                        var del = new LevelEditor(s, p.Level, wa.Data[p.Level], wa.Tex[p.Level]);
+                        del.DeleteObject(p.Index);
+                        wa.Data[p.Level] = del.Data;
+                        wa.Changed(p.Level);
+                    }
+                    else if (p.OnFloor) Anywhere.Move(s, to.Level, wa.Data[to.Level], wa.Tex[to.Level], p.Index, spot);
+                    else new LevelEditor(s, to.Level, wa.Data[to.Level], wa.Tex[to.Level]).MoveObjectAnywhere(p.Index, spot.X, spot.Y, spot.FineX, spot.FineY);
+                }
+                catch (Exception ex) { wa.Changed(to.Level); wa.Changed(p.Level); why = "place #" + p.Index + " (L" + p.Level + ") could not be moved to L" + to.Level + " (" + to.X + ", " + to.Y + "): " + ex.Message; return -1; }
+                wa.Changed(to.Level);
+                if (!home.ContainsKey(p)) home[p] = was;
+                if (!p.Relocated) { p.FromX = p.X; p.FromY = p.Y; }
+                if (p.FromLevel < 0 && p.Level != to.Level) p.FromLevel = p.Level;
+                p.Level = to.Level; p.Index = index;
+                p.X = to.X; p.Y = to.Y; p.Zone = t.Set.ZoneAt(to.Level, to.X, to.Y); p.OnFloor = true; p.Holder = ""; p.InReach = true;
+                return at;
+            }
+            return -1;
         }
 
         /// <summary>
@@ -907,6 +1267,17 @@ namespace UwEditor.Core.Randomizer
                     e.Replace(kv.Value, null, "Key item scatter: apply (seed " + r.UsedSeed + ")");
                     r.Applied[kv.Key] = (byte[])e.Data.Clone();
                 }
+                // a random or given start: the teleport at the game's square, used once at the first step (StartTeleport); part of the same step
+                r.Teleport = null;
+                if (r.Start != null && r.StartFrom != null)
+                {
+                    var e = edits.For(r.StartFrom.Level);
+                    if (!r.After.ContainsKey(r.StartFrom.Level) && !r.Applied.ContainsKey(r.StartFrom.Level)) r.Before[r.StartFrom.Level] = (byte[])e.Data.Clone();
+                    r.Teleport = StartTeleport.Put(edits.Session, edits, r.StartFrom, r.Start);
+                    r.Applied[r.StartFrom.Level] = (byte[])e.Data.Clone();
+                    r.AppliedAids.Add(string.Format("The game starts at level {0} ({1}, {2}): the first step from level {3} ({4}, {5}) teleports the player there, once (teleport trap #{6}, move triggers {7}).",
+                        r.Start.Level, (int)r.Start.X, (int)r.Start.Y, r.StartFrom.Level, (int)r.StartFrom.X, (int)r.StartFrom.Y, r.Teleport.Trap, string.Join(", ", r.Teleport.Triggers.Select(i => "#" + i))));
+                }
                 // the helps chosen: part of the same step, so Undo takes them back with the items
                 if (r.Options.StartKit)
                 {
@@ -915,7 +1286,7 @@ namespace UwEditor.Core.Randomizer
                     {
                         var e = edits.For(st.Level);
                         // a start level the scatter left alone: Undo puts back the level as it is now (Before holds it as computed, which may be older)
-                        if (!r.After.ContainsKey(st.Level)) r.Before[st.Level] = (byte[])e.Data.Clone();
+                        if (!r.After.ContainsKey(st.Level) && !r.Applied.ContainsKey(st.Level)) r.Before[st.Level] = (byte[])e.Data.Clone();
                         r.AppliedAids.AddRange(StartAids.PutKit(edits.Session, edits, st));
                         r.Applied[st.Level] = (byte[])e.Data.Clone();
                     }
@@ -1018,7 +1389,7 @@ namespace UwEditor.Core.Randomizer
         static string NamedWas(ZoneSet names, ShuffleObject o)
         {
             if (!o.Relocated) return Named(names, o);
-            string n = PlaceName(names, o.Level, o.FromX, o.FromY);
+            string n = PlaceName(names, o.FromLevel >= 0 ? o.FromLevel : o.Level, o.FromX, o.FromY);
             return n.Length == 0 ? o.WasWhere : o.WasWhere + " in " + n;
         }
 
@@ -1034,9 +1405,19 @@ namespace UwEditor.Core.Randomizer
                 + (opt.Extra != null && opt.Extra.Count > 0 ? ", and " + opt.Extra.Count + " additional item kind" + (opt.Extra.Count == 1 ? "" : "s") : "")
                 + "; creature inventories " + (opt.CreatureInventories ? "in (creatures without a conversation)" : "out") + ".");
             b.AppendLine("Method: assumed fill on the time-aware solver; a fresh solve of the shuffled levels (with the return check) must reach the goal.");
+            if (opt.Start == StartChoice.Own) b.AppendLine("Start: the game's own square.");
+            else if (r.Start != null)
+                b.AppendLine(string.Format("Start: {0}: level {1} ({2}, {3}), zone {4}{5}. The game still puts the player on level {6} ({7}, {8}); his first step there teleports him to the start, once (Apply writes the teleport). Start check: {9}{10}.",
+                    opt.Start == StartChoice.Random ? "random (" + (opt.StartScope == StartScope.AnyLevel ? "any level" : "level 1 only") + "), drawn from the seed" : "given",
+                    r.Start.Level, (int)r.Start.X, (int)r.Start.Y, r.StartCheck != null ? r.StartCheck.Zone : 0, opt.Names != null ? " " + PlaceName(opt.Names, r.Start.Level, (int)r.Start.X, (int)r.Start.Y) : "",
+                    r.StartFrom.Level, (int)r.StartFrom.X, (int)r.StartFrom.Y, r.StartCheck != null ? r.StartCheck.Reason : "",
+                    r.StartCheck != null && r.StartCheck.HostilesNear > 0 ? "; " + r.StartCheck.HostilesNear + " hostile creature" + (r.StartCheck.HostilesNear == 1 ? "" : "s") + " on or beside the square" : ""));
             b.AppendLine(opt.Anywhere
                 ? "Place anywhere: on; " + r.Relocated + " places on the floor moved to random squares of their level that the logic reaches (not water or lava, no door, trap or trigger)" + (r.AnywhereNotes.Count > 0 ? "; " + string.Join("; ", r.AnywhereNotes) : "") + "."
                 : "Place anywhere: off; items trade the places where items lay.");
+            bool inReach = opt.PlacesInReach ?? opt.Start != StartChoice.Own;
+            if (inReach || r.MovedIntoReach.Count > 0)
+                b.AppendLine("Places in reach: on" + (!r.Success ? "." : "; ") + (!r.Success ? "" : r.MovedIntoReach.Count == 0 ? "not needed (the fill always found a free place the logic reaches)." : r.MovedIntoReach.Count + " empty place" + (r.MovedIntoReach.Count == 1 ? "" : "s") + " on the floor moved to a square within reach, as no free place the logic reached was left: " + string.Join("; ", r.MovedIntoReach) + "."));
             var names = opt.Names;
             if (opt.Zoning != null)
                 b.AppendLine("Zones: " + (opt.ZoningFrom.Length > 0 ? opt.ZoningFrom : "the zoning given") + " (the Zones window's), laid on the levels' regions; \"zone N\" is its zone N.");
@@ -1045,12 +1426,21 @@ namespace UwEditor.Core.Randomizer
             b.AppendLine(names != null ? "Places are named by " + (opt.NamesFrom.Length > 0 ? opt.NamesFrom : "the hand-made zones") + (opt.Zoning != null ? "." : "; \"zone N\" is the automatic zone.") : "Places are given by level and square" + (opt.Zoning != null ? "." : "; \"zone N\" is the automatic zone."));
             foreach (var f in r.Failures) b.AppendLine("  Failed: " + f);
             b.AppendLine();
-            var moving = r.Moving.ToList();
+            var moving = r.Moving.Where(o => o.Made == null).ToList();
             b.AppendLine(string.Format("{0} objects move ({1} key items placed by the fill, {2} others), over {0} places. By category: {3}.", moving.Count, moving.Count(o => o.Key), moving.Count(o => !o.Key),
                 string.Join(", ", moving.GroupBy(o => o.Category).OrderBy(g => g.Key).Select(g => CategoryName(g.Key) + " " + g.Count() + " (" + g.Count(o => o.Key) + " key)"))));
             var stays = r.Objects.Where(o => o.Stays != null && o.Stays != "its category does not move").ToList();
             b.AppendLine("Stay where they are: " + (stays.Count == 0 ? "none" : string.Join("; ", stays.GroupBy(o => o.Stays).OrderByDescending(g => g.Count()).Select(g => g.Key + ": " + g.Count()))) + ".");
             foreach (var o in stays.Where(o => o.Category != "filler" && o.Gives.Any())) b.AppendLine("  " + o + " [" + o.Tokens + "]: " + o.Stays);
+            var madeItems = r.Objects.Where(o => o.Made != null).ToList();
+            if (madeItems.Count > 0)
+            {
+                b.AppendLine("Made anew (gifts only there for a time that this start cannot get in time, and what leads out of the start that a new character cannot cast from runes; each is a new object the fill places like a key item):");
+                foreach (var o in madeItems)
+                    b.AppendLine(o.Made.Ability != null
+                        ? string.Format("  {0} [{1}] for the start's way out: {2}. The runes stay ordinary key items.", o.Name, o.Tokens, o.Made.Why)
+                        : string.Format("  {0} [{1}] for {2}: {3}. The gift itself stays: a player who does get it in time has a second one.", o.Name, o.Tokens, o.Made.Id, o.Made.Why));
+            }
             b.AppendLine();
             b.AppendLine("Doors only picking opens (lock picking " + (opt.Logic.LockPicking ? "on: none counted" : "off") + "): " + (r.PickOnlyDoors.Count == 0 ? "none blocks the logic" : string.Join("; ", r.PickOnlyDoors)) + ".");
             b.AppendLine("Doors unlocked: " + (r.Unlocked.Count == 0 ? "none" : string.Join("; ", r.Unlocked)) + ".");
@@ -1068,8 +1458,15 @@ namespace UwEditor.Core.Randomizer
             {
                 b.AppendLine("  Sphere " + (g.Key < 0 ? "never" : g.Key.ToString()) + ":");
                 foreach (var m in g.OrderBy(x => x.Item.Category).ThenBy(x => x.Item.Name))
-                    b.AppendLine(string.Format("    {0} [{1}]: {2}, zone {3} (was {4}; {5}, reached in sphere {6} of the original)", m.Item.Name, m.Item.Tokens, Named(names, m.Place), m.Place.Zone, NamedWas(names, m.Item),
-                        m.Place.Relocated ? "a random square" : "the place held #" + m.Place.Index + " " + m.Place.Name, m.Place.Sphere < 0 ? "never" : m.Place.Sphere.ToString()));
+                    if (m.Item.Made != null && m.Item.Made.Ability != null)
+                        b.AppendLine(string.Format("    {0} [{1}]: {2}, zone {3} (MADE: a new object, #{4}, put on the floor there; the place keeps its own item. Made because {5})",
+                            m.Item.Name, m.Item.Tokens, Named(names, m.Place), m.Place.Zone, m.Item.Index, m.Item.Made.Why));
+                    else if (m.Item.Made != null)
+                        b.AppendLine(string.Format("    {0} [{1}]: {2}, zone {3} (MADE: a new object, #{4}, put on the floor there; the place keeps its own item. The start cannot get {5} in time: {6}; a player who does gets a second one)",
+                            m.Item.Name, m.Item.Tokens, Named(names, m.Place), m.Place.Zone, m.Item.Index, m.Item.Made.Id, m.Item.Made.Why));
+                    else
+                        b.AppendLine(string.Format("    {0} [{1}]: {2}, zone {3} (was {4}; {5}, reached in sphere {6} of the original)", m.Item.Name, m.Item.Tokens, Named(names, m.Place), m.Place.Zone, NamedWas(names, m.Item),
+                            m.Place.InReach ? "a square within reach: no free place the logic reached was left, so the fill moved an empty place here" : m.Place.Relocated ? "a random square" : "the place held #" + m.Place.Index + " " + m.Place.Name, m.Place.Sphere < 0 ? "never" : m.Place.Sphere.ToString()));
             }
             var others = r.Moves.Where(m => !m.ByFill && (m.Item != m.Place || m.Place.Relocated)).ToList();
             if (others.Count > 0)
@@ -1114,6 +1511,8 @@ namespace UwEditor.Core.Randomizer
             b.AppendLine("  Where a step is done in another zone than the one the step before left you in, the way there is given first");
             b.AppendLine("  (kind of way, square, [what it needs] > the zone it leads to), over ways open by then. NO WAY FOUND marks a step");
             b.AppendLine("  the logic reaches but you cannot get to from where you are: an oversight to look at.");
+            if (r.Start != null && r.StartFrom != null)
+                b.AppendLine(string.Format("  The game puts you on level {0} ({1}, {2}) as always: your first step there teleports you, once, to level {3} ({4}, {5}), where the steps begin.", r.StartFrom.Level, (int)r.StartFrom.X, (int)r.StartFrom.Y, r.Start.Level, (int)r.Start.X, (int)r.Start.Y));
             foreach (var d in wt.Doubts.Distinct()) b.AppendLine("  Could not justify: " + d);
             foreach (var d in wt.NoWay) b.AppendLine("  No way: " + d);
             foreach (var l in wt.Lines()) b.AppendLine(l);

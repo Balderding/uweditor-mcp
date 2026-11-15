@@ -65,6 +65,7 @@
         <MenuItem x:Name="MapItem" Header="2D _map" ToggleType="CheckBox" InputGesture="Tab" Click="OnToggleMap" IsEnabled="{Binding HasGame}" />
         <MenuItem Header="_Export the map as a picture…" Click="OnExportMap" IsEnabled="{Binding HasGame}" />
         <MenuItem Header="Go to the _start" InputGesture="Home" Click="OnGoToStart" />
+        <MenuItem Header="Go to a s_quare…" InputGesture="Ctrl+G" Click="OnGoToSquare" IsEnabled="{Binding HasGame}" />
         <MenuItem Header="_First person" InputGesture="P" Click="OnFirstPerson" />
         <Separator />
         <MenuItem Header="Colour _scheme">
@@ -128,6 +129,7 @@
         <Separator />
         <MenuItem Header="_Keys and locks…" Click="OnKeys" InputGesture="Ctrl+Shift+K" IsEnabled="{Binding HasGame}" />
         <MenuItem Header="_Triggers and traps…" Click="OnTriggers" InputGesture="Ctrl+Shift+T" IsEnabled="{Binding HasGame}" />
+        <MenuItem Header="Pre_view changed terrain…" Click="OnTerrainPreview" IsEnabled="{Binding HasGame}" />
         <MenuItem Header="_Strings…" Click="OnStrings" InputGesture="Ctrl+Shift+S" IsEnabled="{Binding HasGame}" />
         <Separator />
         <MenuItem Header="_Mods…" Click="OnMods" InputGesture="Ctrl+Shift+M" IsEnabled="{Binding HasGame}" />
@@ -311,6 +313,11 @@
         <Border IsHitTestVisible="False" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="8,6,8,0" Padding="8,3"
                 CornerRadius="3" Background="#B0141418" IsVisible="{Binding EditStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
           <TextBlock Text="{Binding EditStatus}" Foreground="#E6E6E6" FontSize="12" TextWrapping="Wrap" MaxWidth="640" />
+        </Border>
+        <!-- a terrain preview is shown instead of the level: said for as long as it lasts -->
+        <Border x:Name="PreviewBanner" IsHitTestVisible="False" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="8,0,8,8" Padding="8,3"
+                CornerRadius="3" Background="#D0804A00" IsVisible="{Binding PreviewStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+          <TextBlock Text="{Binding PreviewStatus}" Foreground="#FFFFFF" FontSize="12" TextWrapping="Wrap" MaxWidth="640" />
         </Border>
         <TextBlock x:Name="ViewHint" Classes="muted" HorizontalAlignment="Center" VerticalAlignment="Center"
                    TextAlignment="Center" FontSize="14" IsVisible="{Binding NoGame}"

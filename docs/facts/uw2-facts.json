@@ -10,7 +10,7 @@
       "grants": "plotstep:miranda_tower",
       "level": 1,
       "object": 249,
-      "requires": "plot:3",
+      "requires": "plot:3 & flag:lord_british_speech",
       "notes": "Talking to Miranda with the castle plot at 3 (set on level 14, the Prison Tower) moves it to 4: the gem then shows three facets.",
       "source": "conversation 136 (Miranda): if (x_clock(1, 10001) == 3) x_clock(1, x_clock(1, 10001) + 1)"
     },
@@ -20,10 +20,16 @@
       "grants": "item:jewelled_dagger",
       "level": 17,
       "object": 243,
-      "requires": "free",
-      "notes": "Altara in Killorn Keep hands over her jewelled dagger (item 10) when first spoken to in earnest, to kill the listener under the castle with. With the dagger held, a timer on level 4 opens the wall at (58, 12) into the listener's lair (trigger #763, inventory trap #764).",
-      "source": "conversation 45 (Altara): she_retrieves_a_dagger, take_from_npc(10)",
-      "confidence": "probable"
+      "requires": "npc:bishop | npc:mystell",
+      "notes": "Altara in Killorn Keep hands over her jewelled dagger (item 10) once she trusts the Avatar, to kill the listener under the castle with. She trusts one who names Bishop (quest 58, which Bishop sets in his cell in the Prison Tower), or one Mystell has tested: passed, Mystell sends him to spy on Altara (quest 13); failed, Mystell attacks (quest 125) and Altara asks the same question. A high Charm does it too, which is not counted. With the dagger held, a timer on level 4 opens the wall at (58, 12) into the listener's lair (trigger #763, inventory trap #764).",
+      "source": "conversation 45 (Altara): get_quest(58) || get_quest(125), get_quest(13) || x_skills(15) > 10, take_from_npc(10); conversation 6 (Bishop): set_quest(58, 1); conversation 44 (Mystell): set_quest(13, 1), set_quest(125, 1)",
+      "gift": { "item": "0x0A", "quality": 40, "link": 707, "enchanted": true },
+      "confidence": "probable",
+      "mayBeLost": {
+        "kind": "b",
+        "when": "plot:14",
+        "why": "the castle plot's schedule takes Altara off the map at plot 14 (SCD.ARK block 1 row 46); killing her (quest 69) or letting the keep fall (both brain creatures on level 18 killed) loses her sooner"
+      }
     },
     {
       "id": "plot_listener",
@@ -41,7 +47,7 @@
       "grants": "plotstep:miranda_7",
       "level": 1,
       "object": 249,
-      "requires": "plot:7",
+      "requires": "plot:7 & flag:lord_british_speech",
       "notes": "Miranda's news at castle plot 7 (\"Well, it seems Nystul had something to say to thee\") moves the plot to 8: the gem then shows six facets.",
       "source": "conversation 136 (Miranda): the news table's entry 7 runs well_it_seems_nystul, x_clock(1, x_clock(1, 10001) + 1)"
     },
@@ -109,7 +115,7 @@
       "grants": "plotstep:patterson",
       "level": 1,
       "object": 232,
-      "requires": "plot:12 & npc:nelson",
+      "requires": "plot:12 & npc:nelson & flag:lord_british_speech",
       "notes": "With the castle plot at 12 Nelson's talk of Thaam's spell sets quest 43, Patterson then attacks when spoken to, and his death moves the plot to 13: the gem then shows all eight facets.",
       "source": "conversation 139 (Nelson): set_quest(43, 1); conversation 140 (Patterson): if (get_quest(43)) attack_and_end(); event/WORLDEV.C death_check case 0x8C (xclock[XC_CASTLE] = 0xD)",
       "confidence": "probable"
@@ -120,7 +126,7 @@
       "grants": "plotstep:miranda_11",
       "level": 1,
       "object": 249,
-      "requires": "plot:11",
+      "requires": "plot:11 & flag:lord_british_speech",
       "notes": "Talking to Miranda with the castle plot at 11 moves it to 12.",
       "source": "conversation 136 (Miranda): if (x_clock(1, 10001) == 11) x_clock(1, x_clock(1, 10001) + 1)"
     },
@@ -181,10 +187,40 @@
       "grants": "item:key_gem_7",
       "level": 57,
       "object": 784,
-      "requires": "free",
-      "notes": "The blackrock key gem of world 7 (item 0x11E): carried by the fighter #252 on level 57 (3, 52), in the Pits of Carnage; taken from him, a fight.",
-      "source": "level 57 object #784",
+      "requires": "nooption:pits_gem_by_blog",
+      "notes": "The blackrock key gem of world 7 (item 0x11E): carried by Dorstag (#252, whoami 0x63) on level 57 (3, 52), in the Pits of Carnage. Taken from him by killing him: a fight, taken as won. The game does not keep the fight to the arena: Dorstag dies wherever he is struck down (quest 121), his bodyguards about him. The arena duel is one way to the fight (he takes a challenge only from one who has won in the arenas, quest 24, and beaten Zaria, quest 25, or won more than three, quest 129). Blog's way needs no fight: see key_gem_7_blog. With the logic option pits_gem_by_blog this way does not count.",
+      "source": "level 57 objects #252, #784; event/WORLDEV.C death_check (case 0x63: quest 121; no arena condition); conversation 99 (Dorstag): get_quest(24), get_quest(25), get_quest(129) > 3, get_quest(22) && !get_quest(65), do_inv_delete(280 - 1 + 7), set_quest(23, 1); conversation 101 (Blog): find_barter(173), set_quest(22, 1), take_from_npc(280 - 1 + 7)",
       "confidence": "probable"
+    },
+    {
+      "id": "blog_friend",
+      "kind": "flag",
+      "grants": "flag:blog_friend",
+      "level": 59,
+      "object": 255,
+      "requires": "free",
+      "notes": "Blog the troll (#255, whoami 0x65, a great troll, not hostile) at level 59 (27, 27), in the Pits of Carnage, becomes the Avatar's friend (quest 22) when given a grey rock (item 0xAD: level 9 (29, 32), level 33 (2, 5), level 49 (26, 38), level 51 (11, 33)), or after losing three games of White Rock Black Rock in one talk: the player shows a black rock (item 0xAB) and no white one (item 0xAC), which loses, and the third loss makes the friend. Three black rocks lie in his room at (28, 26) and two white ones at (26, 26), and he holds one of each: so it needs nothing but reaching him. Lost only by a choice: killing Blog before Dorstag hands over the gem clears quest 22 (and quest 65 shuts Dorstag up).",
+      "source": "level 59 objects #255, #973 to #975 (black stones), #971, #972 (white stones); conversation 101 (Blog): find_barter(173) then set_quest(22, 1); the game: find_barter(172), find_barter(171), a loss counted in global37, global37 == 3 then set_quest(22, 1); event/WORLDEV.C death_check (case 0x65: quest 65, quest 22 cleared while quest 23 is not set)",
+      "confidence": "probable",
+      "mayBeLost": {
+        "kind": "a",
+        "why": "killing Blog before Dorstag hands him the gem ends his friendship (quest 65)"
+      }
+    },
+    {
+      "id": "key_gem_7_blog",
+      "kind": "flag",
+      "grants": "item:key_gem_7",
+      "level": 57,
+      "object": 252,
+      "requires": "flag:blog_friend",
+      "notes": "Blog's way to the Pits' gem, with no fight: Dorstag (#252, level 57 (3, 52)) spoken to by Blog's friend (quest 22, and Blog not killed, quest 65) needs no arena win: Blog storms in, Dorstag hands him the gem and turns tail (the gem Dorstag carries, #784, is deleted; quest 23; X clock 15 + 1). The schedule's block 15 on level 57 then makes Dorstag's fighters flee, fires the scheduled triggers of (1, 56) (#788 sets off create object trap #789 at (14, 62), which makes a copy of Blog #226 holding his gem #782; #767 and #776 make a white and a black rock at (2, 55)) and moves Blog into Dorstag's room, (1, 51) to (5, 55) (hack 7); the Blog of level 59 is taken off the map. Spoken to there, Blog (quest 23 set) gives the gem (and quest 121). Granted in Dorstag's zone. Lost only by a choice: Dorstag or Blog killed first.",
+      "source": "conversation 99 (Dorstag): get_quest(22) && !get_quest(65), do_inv_delete(280 - 1 + 7), set_quest(23, 1), x_clock(15, x_clock(15, 10001) + 1); SCD.ARK block 15 rows 73 to 80; level 57 objects #767, #776, #779, #788 (scheduled triggers at (1, 56)), #789 (create object trap at (14, 62)), #226 (Blog, attitude 3), #782; event/SCDEVENT.C ev_trigger (every scheduled trigger of the square); conversation 101 (Blog): get_quest(23) == 1, take_from_npc(280 - 1 + 7), set_quest(121, 1)",
+      "confidence": "probable",
+      "mayBeLost": {
+        "kind": "a",
+        "why": "killing Dorstag or Blog before Dorstag hands Blog the gem ends Blog's way (with the option pits_gem_by_blog the kill's gem does not count)"
+      }
     },
     {
       "id": "gems_fused",
@@ -268,10 +304,19 @@
       "grants": "item:bottle",
       "level": 58,
       "object": 227,
+      "requires": "item:sceptre_deadly_seeker",
+      "notes": "Karl: there are two djinn bottles. Zoranthus (the Pits, level 58 (55, 3)), asked for his bottle, wants the Sceptre of the Deadly Seeker of a colleague lost studying dreams (quest 26); handed a sceptre that identifies as Deadly Seeker he keeps it (quest 27) and gives the bottle, and another whenever asked after that. Nothing else asks for the sceptre, so it is not marked as used up. The other bottle lies in the Void pyramid's room at level 69 (3, 20), which the levels give by its name.",
+      "source": "Karl, 2026-11-14; conversation 96 (Zoranthus): set_quest(26, 1), find_barter(170), identify_inv contains 'Deadly Seeker', give_ptr_npc, set_quest(27, 1), do_inv_create(278), take_from_npc(278)"
+    },
+    {
+      "id": "sceptre_deadly_seeker",
+      "kind": "flag",
+      "grants": "item:sceptre_deadly_seeker",
+      "level": 65,
+      "object": 844,
       "requires": "free",
-      "confidence": "probable",
-      "notes": "Karl: there are two djinn bottles. Zoranthus (the Pits, level 58) hands one over once he has been given what he asks for (quest 27), and another whenever asked after that; the second lies in the Void pyramid's room at level 69 (3, 20), which the levels give by its name.",
-      "source": "Karl, 2026-11-14; conversation 96 (do_inv_create(278))"
+      "notes": "The Sceptre of the Deadly Seeker Zoranthus asks for: a sceptre (item 0xAA) at level 65 (60, 57) among bones, enchanted with Deadly Seeker (its spell object #890, link 512 + 10: spell 10). The only sceptre of that spell in the levels; the others carry Shockwave (level 34 #949) or another (level 26 #832), or none.",
+      "source": "level 65 objects #844, #890; obj/OBJUSE.C decode_obj_spell; combat/SPELLS.C spells[] (10 Deadly Seeker)"
     },
     {
       "id": "plot_djinn",
@@ -293,7 +338,13 @@
       "requires": "plotstep:listener & item:amethyst_rod & item:black_eggshell",
       "confidence": "probable",
       "notes": "Altara (Killorn Keep) gives a black pearl once the Listener is dead, and with an amethyst rod and a black eggshell brought to her makes the pearl-tipped rod (item 0x112, special spell 0), which cuts the Guardian's lines of power.",
-      "source": "conversation 45 (quest 11, quest 12, do_inv_create(274) with link 512 + 64)"
+      "source": "conversation 45 (quest 11, quest 12, do_inv_create(274) with link 512 + 64)",
+      "gift": { "item": "0x112", "quality": 63, "link": 576, "flags": 4, "enchanted": true },
+      "mayBeLost": {
+        "kind": "b",
+        "when": "plot:14",
+        "why": "the castle plot's schedule takes Altara off the map at plot 14 (SCD.ARK block 1 row 46); killing her (quest 69) or letting the keep fall (both brain creatures on level 18 killed) loses her sooner"
+      }
     },
     {
       "id": "line_1",
@@ -391,9 +442,9 @@
       "grants": "item:mors_gotha_book",
       "level": 17,
       "object": 818,
-      "requires": "free",
-      "notes": "Mors Gotha's spell book (item 0x138), in her room in Killorn Keep at level 17 (20, 43).",
-      "source": "level 17 object #818; conversation 130 (find_barter(312))"
+      "requires": "flag:hack_L17_819 & flag:create_L17_861",
+      "notes": "Mors Gotha's spell book (item 0x138), in her room in Killorn Keep at level 17 (20, 43). It lies there invisible until the schedule fires the triggers of (16, 43): one makes the book visible (hack 39), the other creates Mors Gotha on the same square. Beaten there, a moongate takes her away without it (quest 117): a fight, taken as won.",
+      "source": "level 17 objects #818, #819 -> #834 (hack 39, link the book), #861 -> #534 (create #240); schedule block 1 row 50; conversation 47 (set_quest(117, 1)); conversation 130 (find_barter(312))"
     },
     {
       "id": "plot_nystul_book",
@@ -401,7 +452,7 @@
       "grants": "plotstep:nystul_book",
       "level": 1,
       "object": 254,
-      "requires": "plot:14 & flag:gems_fused & flag:lines_cut & item:mors_gotha_book & item:horn",
+      "requires": "plot:14 & flag:gems_fused & flag:lines_cut & item:mors_gotha_book & item:horn & flag:lord_british_speech",
       "notes": "Nystul, given Mors Gotha's book at castle plot 14 with the eight gems fused, the lines cut and Praecor Loth's horn won (quest 7): the plot moves to 15.",
       "source": "conversation 130 (quest 120, quest 7, X clock 2 > 7, quest 14, X clock 1 == 14)"
     },
@@ -411,7 +462,7 @@
       "grants": "plotstep:nystul_hour",
       "level": 1,
       "object": 254,
-      "requires": "plot:15",
+      "requires": "plot:15 & flag:lord_british_speech",
       "notes": "Nystul asks at what hour the blackrock gem appeared; the answer is four. The plot moves to 16 and Mors Gotha attacks the castle.",
       "source": "conversation 130 (contains '4' or 'four')"
     },
@@ -423,6 +474,283 @@
       "requires": "plot:16 & item:horn",
       "notes": "The end of the game: at castle plot 16, with Mors Gotha dead (quest 64: a fight, taken as won) and the horn of Praecor Loth in the pack, Nystul reads the spell while the Avatar sounds the horn: cutscene 2, the ending.",
       "source": "conversation 130 (X clock 1 == 16, find_inv(273), quest 64, quest 143 = 3); game/SKILLS.C cs_check, player_won_game"
+    },
+    {
+      "id": "talorus_historian_island",
+      "kind": "link",
+      "from": {
+        "level": 33,
+        "x": 31,
+        "y": 4
+      },
+      "to": {
+        "level": 34,
+        "x": 31,
+        "y": 35
+      },
+      "requires": "flag:talorus_new_ductosnore",
+      "twoWay": false,
+      "linkKind": "stairs",
+      "notes": "Karl: the Historian of Talorus (level 33 (31, 4)), once the new Ductosnore has been made (quest 38), sends the Avatar to the island in the middle of the lava lake of level 34, where the key gem lies: teleport_player(31, 35, 34), once (quest 39). He asks for nothing else: quest 38 is all the conversation tests (see talorus_new_ductosnore for what sets it).",
+      "source": "conversation 156 (Historian): if (!get_quest(39)) { if (!get_quest(38)) { talk } set_quest(39, 1); teleport_player(31, 35, 34) }"
+    },
+    {
+      "id": "talorus_crystal_e0y2",
+      "kind": "flag",
+      "grants": "item:crystal_e0y2",
+      "level": 34,
+      "object": 947,
+      "requires": "free",
+      "notes": "The information crystal E0Y2 with the old Ductosnore pattern, which the Historian says lies among the debris north of the lava: a storage crystal (item 0xA1) of quality 6 at level 34 (30, 42), the only one of that quality. The Skup Chamber takes it by its quality.",
+      "source": "level 34 object #947; conversation 156 (Historian): 'You should be able to find the kryztal amongst the debris to the north of the lava. Iz kryztal E0Y2.'; event/WORLDEV.C skup_ductosnore (quality 2 or 6)"
+    },
+    {
+      "id": "talorus_controller_crystal",
+      "kind": "flag",
+      "grants": "item:controller_crystal",
+      "level": 33,
+      "object": 819,
+      "requires": "free",
+      "notes": "The controller crystal the Futurian keeps in his Necessity Chamber behind him: a storage crystal (item 0xA1) of quality 2 at level 33 (2, 5), the only one of that quality.",
+      "source": "level 33 object #819; conversation 157 (Futurian): 'a crystal with the proper program to encode this pattern into the Skup Chamber control mechanisms. This crystal awaits you in the chamber behind me.'; event/WORLDEV.C skup_ductosnore (quality 2 or 6)"
+    },
+    {
+      "id": "talorus_delgnizator",
+      "kind": "flag",
+      "grants": "item:delgnizator",
+      "level": 34,
+      "object": 1005,
+      "requires": "free",
+      "notes": "The Delgnizator (item 0xAE), taken from the Skup Chamber where the Vorz are made, at level 34 (31, 20).",
+      "source": "level 34 object #1005; conversation 157 (Futurian): 'The third item you will take with you is a Delgnizator', find_inv(174)"
+    },
+    {
+      "id": "talorus_new_ductosnore",
+      "kind": "flag",
+      "grants": "flag:talorus_new_ductosnore",
+      "level": 33,
+      "object": 708,
+      "requires": "npc:bliy_skup_ductosnore & item:crystal_e0y2 & item:controller_crystal & item:delgnizator",
+      "notes": "The new Ductosnore (quest 38). Bliy Skup Ductosnore (whoami 0x98, level 33 (59, 15)) killed (a fight, taken as won: quest 122, and his death opens the chamber); the Delgnizator laid at level 33 (58, 4) and the two crystals of quality 2 and 6 at (57, 4) and (59, 4); then the pull chain at (56, 6) runs hack 25, which moves the crystals in and fires the trigger at (58, 5): it sets quest 38 and creates the new Ductosnore. The Dialogicians' scroll (quest 40) and the Data Integrator only tell the player how the chamber is worked; the game checks neither, so they are not asked for. The Futurian's talk (quests 35, 37) is not checked either.",
+      "source": "event/WORLDEV.C death_check (case 0x98: fire_trigger_at(0x3A, 0x12), fire_trigger_at(0x3C, 0x12), quest 122), skup_ductosnore (hack 25); level 33 pull chain #708 -> use trigger #645 -> hack trap #651 (hack 25); use trigger #642 at (58, 5) -> set variable trap #762 (quest 38) -> #576 -> create object trap #653 (Talorid #243); conversations 155 (Data Integrator) and 159 (Dialogician: take_from_npc(309), set_quest(40, 1))"
+    },
+    {
+      "id": "talorus_island_bridge",
+      "kind": "link",
+      "from": {
+        "level": 34,
+        "x": 30,
+        "y": 33
+      },
+      "to": {
+        "level": 34,
+        "x": 30,
+        "y": 26
+      },
+      "requires": "free",
+      "twoWay": false,
+      "linkKind": "walk",
+      "notes": "Karl: the way off the island is the brass plate at level 34 (30, 33). Stepping on it lays a bridge of six squares north over the lava, (30, 32) to (30, 27), to the shore at (30, 26); a move trigger there takes the bridge away again, so it is one way.",
+      "source": "level 34: pressure trigger #923 -> proximity trap #926 -> move trigger #933 -> bridge trap #1019 (owner 17: lay, quality 6, heading 4); move trigger #921 at (30, 26) -> bridge trap #924 (owner 32: remove); event/TRIGGER.C TRAP_BRIDGE"
+    },
+    {
+      "id": "dupre_sewer_key",
+      "kind": "flag",
+      "grants": "key:28",
+      "level": 1,
+      "object": 252,
+      "requires": "flag:lord_british_speech",
+      "notes": "Karl: Dupre hands over the key to the sewers (key 28, the door at level 1 (15, 53)) when he tells of the search of the castle. He only does so while the castle plot stands at 0: once it has moved on the news is taken as heard and the key never comes. A source tied to the plot's first step.",
+      "source": "conversation 132 (Dupre): the news table's entry for X clock 1 == 0 runs do_not_linger_here: do_inv_create(269), x_obj_stuff(key, 1, -1, 28, ...), take_from_npc(269)",
+      "gift": { "item": "0x10D", "owner": 28, "quality": 63 },
+      "mayBeLost": {
+        "kind": "b",
+        "when": "plot:1",
+        "why": "Dupre gives the key only while the castle plot stands at 0; no other key 28 lies in the levels and the door's lock (pick 14) needs a skill of 31"
+      }
+    },
+    {
+      "id": "charles_key",
+      "kind": "flag",
+      "grants": "key:2",
+      "level": 1,
+      "object": 228,
+      "requires": "plot:9 & flag:lord_british_speech",
+      "notes": "Karl: Charles hands over a key he found in an old storeroom (key 2, the door at level 3 (27, 19); another lies on level 3 (34, 16)) while the castle plot stands at 9, 10 or 11; past 11 the news is taken as heard and the key never comes. A source tied to those plot steps.",
+      "source": "conversation 131 (Charles): the news table's entries for X clock 1 == 9, 10, 11 run look_avatar_this_may: do_inv_create(269), x_obj_stuff(key, 1, -1, 2, ...), take_from_npc(269)",
+      "gift": { "item": "0x10D", "owner": 2, "quality": 63 },
+      "mayBeLost": {
+        "kind": "b",
+        "when": "plot:12",
+        "why": "Charles gives the key only while the castle plot stands at 9, 10 or 11 (the key on level 3 (34, 16) lasts)"
+      }
+    },
+    {
+      "id": "merzan_iron_flesh",
+      "kind": "flag",
+      "grants": "once:iron_flesh",
+      "level": 17,
+      "object": 226,
+      "requires": "free",
+      "notes": "Karl: Merzan in Killorn Keep sells one potion of Iron Flesh when asked for it by name, for up to 100 gold (less with Charm). The gold is not counted: by the time the potion is wanted for the djinn there is loot enough. He flees when the keep is about to fall (quest 50).",
+      "source": "conversation 105 (Merzan): babl_ask contains 'iron flesh', do_inv_create(226) with link 512 + 59, take_from_npc(226), once (global66); the_keeps_going_down (quest 50)",
+      "mayBeLost": {
+        "kind": "a",
+        "why": "Merzan only cries that the keep is going down once both brain creatures on level 18 ((29, 30), (32, 28)) are dead (quest 50): do not kill them before buying the potion"
+      }
+    },
+    {
+      "id": "bishop_force_field",
+      "kind": "link",
+      "from": {
+        "level": 16,
+        "x": 32,
+        "y": 33
+      },
+      "to": {
+        "level": 16,
+        "x": 29,
+        "y": 33
+      },
+      "requires": "item:fraznium_gauntlets | item:fraznium_circlet",
+      "twoWay": true,
+      "linkKind": "walk",
+      "notes": "The force field before Bishop's cell at the top of the Prison Tower (level 16 (31, 33)) is lifted out of the way for one who wears fraznium gauntlets or the fraznium circlet. Gauntlets lie on level 13 (28, 33) and in a chest on level 11, and Borne and the goblin armorer each hand a pair over; Bishop takes a pair to leave, so two are needed to come out again by the same way.",
+      "source": "event/WORLDEV.C check_fraznium (hack 11); level 16 move triggers #971, #995 -> hack trap #996, #979, #994 -> #997; conversation 3 (Borne), 5 (goblin armorer), 6 (Bishop): take_from_npc(51), find_barter(51)"
+    },
+    {
+      "id": "academy_no_casting_42",
+      "kind": "nomana",
+      "level": 42,
+      "notes": "Karl: in the Scintillus Academy's test, casting spells is forbidden on the middle levels (levels 2 to 7 of the Academy, 42 to 47). In the game no mana comes back there, by time, by sleep or by potion, so the solve counts no spell cast from runes on this level; scrolls, wands, potions and worn things still work.",
+      "source": "combat/SPELLS.C restore_mana: nothing in world 5 but on its first level and on its eighth at x >= 25"
+    },
+    {
+      "id": "academy_no_casting_43",
+      "kind": "nomana",
+      "level": 43,
+      "notes": "Karl: in the Scintillus Academy's test, casting spells is forbidden on the middle levels (levels 2 to 7 of the Academy, 42 to 47). In the game no mana comes back there, by time, by sleep or by potion, so the solve counts no spell cast from runes on this level; scrolls, wands, potions and worn things still work.",
+      "source": "combat/SPELLS.C restore_mana: nothing in world 5 but on its first level and on its eighth at x >= 25"
+    },
+    {
+      "id": "academy_no_casting_44",
+      "kind": "nomana",
+      "level": 44,
+      "notes": "Karl: in the Scintillus Academy's test, casting spells is forbidden on the middle levels (levels 2 to 7 of the Academy, 42 to 47). In the game no mana comes back there, by time, by sleep or by potion, so the solve counts no spell cast from runes on this level; scrolls, wands, potions and worn things still work.",
+      "source": "combat/SPELLS.C restore_mana: nothing in world 5 but on its first level and on its eighth at x >= 25"
+    },
+    {
+      "id": "academy_no_casting_45",
+      "kind": "nomana",
+      "level": 45,
+      "notes": "Karl: in the Scintillus Academy's test, casting spells is forbidden on the middle levels (levels 2 to 7 of the Academy, 42 to 47). In the game no mana comes back there, by time, by sleep or by potion, so the solve counts no spell cast from runes on this level; scrolls, wands, potions and worn things still work.",
+      "source": "combat/SPELLS.C restore_mana: nothing in world 5 but on its first level and on its eighth at x >= 25"
+    },
+    {
+      "id": "academy_no_casting_46",
+      "kind": "nomana",
+      "level": 46,
+      "notes": "Karl: in the Scintillus Academy's test, casting spells is forbidden on the middle levels (levels 2 to 7 of the Academy, 42 to 47). In the game no mana comes back there, by time, by sleep or by potion, so the solve counts no spell cast from runes on this level; scrolls, wands, potions and worn things still work.",
+      "source": "combat/SPELLS.C restore_mana: nothing in world 5 but on its first level and on its eighth at x >= 25"
+    },
+    {
+      "id": "academy_no_casting_47",
+      "kind": "nomana",
+      "level": 47,
+      "notes": "Karl: in the Scintillus Academy's test, casting spells is forbidden on the middle levels (levels 2 to 7 of the Academy, 42 to 47). In the game no mana comes back there, by time, by sleep or by potion, so the solve counts no spell cast from runes on this level; scrolls, wands, potions and worn things still work.",
+      "source": "combat/SPELLS.C restore_mana: nothing in world 5 but on its first level and on its eighth at x >= 25"
+    },
+    {
+      "id": "academy_no_casting_48",
+      "kind": "nomana",
+      "level": 48,
+      "rect": [0, 0, 24, 63],
+      "notes": "The Academy's eighth level (48) restores mana only at x 25 and east; west of it no mana comes back, as on levels 42 to 47, so the solve counts no spell cast from runes on a way that starts there; scrolls, wands, potions and worn things still work.",
+      "source": "combat/SPELLS.C restore_mana: (PlayerLevel - 1) / 8 == 5, the world's eighth level, OBJ_HOMEX(ThePlayer) >= 25"
+    },
+    {
+      "id": "prison_password_borne",
+      "kind": "flag",
+      "grants": "flag:prison_password",
+      "level": 14,
+      "object": 253,
+      "requires": "free",
+      "notes": "The Prison Tower's password (one of nine, picked once: quest 134). Borne, the guard captain (level 14 (35, 32)), takes the Avatar for Lorca Batan at the first meeting; played along, he gives the password and a pair of fraznium gauntlets. A wrong answer makes him attack, and after the first meeting he no longer gives it: a source that may be lost.",
+      "source": "conversation 3 (Borne): met_before == 0, the_results_of_thy: pick_quest134_line(), 'the password is \"@SS1\"', take_from_npc(51); wait(): attack_and_end()",
+      "mayBeLost": {
+        "kind": "a",
+        "why": "Borne tells the password only at the first meeting, to one who plays Lorca Batan along; a wrong answer sets the tower's alarm (quest 60) and he attacks"
+      }
+    },
+    {
+      "id": "prison_password_armorer",
+      "kind": "flag",
+      "grants": "flag:prison_password",
+      "level": 13,
+      "object": 255,
+      "requires": "free",
+      "notes": "The goblin armorer (level 13 (28, 34)) tells the password in exchange for the idea of iron gauntlets coated with fraznium, at the first meeting or later (unless Bishop is already dead, quest 3).",
+      "source": "conversation 5 (goblin armorer): well_what_wouldst_thou, well_i_cant_tell: pick_quest134_line(), 'Oh, the password? It's \"@SS1\"'",
+      "mayBeLost": {
+        "kind": "a",
+        "why": "the tower's goblins turn hostile for good after a wrong answer to any of them (quest 60, SCD.ARK block 15 row 0) and die when Garg is let out (quest 0, rows 46 and 47); the armorer also keeps silent once Bishop is dead (quest 3)"
+      }
+    },
+    {
+      "id": "prison_voucher",
+      "kind": "flag",
+      "grants": "item:delivery_voucher",
+      "level": 9,
+      "object": 986,
+      "requires": "free",
+      "notes": "A forged kitchen delivery voucher: the scroll (item 0x136, link 512 + 33) at level 9 (31, 33), below the gate. The gate guards let its bearer through as a supplier.",
+      "source": "level 9 object #986 (link 512 + 33); conversation 1 (goblin guard): do_not_try_any: find_barter_total(310), link == 33 + 512"
+    },
+    {
+      "id": "prison_gate_guard",
+      "kind": "flag",
+      "grants": "flag:prison_gate_opened",
+      "level": 10,
+      "object": 255,
+      "requires": "flag:prison_password | item:delivery_voucher",
+      "notes": "The goblin guards at the Prison Tower's gate (level 10, three of them on the stairs' side at (31, 33), (33, 32), (33, 33)) open the portcullis at (30, 34) for one who gives the password or shows the voucher, and open it again when asked later. They also take a bribe of gold (up to 30 coins, less with Charm), which is not counted.",
+      "source": "conversation 1 (goblin guard): tell_us_then_what: contains(pick_quest134_line()), do_not_try_any, hee_hee_hee_no: all_right_this_is(10) (gold, item 160); you_may_pass_then: gronk_door(30, 34, 0), global33 = 1; 'I need thee to open the portcullis again': gronk_door(30, 34, 0)",
+      "mayBeLost": {
+        "kind": "a",
+        "why": "the guards attack for good after a wrong answer or a threat (quest 60, SCD.ARK block 15 row 0) and die when Garg is let out (quest 0); their key 6 is then the way"
+      }
+    },
+    {
+      "id": "prison_gate_password",
+      "kind": "door",
+      "level": 10,
+      "object": 1018,
+      "requires": "flag:prison_gate_opened",
+      "notes": "The portcullis at level 10 (30, 34), the gate of the Prison Tower, opens with key 6 (which the gate guards carry), a pick of 11, or the guards' word (prison_gate_guard).",
+      "source": "level 10 portcullis #1018; conversation 1 (goblin guard): gronk_door(30, 34, 0)"
+    },
+    {
+      "id": "prison_l14_guard",
+      "kind": "flag",
+      "grants": "flag:prison_l14_door_opened",
+      "level": 14,
+      "object": 254,
+      "requires": "flag:prison_password",
+      "notes": "The goblin guard on Borne's floor (level 14 (30, 33)) opens the door at (29, 32) for one who gives the password.",
+      "source": "conversation 9 (goblin guard): whats_the_password: contains(pick_quest134_line()), gronk_door(29, 32, 0)",
+      "mayBeLost": {
+        "kind": "a",
+        "why": "the guard attacks for good after a wrong answer to any goblin of the tower (quest 60) and dies when Garg is let out (quest 0, SCD.ARK block 15 row 58)"
+      }
+    },
+    {
+      "id": "prison_l14_password",
+      "kind": "door",
+      "level": 14,
+      "object": 1004,
+      "requires": "flag:prison_l14_door_opened",
+      "notes": "The door at level 14 (29, 32), towards the stairs up, opens with key 6, a pick of 12, or the guard's word (prison_l14_guard). The other guards of the tower who ask for the password (level 15, conversations 15 and 19) only set variable 43 and stay friendly; the portcullis there is worked by levers on both sides.",
+      "source": "level 14 door #1004; conversation 9 (goblin guard): gronk_door(29, 32, 0); conversations 15, 19: x_traps(43, 1), gronk_door(1, 1, 0); level 15 use triggers #1004, #1010 -> door trap #1009"
     },
     {
       "id": "academy_pillars",
@@ -442,6 +770,224 @@
       "linkKind": "jump",
       "notes": "Karl: the Scintillus Academy's lava room (level 43) is crossed by jumping from pillar to pillar, with the pillars raised and lowered by the six buttons on the side walls, which the level's telekinesis wand presses from afar; nothing else is needed, and falling into the lava is failing the puzzle, not a way. The pillars are a 5 by 3 grid three squares apart from (27, 34), toggled between heights 2 and 10 (hack 20); the way runs from the ledge at (33, 31) over the middle column to the passage at (33, 43).",
       "source": "Karl, 2026-11-14; event/WORLDEV.C toggle_pillars_hack; level 43 buttons #1018 to #1023, hack traps #999 to #1009"
+    },
+    {
+      "id": "spare_brain_creatures",
+      "kind": "spare",
+      "whoami": "0x3A",
+      "level": 18,
+      "token": "flag:killorn_fallen",
+      "notes": "Karl: no solve may ever depend on the deaths of Killorn Keep's two brain creatures (whoami 0x3A, level 18 #241 at (29, 30) and #253 at (32, 28), not hostile): killing both makes the keep fall (quest 50, then quest 54). By rule nothing they carry counts (each holds two eyeballs, item 0x110), nor anything a fact grants on them, and no requirement may ask for flag:killorn_fallen, the token that would stand for the fall. They block no way the logic uses: their room (zone of level 18 (29, 24)) is walked through. See lost_killorn_17 for the walkthrough's warning.",
+      "source": "event/WORLDEV.C death_check (case 0x3A: quest_bytes[6] counts to 2, SET_QUEST(50)); level 18 objects #241, #253 (eyeballs #929, #930, #981, #982); SCD.ARK block 15 rows 10 to 17"
+    },
+    {
+      "id": "lost_killorn_17",
+      "kind": "lost",
+      "level": 17,
+      "mayBeLost": {
+        "kind": "a",
+        "why": "Killorn Keep falls if both brain creatures on level 18 ((29, 30), (32, 28)) are killed: do not kill them"
+      },
+      "notes": "Killorn Keep is held up by two brain creatures (whoami 0x3A, level 18 #241 and #253; a soldier: 'they hadda herd in a few extra brain creatures to hold up the extra weight'). The second one killed sets quest 50: the keep's people cry that it is going down, a countdown runs, and leaving level 17 or the countdown's end crashes it (quest 54). Then the schedule kills every creature of levels 17 and 18 and fires the triggers that make the ruins. A choice the player can always avoid: nothing in the logic needs the brain creatures dead.",
+      "source": "event/WORLDEV.C death_check (case 0x3A: quest_bytes[6] counts to 2, SET_QUEST(50)), Killorn_just_crashed (quest 54); game/PLAYTIME.C (the countdown); game/GAMEWRAP.C do_level_hacks (leaving Killorn's level 1); SCD.ARK block 15 rows 10 to 17; conversation 51 (soldier); conversation 47 (Mors Gotha: 'how dost thou like thy handiwork?')"
+    },
+    {
+      "id": "lost_killorn_18",
+      "kind": "lost",
+      "level": 18,
+      "mayBeLost": {
+        "kind": "a",
+        "why": "Killorn Keep falls if both brain creatures on level 18 ((29, 30), (32, 28)) are killed: do not kill them"
+      },
+      "notes": "Killorn Keep's lower level: as lost_killorn_17.",
+      "source": "SCD.ARK block 15 rows 15 to 17 (quest 54: every creature killed, the triggers at (31, 31) fired)"
+    },
+    {
+      "id": "lost_altara",
+      "kind": "lost",
+      "level": 17,
+      "object": 243,
+      "mayBeLost": {
+        "kind": "b",
+        "when": "plot:14",
+        "why": "the castle plot's schedule takes Altara off the map, with what she carries, at plot 14"
+      },
+      "notes": "Altara (whoami 0x2D, level 17 (18, 52)) and what she carries (her runes, the black pearl, the jewelled dagger) leave the map at castle plot 14.",
+      "source": "SCD.ARK block 1 row 46 (time 14: remove whoami 45); event/SCDEVENT.C ev_remove (Obj_Punt)"
+    },
+    {
+      "id": "lost_kintara",
+      "kind": "lost",
+      "level": 17,
+      "object": 254,
+      "mayBeLost": {
+        "kind": "b",
+        "when": "plot:14",
+        "why": "the castle plot's schedule takes Kintara off the map, with what she carries, at plot 14"
+      },
+      "notes": "Kintara (whoami 0x2A, level 17 (37, 49)) leaves the map at castle plot 14.",
+      "source": "SCD.ARK block 1 row 49 (time 14: remove whoami 42)"
+    },
+    {
+      "id": "lost_mors_gotha_killorn",
+      "kind": "lost",
+      "level": 17,
+      "object": 240,
+      "mayBeLost": {
+        "kind": "b",
+        "when": "plot:16",
+        "why": "Mors Gotha leaves Killorn Keep, with what she carries, at castle plot 16"
+      },
+      "notes": "Mors Gotha (whoami 0x2F), made on level 17 (20, 43) at castle plot 14 by the create object trap #534, is taken off that level at plot 16 (and when she dies, quest 64), to attack the castle.",
+      "source": "SCD.ARK block 1 row 56 (time 16: remove whoami 47), block 15 rows 18 and 19 (quest 64); level 17 trap #534"
+    },
+    {
+      "id": "lost_rune_bag",
+      "kind": "lost",
+      "token": "item:rune_bag",
+      "mayBeLost": {
+        "kind": "a",
+        "why": "Mors Gotha asks one who says he will join her for his weapon, or with none for his rune bag, and keeps it: do not offer to join her"
+      },
+      "notes": "Mors Gotha, told 'Yes, I shall join thee', asks for the Avatar's weapon as a sign (any weapon, find_inv(1000)); with none she asks for the rune bag (item 143), keeps what she is given and attacks.",
+      "source": "conversation 47 (Mors Gotha): find_inv(1000, 1), find_inv(143, 1), find_barter, give_ptr_npc, attack_and_end()"
+    },
+    {
+      "id": "lord_british_speech",
+      "kind": "flag",
+      "grants": "flag:lord_british_speech",
+      "level": 1,
+      "object": 235,
+      "requires": "free",
+      "notes": "Lord British's opening speech (quest 109). His first talk with the Avatar, wherever it happens, is the speech: it ends with set_quest(109, 1). At a new game he waits in the throne room, level 1 (31, 52), with goal 10 (talk to the player): he walks up and speaks once the Avatar comes near (a creature more than 10 squares from the player does nothing). A start elsewhere skips nothing: the speech comes when the Avatar first meets him.",
+      "source": "conversation 142 (Lord British): avatar_the_time_to: if (met_before == 0) greetings_avatar_shall_we(), which ends with set_quest(109, 1); level 1 #235 goal 10, goal target 1",
+      "confidence": "certain"
+    },
+    {
+      "id": "speech_before_nystul",
+      "kind": "trade",
+      "token": "npc:nystul",
+      "requires": "flag:lord_british_speech",
+      "notes": "Until Lord British has made his opening speech (quest 109) this castle conversation only sends the Avatar to hear it.",
+      "source": "conversations 130 to 143 and 168: if (get_quest(109)) ... else { say ...; goodbye(); }",
+      "confidence": "certain"
+    },
+    {
+      "id": "speech_before_miranda",
+      "kind": "trade",
+      "token": "npc:miranda",
+      "requires": "flag:lord_british_speech",
+      "notes": "Until Lord British has made his opening speech (quest 109) this castle conversation only sends the Avatar to hear it.",
+      "source": "conversations 130 to 143 and 168: if (get_quest(109)) ... else { say ...; goodbye(); }",
+      "confidence": "certain"
+    },
+    {
+      "id": "speech_before_dupre",
+      "kind": "trade",
+      "token": "npc:dupre",
+      "requires": "flag:lord_british_speech",
+      "notes": "Until Lord British has made his opening speech (quest 109) this castle conversation only sends the Avatar to hear it.",
+      "source": "conversations 130 to 143 and 168: if (get_quest(109)) ... else { say ...; goodbye(); }",
+      "confidence": "certain"
+    },
+    {
+      "id": "speech_before_charles",
+      "kind": "trade",
+      "token": "npc:charles",
+      "requires": "flag:lord_british_speech",
+      "notes": "Until Lord British has made his opening speech (quest 109) this castle conversation only sends the Avatar to hear it.",
+      "source": "conversations 130 to 143 and 168: if (get_quest(109)) ... else { say ...; goodbye(); }",
+      "confidence": "certain"
+    },
+    {
+      "id": "speech_before_geoffrey",
+      "kind": "trade",
+      "token": "npc:geoffrey",
+      "requires": "flag:lord_british_speech",
+      "notes": "Until Lord British has made his opening speech (quest 109) this castle conversation only sends the Avatar to hear it.",
+      "source": "conversations 130 to 143 and 168: if (get_quest(109)) ... else { say ...; goodbye(); }",
+      "confidence": "certain"
+    },
+    {
+      "id": "speech_before_iolo",
+      "kind": "trade",
+      "token": "npc:iolo",
+      "requires": "flag:lord_british_speech",
+      "notes": "Until Lord British has made his opening speech (quest 109) this castle conversation only sends the Avatar to hear it.",
+      "source": "conversations 130 to 143 and 168: if (get_quest(109)) ... else { say ...; goodbye(); }",
+      "confidence": "certain"
+    },
+    {
+      "id": "speech_before_julia",
+      "kind": "trade",
+      "token": "npc:julia",
+      "requires": "flag:lord_british_speech",
+      "notes": "Until Lord British has made his opening speech (quest 109) this castle conversation only sends the Avatar to hear it.",
+      "source": "conversations 130 to 143 and 168: if (get_quest(109)) ... else { say ...; goodbye(); }",
+      "confidence": "certain"
+    },
+    {
+      "id": "speech_before_nanna",
+      "kind": "trade",
+      "token": "npc:nanna",
+      "requires": "flag:lord_british_speech",
+      "notes": "Until Lord British has made his opening speech (quest 109) this castle conversation only sends the Avatar to hear it.",
+      "source": "conversations 130 to 143 and 168: if (get_quest(109)) ... else { say ...; goodbye(); }",
+      "confidence": "certain"
+    },
+    {
+      "id": "speech_before_nell",
+      "kind": "trade",
+      "token": "npc:nell",
+      "requires": "flag:lord_british_speech",
+      "notes": "Until Lord British has made his opening speech (quest 109) this castle conversation only sends the Avatar to hear it.",
+      "source": "conversations 130 to 143 and 168: if (get_quest(109)) ... else { say ...; goodbye(); }",
+      "confidence": "certain"
+    },
+    {
+      "id": "speech_before_nelson",
+      "kind": "trade",
+      "token": "npc:nelson",
+      "requires": "flag:lord_british_speech",
+      "notes": "Until Lord British has made his opening speech (quest 109) this castle conversation only sends the Avatar to hear it.",
+      "source": "conversations 130 to 143 and 168: if (get_quest(109)) ... else { say ...; goodbye(); }",
+      "confidence": "certain"
+    },
+    {
+      "id": "speech_before_patterson",
+      "kind": "trade",
+      "token": "npc:patterson",
+      "requires": "flag:lord_british_speech",
+      "notes": "Until Lord British has made his opening speech (quest 109) this castle conversation only sends the Avatar to hear it.",
+      "source": "conversations 130 to 143 and 168: if (get_quest(109)) ... else { say ...; goodbye(); }",
+      "confidence": "certain"
+    },
+    {
+      "id": "speech_before_lady_tory",
+      "kind": "trade",
+      "token": "npc:lady_tory",
+      "requires": "flag:lord_british_speech",
+      "notes": "Until Lord British has made his opening speech (quest 109) this castle conversation only sends the Avatar to hear it.",
+      "source": "conversations 130 to 143 and 168: if (get_quest(109)) ... else { say ...; goodbye(); }",
+      "confidence": "certain"
+    },
+    {
+      "id": "speech_before_feridwyn",
+      "kind": "trade",
+      "token": "npc:feridwyn",
+      "requires": "flag:lord_british_speech",
+      "notes": "Until Lord British has made his opening speech (quest 109) this castle conversation only sends the Avatar to hear it.",
+      "source": "conversations 130 to 143 and 168: if (get_quest(109)) ... else { say ...; goodbye(); }",
+      "confidence": "certain"
+    },
+    {
+      "id": "speech_before_syria",
+      "kind": "trade",
+      "token": "npc:syria",
+      "requires": "flag:lord_british_speech",
+      "notes": "Until Lord British has made his opening speech (quest 109) this castle conversation only sends the Avatar to hear it.",
+      "source": "conversations 130 to 143 and 168: if (get_quest(109)) ... else { say ...; goodbye(); }",
+      "confidence": "certain"
     }
   ]
 }

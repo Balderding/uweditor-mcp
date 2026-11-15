@@ -300,7 +300,7 @@ namespace UwEditor.Core.Randomizer
 					if (int.TryParse(t.Substring(10), out n) && have < n) res.NoSource.Add(t + " (" + have + " talisman placements known)");
 					continue;
 				}
-				if (t.StartsWith("search:") || t.StartsWith("option:") || t.StartsWith("now_zone:")) continue;
+				if (t.StartsWith("search:") || t.StartsWith("option:") || t.StartsWith("nooption:") || t.StartsWith("now_zone:")) continue;
 				if (t.StartsWith("plot:"))
 				{
 					int n;
@@ -347,6 +347,7 @@ namespace UwEditor.Core.Randomizer
 				if (p.Zone != zone) continue;
 				string t = Requirement.Normalize(p.Grants);
 				if (string.IsNullOrEmpty(t) || tokens.Contains(t)) continue;
+				if (SolverOptions.Gone(p, this)) continue;
 				if (!PlacementReq(p, res).Eval(this)) continue;
 				tokens.Add(t);
 				sphere.Tokens.Add(t);

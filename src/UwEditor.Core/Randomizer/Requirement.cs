@@ -25,8 +25,18 @@ namespace UwEditor.Core.Randomizer
 		public bool AbilitySources;
 		/// <summary>With AbilitySources: casting from runes counts (cast:X tokens).</summary>
 		public bool Magic = true;
+		/// <summary>
+		/// With AbilitySources and Magic: the highest circle of a spell cast from runes (a cast:X
+		/// placement's Placement.Circle) that counts before the player has left the start's free
+		/// area (the zones the start reaches by ways that need nothing): a new character is level 1
+		/// and casts circle 1 only (combat/RUNES.C player_cast: level at least 2 * circle - 1). Only
+		/// the timeline solver knows the free area; int.MaxValue (the default here): no limit.
+		/// </summary>
+		public int NewCharacterCircle = int.MaxValue;
 		/// <summary>With AbilitySources: scrolls, potions and charged wands (once:X) count for use:X, besides worn (worn:X) and unlimited (perm:X) sources.</summary>
 		public bool SingleUseItems;
+		/// <summary>With SingleUseItems: the only abilities whose single-use things count (levitate, iron_flesh, …); null for all of them.</summary>
+		public HashSet<string> SingleUseOnly;
 		/// <summary>The Search skill assumed for search:Z (a look trigger of height Z; game/SKILLCHK.C skill_check, event/TRIGGER.C UseTrigger).</summary>
 		public int SearchSkill;
 		/// <summary>search:Z holds when a look can pass at all (a failed look leaves no mark, so it can be tried again); off: only at even odds or better (skill at least Z).</summary>
@@ -40,6 +50,23 @@ namespace UwEditor.Core.Randomizer
 
 		/// <summary>The logic options that are on, by name (option:NAME holds when NAME is here; see FactSet.KnownOptions).</summary>
 		public HashSet<string> OptionsOn = new HashSet<string>();
+
+		/// <summary>
+		/// A source the game may take away whatever the player does (a placement of kind b or c,
+		/// Placement.LostForGood) counts only while its LostWhen does not hold yet, as the solve
+		/// stands when it is reached (a window of the castle plot met in the solve's own order);
+		/// with no LostWhen never. Off: every source counts, as before.
+		/// </summary>
+		public bool AvoidLost;
+
+		/// <summary>Whether a placement may not be counted now: AvoidLost is on, it is of kind b or c, and it is gone already (or has no window).</summary>
+		public static bool Gone(Placement p, IRequirementContext ctx, Func<string, Requirement> parse = null)
+		{
+			if (p == null || !ctx.Options.AvoidLost || !p.LostForGood) return false;
+			if (string.IsNullOrWhiteSpace(p.LostWhen)) return true;
+			var r = parse != null ? parse(p.LostWhen) : Requirement.TryParse(p.LostWhen, out _);
+			return r == null || r.Eval(ctx);
+		}
 	}
 
 	/// <summary>
@@ -88,6 +115,7 @@ namespace UwEditor.Core.Randomizer
 			"zone:N         zone N must be reachable (a lever or button on the other side)",
 			"now_zone:N     zone N reached now (a lever to work again after a door closed behind the player); else as zone:N",
 			"option:NAME    a logic option is on (magic, single_use, lockpick, search_retry, ring_needs_lava, kill_npcs ...)",
+			"nooption:NAME  a logic option is off (UW2's Pits gem by killing Dorstag: nooption:pits_gem_by_blog)",
 			"spell:telekinesis  Telekinesis (Ort Por Ylem): uses things from afar; the links ask for item:pole | spell:telekinesis",
 			"free           nothing needed",
 			"Operators: '&' and, '|' or, parentheses.",
@@ -163,8 +191,9 @@ namespace UwEditor.Core.Randomizer
 						if (!int.TryParse(tail, out n)) return false;
 						if (n >= 15) return false;
 						// the Open spell tries the lock as a pick of skill 45 (combat/SPELLS.C obj_spells, checkLock(ThePlayer, target, -45)): sure up to z 9.
-						// It counts with Magic on, whether lock picking is on or not, and never with Magic off.
-						if (o.Magic && o.AbilitySources && (o.PickRetry || n <= 9) && HasAbility(ctx, "open")) return true;
+						// It counts whether lock picking is on or not. With Magic off the runes do not cast it, but a thing that
+						// holds it still does (a weapon of Opening, a wand; a scroll when single-use things count): that is no rune magic.
+						if (o.AbilitySources && (o.PickRetry || n <= 9) && HasAbility(ctx, "open")) return true;
 						if (o.LockpickSkill < 0) return false;
 						if (o.PickNeedsLockpick && !ctx.HasToken("item:lockpick")) return false;
 						if (n == 14) return o.LockpickSkill >= 31;
@@ -182,6 +211,8 @@ namespace UwEditor.Core.Randomizer
 						return int.TryParse(tail, out n) && (ctx is INowContext now ? now.ZoneNow(n) : ctx.ZoneReachable(n));
 					case "option":
 						return o.OptionsOn != null && o.OptionsOn.Contains(tail);
+					case "nooption":
+						return o.OptionsOn == null || !o.OptionsOn.Contains(tail);
 					case "plot":
 						return int.TryParse(tail, out n) && ctx.PlotClock() >= n;
 					case "talismans":

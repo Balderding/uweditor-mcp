@@ -224,7 +224,7 @@ namespace UwEditor.Core.Randomizer
             var items = KeyItems.Find(s, level, zs);
             zs.Placements.AddRange(KeyItems.SuggestPlacements(zs, items));
             // start and goal
-            var st = g.Options.StartOf(s);
+            var st = g.Options.StartOf(s, level);
             res.Start = st;
             if (st != null) zs.StartZone = Math.Max(2, (int)zs.NearestZone(st.Level, (int)st.X, (int)st.Y));
             // UW2's state: each token where the game starts, granted by the mechanisms that bring the state about
@@ -413,7 +413,7 @@ namespace UwEditor.Core.Randomizer
                         if (o.Item < 0x140 || (o.Item >= 0x170 && o.Item < 0x180)) { busy[r.Id] = true; break; }
             }
             foreach (var lv in g.Levers) { foreach (int r in lv.Reach.Concat(lv.PoleReach)) busy[r] = true; if (lv.Nearest >= 0) busy[lv.Nearest] = true; }
-            var st = g.Options.StartOf(s);
+            var st = g.Options.StartOf(s, level);
             if (st != null) { int r0 = g.NearestRegion(st.Level, (int)st.X, (int)st.Y); if (r0 >= 0) busy[r0] = true; }
             int folded = 0;
             for (int pass = 0; pass < 4; pass++)

@@ -111,6 +111,28 @@ namespace UwEditor.Core.Randomizer
         public int Quantity;
         /// <summary>The tokens of Requires that getting this uses up (a fact's usesUp: food handed over); not saved. Null: none.</summary>
         public List<string> UsesUp;
+        /// <summary>
+        /// It may be lost for good (the facts' mayBeLost, Fact.Lost): "a" by an avoidable choice
+        /// (counted, the walkthrough warns), "b" with time, "c" with its place (with
+        /// SolverOptions.AvoidLost counted only while LostWhen does not hold yet); "" when it lasts.
+        /// </summary>
+        public string Lost = "";
+        /// <summary>Why it may be lost (the walkthrough's warning).</summary>
+        public string LostWhy = "";
+        /// <summary>A requirement that holds once it is gone ("plot:14"); "": no window known.</summary>
+        public string LostWhen = "";
+        /// <summary>A spell cast from runes (cast:X, AbilityZones): the spell's circle (SpellTables.Circle); 0 for anything else, or not known yet (Abilities.CircleOf works it out). Not saved.</summary>
+        public int Circle;
+
+        /// <summary>Kind b or c: the solver relies on it only inside its window (SolverOptions.AvoidLost).</summary>
+        public bool LostForGood { get { return Lost == "b" || Lost == "c"; } }
+
+        /// <summary>Takes a fact's mark when it is stronger than the one it has (a, then b, then c).</summary>
+        public void MarkLost(Fact f)
+        {
+            if (f == null || Fact.LostRank(f.Lost) <= Fact.LostRank(Lost)) return;
+            Lost = f.Lost; LostWhy = f.LostWhy; LostWhen = f.LostWhen;
+        }
     }
 
     /// <summary>
@@ -487,7 +509,7 @@ namespace UwEditor.Core.Randomizer
                     Confidence = S(k, "confidence").Length > 0 ? S(k, "confidence") : "certain", Level = I(k, "level", 0), X = I(k, "x", -1), Y = I(k, "y", -1),
                 });
             foreach (var p in (root["placements"] as JsonArray) ?? new JsonArray())
-                zs.Placements.Add(new Placement { Zone = I(p, "zone", 0), Grants = S(p, "grants"), Requires = S(p, "requires"), Notes = S(p, "notes"), Source = S(p, "source"), Counts = S(p, "counts"), Quantity = I(p, "quantity", 0) });
+                zs.Placements.Add(new Placement { Zone = I(p, "zone", 0), Grants = S(p, "grants"), Requires = S(p, "requires"), Notes = S(p, "notes"), Source = S(p, "source"), Counts = S(p, "counts"), Quantity = I(p, "quantity", 0), Lost = S(p, "lost"), LostWhy = S(p, "lostWhy"), LostWhen = S(p, "lostWhen") });
             zs.PerLevel = B(root, "perLevel");
             foreach (var d in (root["decks"] as JsonArray) ?? new JsonArray())
                 zs.Decks.Add(new ZoneDeck { Level = I(d, "level", 0), X = I(d, "x", 0), Y = I(d, "y", 0), Top = I(d, "top", 0), Zone = I(d, "zone", 0) });
@@ -548,6 +570,7 @@ namespace UwEditor.Core.Randomizer
                 d["notes"] = p.Notes;
                 if (!string.IsNullOrEmpty(p.Source)) d["source"] = p.Source;
                 if (!string.IsNullOrEmpty(p.Counts)) { d["counts"] = p.Counts; d["quantity"] = p.Quantity; }
+                if (!string.IsNullOrEmpty(p.Lost)) { d["lost"] = p.Lost; d["lostWhy"] = p.LostWhy; if (!string.IsNullOrEmpty(p.LostWhen)) d["lostWhen"] = p.LostWhen; }
                 places.Add(d);
             }
             root["placements"] = places;

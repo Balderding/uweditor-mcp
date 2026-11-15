@@ -78,15 +78,16 @@ namespace UwEditor.Core.Tests
         [Fact]
         public void A_floor_of_height_14_is_no_place_to_stand_in_the_zones()
         {
-            // UW2 level 25: (53, 16) and (54, 16) are floors of height 14 (112 + 23 is over 127)
+            // UW2 level 25: (53, 16) and (54, 16) are floors of height 14 (112 + 23 is over 127), which a lever steps down to 10
             string g = GameData.Game("UW2"); if (g == null) return;
             var s = GameSession.Open(g);
             var graph = NavGraph.Build(s, l => s.LoadLevel(l), new NavOptions(), new[] { 25 });
             int r = graph.RegionOf(25, 53, 16);
             Assert.True(r >= 0);
-            // nothing leads onto it or off it
-            Assert.DoesNotContain(graph.Edges, e => e.To == r && e.Kind != "teleport" && e.Kind != "stairs");
-            Assert.DoesNotContain(graph.Edges, e => e.From == r && e.Kind != "teleport" && e.Kind != "stairs");
+            // nothing leads onto it or off it as it stands: only once the lever has stepped it down (NavGraph.FindOscillators)
+            Assert.DoesNotContain(graph.Edges, e => e.To == r && e.Kind != "teleport" && e.Kind != "stairs" && !e.Requires.Contains("flag:oscillator_L25_742"));
+            Assert.DoesNotContain(graph.Edges, e => e.From == r && e.Kind != "teleport" && e.Kind != "stairs" && !e.Requires.Contains("flag:oscillator_L25_742"));
+            Assert.Contains(graph.Edges, e => e.To == r && e.Requires.Contains("flag:oscillator_L25_742"));
         }
     }
 }

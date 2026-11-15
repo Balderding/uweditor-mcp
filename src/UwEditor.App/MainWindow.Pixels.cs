@@ -50,7 +50,7 @@ namespace UwEditor.App
             s.ReloadGraphics();
             atlas = SpriteAtlas.Build(s.Graphics.ObjectPictures);
             vm.RefreshNames();      // empties the icon cache; the object list and the selection take the new pictures
-            if (vm.Level != null) { scene = LevelScene.Build(vm.Level, atlas, vm.Options); View.SetScene(scene); UpdateMarkers(); }
+            if (vm.Level != null) { scene = LevelScene.Build(ShownLevel, atlas, vm.Options); View.SetScene(scene); UpdateMarkers(); }
             // the open windows (item slots, object tables, add an object, the inventory, find, triggers)
             // keep the icons they took when they filled their lists
             foreach (var w in ItemIcons.In(this)) w.RefreshIcons();

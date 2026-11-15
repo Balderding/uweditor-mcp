@@ -130,6 +130,7 @@ namespace UwEditor.App
         void OnLevelEdited()
         {
             if (vm.Level == null) return;
+            DropTerrainPreview("Preview ended: the level was edited, and the view shows the level itself again.");
             scene = LevelScene.Update(scene, vm.Level, vm.Options);
             View.UpdateScene(scene);
             UpdateMarkers();
@@ -141,7 +142,7 @@ namespace UwEditor.App
         /// <summary>The floor under a point (tiles), or null for rock and the closed half of a diagonal tile.</summary>
         float? GroundAt(float x, float z)
         {
-            var level = vm.Level;
+            var level = ShownLevel;
             if (level == null) return null;
             int tx = (int)Math.Floor(x), ty = (int)Math.Floor(z);
             if (tx < 0 || ty < 0 || tx > 63 || ty > 63) return null;

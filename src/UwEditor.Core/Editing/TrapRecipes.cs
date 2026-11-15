@@ -168,13 +168,13 @@ namespace UwEditor.Core.Editing
         // ---- the pieces
 
         /// <summary>A trap as the shipped levels have them: invisible, not is_quant, fine 0, 0, at the floor.</summary>
-        static ObjectSpec TrapSpec(int item, int z)
+        internal static ObjectSpec TrapSpec(int item, int z)
         {
             return new ObjectSpec { Item = item, Quality = 0, Owner = 0, IsQuantity = false, Link = 0, Invisible = true, Flags = 0, FineX = 0, FineY = 0, Z = z };
         }
 
         /// <summary>A trigger aimed at (tx, ty): is_quant, invisible, flag 11 (the player), flag 10 if reusable, enchanted for creatures.</summary>
-        static ObjectSpec TriggerSpec(int item, int tx, int ty, TriggerOptions t, int? z)
+        internal static ObjectSpec TriggerSpec(int item, int tx, int ty, TriggerOptions t, int? z)
         {
             t = t ?? new TriggerOptions();
             // a UW2 pressure plate keeps its state in fine y (bit 0 pressed, bit 1 floor texture, bit 2 the heavy threshold: TRIGGER.C check_pplate): 0 starts it up
@@ -203,14 +203,14 @@ namespace UwEditor.Core.Editing
         }
 
         /// <summary>An is_quant object's link (a trigger's trap, a delete trap's object). Never a list head.</summary>
-        static void SetLink(LevelEditor e, int index, int link)
+        internal static void SetLink(LevelEditor e, int index, int link)
         {
             Need(e.Model.Objects[index].IsQuantity, "#" + index + "'s link is a list.");
             Word(e, index, 6, w => (w & 0x3F) | (link & 0x3FF) << 6);
         }
 
         /// <summary>A trap's flags 9-12 (bit 12 is the enchanted bit, the 8s): how many triggers link to it, as delete_trap counts them.</summary>
-        static void CountTriggers(LevelEditor e, int trap)
+        internal static void CountTriggers(LevelEditor e, int trap)
         {
             var m = e.Model;
             int n = m.Objects.Count(o => !o.Free && o.TileX >= 0 && Triggers.IsTrigger(o.Item) && o.Link == trap);

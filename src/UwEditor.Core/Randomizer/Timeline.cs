@@ -72,14 +72,31 @@ namespace UwEditor.Core.Randomizer
         public readonly List<OneWayTrap> Traps = new List<OneWayTrap>();
         /// <summary>Zones the return check found safe thanks to the planted silver sapling.</summary>
         public int SavedBySapling;
+        /// <summary>From a start other than the game's own: the zones the player comes out into from it, which the return check counted as back as the start (Engine.ReRoot); empty when it went back to the start alone.</summary>
+        public readonly List<int> ReturnTo = new List<int>();
         /// <summary>The solve again with nothing taken from inside a trap (or -1 when not run).</summary>
         public int SafeZones = -1;
         public bool SafeGoal;
         public readonly List<string> Warnings = new List<string>();
         /// <summary>The single-use sources spent (once:X), one entry per use, in order.</summary>
         public readonly List<string> OnceSpent = new List<string>();
+        /// <summary>
+        /// A new character's rune casting (SolverOptions.NewCharacterCircle): the start's free area
+        /// (the start zone and the zones it reaches by ways that need nothing, in the world as it
+        /// starts), or null when every circle counts from the start.
+        /// </summary>
+        public HashSet<int> FreeArea;
+        /// <summary>The sphere in which the solve first reached a zone outside FreeArea (from then on every circle counts), or -1: never (or no limit).</summary>
+        public int FreeAreaLeft = -1;
         /// <summary>Zones reached before that a change cut the player off from: the sphere of the change and the zones (some may be reached again later).</summary>
         public readonly List<KeyValuePair<int, List<int>>> CutOff = new List<KeyValuePair<int, List<int>>>();
+        /// <summary>
+        /// The zones of CutOff that the solve got to again afterwards (the reach at its end holds
+        /// them): the player lost them only for a while, as when the way back runs through zones the
+        /// solve had not reached yet when the change went off (the search after a change looks only
+        /// among the zones reached so far).
+        /// </summary>
+        public readonly HashSet<int> CutOffRegained = new HashSet<int>();
         /// <summary>Names of the zones made by changes (parts split off), by id.</summary>
         public readonly Dictionary<int, string> NewZones = new Dictionary<int, string>();
         /// <summary>What the solve found, in order (Walkthrough reads it).</summary>
@@ -171,6 +188,12 @@ namespace UwEditor.Core.Randomizer
     /// </summary>
     public static class Timeline
     {
+        /// <summary>The first id of the zones a change splits off (above every zone of the zone set: a level's are level * 256 + number).</summary>
+        public const int FreshZoneIds = 1000000;
+
+        /// <summary>How many zones of the zone set itself a solve reached (the parts changes split off not counted).</summary>
+        public static int BaseZonesReached(TimelineSolve sv) { return sv == null ? 0 : sv.ZoneSphere.Keys.Count(z => z < FreshZoneIds); }
+
         /// <summary>
         /// Builds Phase B's zones with the closers made one way, adds the facts' links, warps and goal, classifies the changes and solves.
         /// With a zoning, its zones are used instead of automatic ones (a region takes the zone that holds most of its tiles,
@@ -222,6 +245,26 @@ namespace UwEditor.Core.Randomizer
             return so;
         }
 
+        /// <summary>
+        /// A placement the build puts in the start zone to stand for something done anywhere, not
+        /// a thing lying there: a spell cast (its runes held), a craft or a free flag of the facts
+        /// with no place (AbilityZones, Source "facts" or "facts: id"), a state token of UW2
+        /// (AutoZones, Source "state"). Only meaningful for placements of the start zone.
+        /// </summary>
+        public static bool Everywhere(Placement p, FactSet facts)
+        {
+            return Everywhere(p, id => facts == null ? null : facts.Facts.FirstOrDefault(x => x.Id == id));
+        }
+
+        static bool Everywhere(Placement p, Func<string, Fact> byId)
+        {
+            string src = p.Source ?? "";
+            if (src == "state" || src == "facts") return true;
+            if (!src.StartsWith("facts: ")) return false;
+            var f = byId(src.Substring(7));
+            return f != null && (f.Kind == "craft" || (f.Kind == "free" && f.TopSpot == null));
+        }
+
         /// <summary>One timeline solve with the given logic options (the zones and the facts as built).</summary>
         public static TimelineSolve Solve(TimelineResult res, AbilityOptions opt, string label, IEnumerable<string> startTokens = null)
         {
@@ -238,7 +281,7 @@ namespace UwEditor.Core.Randomizer
                 var avoid = sv.Traps.Where(t => !goals.Contains(t.Zone) && !t.Inside.Any(goals.Contains)).ToList();
                 var banned = new HashSet<int>(avoid.SelectMany(zonesOf));
                 var safe = res.Engine.Run(so, opt, label + " (safe)", banned);
-                sv.SafeZones = safe.ZoneSphere.Count(kv => kv.Key < 1000);
+                sv.SafeZones = BaseZonesReached(safe);
                 sv.SafeGoal = safe.GoalReached;
                 if (sv.GoalReached && !safe.GoalReached)
                 {
@@ -533,7 +576,7 @@ namespace UwEditor.Core.Randomizer
             readonly HashSet<string> cuts = new HashSet<string>();
             /// <summary>Zones that are only a door kept apart (a closer's doorway): the player passes them, he never stays in them.</summary>
             readonly HashSet<int> doorways = new HashSet<int>();
-            int nextFresh = 1000000;        // above every zone id (a level's are level * 256 + number)
+            int nextFresh = FreshZoneIds;
             /// <summary>Phase D (the key item shuffle): the placements a run uses instead of the zone set's, and where the new ones lie (level, x, y).</summary>
             List<Placement> placements;
             readonly Dictionary<Placement, int[]> extraSpot = new Dictionary<Placement, int[]>();
@@ -689,7 +732,7 @@ namespace UwEditor.Core.Randomizer
                 {
                     // Reveal where magic does not work, as the ways are narrowed (AbilityZones.Narrow): only worn on UW1's level 9, and cast only with the fact's token on a level without mana
                     string reveal = "spell:reveal";
-                    var nomana = res.Facts.OfKind("nomana").FirstOrDefault(f => f.Level == m.Level);
+                    var nomana = res.Facts.NoMana(m.Level, m.X, m.Y);
                     if (s != null && !s.IsUw2 && m.Level == 9) reveal = "worn:reveal";
                     else if (nomana != null) reveal = string.Format("(cast:reveal & ({0})) | use:reveal", string.IsNullOrEmpty(nomana.Until) ? "flag:__never__" : nomana.Until);
                     terms.Add(m.Look < 30 ? reveal + " | search:" + m.Look : "search:" + m.Look);
@@ -734,7 +777,7 @@ namespace UwEditor.Core.Randomizer
                                     {
                                         if (x < 0 || y < 0 || x > 63 || y > 63) continue;
                                         var tile = m.Tiles[x, y];
-                                        if (height <= (s.IsUw2 ? 15 : 13)) tile.Height = height;
+                                        if (height <= (s.IsUw2 ? 14 : 13)) tile.Height = height;     // UW2: 15 leaves the height (event/WORLDEV.C change_terrain sets 0 to 14; 15 only for an oscillator)
                                         if (floor < (s.IsUw2 ? 15 : 11)) tile.FloorIndex = floor;
                                         if (type < 10) tile.Type = (TileType)type;
                                     }
@@ -1184,6 +1227,10 @@ namespace UwEditor.Core.Randomizer
                 var applied = new Dictionary<int, List<string>>();
                 var fired = new HashSet<string>();
                 int start = zs.StartZone;
+                // what the build put in the start zone to mean "anywhere" (spells, crafts, UW2's state): granted wherever the player is,
+                // also once the start zone is out of reach (a start left by a one-way way: the random start)
+                var factById = res.Facts.Facts.Where(f => f.Id.Length > 0).GroupBy(f => f.Id).ToDictionary(g => g.Key, g => g.First());
+                var everywhere = new HashSet<Placement>(Placements.Where(p => p.Zone == start && Timeline.Everywhere(p, id => { Fact f; return factById.TryGetValue(id, out f) ? f : null; })));
                 ctx.Reach.Add(start);
                 sv.ZoneSphere[start] = 0;
                 sv.Events.Add(new TimelineEvent { Kind = "zone", Zone = start });
@@ -1195,6 +1242,11 @@ namespace UwEditor.Core.Randomizer
                 var sphere = new TimelineSphere { Index = 0 };
                 sphere.Zones.Add(start);
                 List<ZoneLink> links = LinksOf(cur, so);
+                // a new character (level 1) casts from runes only up to so.NewCharacterCircle (combat/RUNES.C player_cast: level at least
+                // 2 * circle - 1): a spell above it does not count until the player has reached a zone outside the start's free area
+                foreach (var p in Placements) Abilities.CircleOf(s, p);
+                bool early = so.AbilitySources && so.Magic && so.NewCharacterCircle < int.MaxValue && Placements.Any(p => p.Circle > so.NewCharacterCircle);
+                if (early) sv.FreeArea = FreeArea(start, links, so);
                 const int MaxRounds = 400;
                 for (int round = 0; round <= MaxRounds; round++)
                 {
@@ -1242,13 +1294,15 @@ namespace UwEditor.Core.Randomizer
                         }
                         // a zone reached again after a change cut it off keeps the sphere it first came in
                         foreach (int z in newly) { ctx.Reach.Add(z); if (!sv.ZoneSphere.ContainsKey(z)) { sv.ZoneSphere[z] = sphere.Index; sphere.Zones.Add(z); } }
+                        if (early && newly.Any(z => !sv.FreeArea.Contains(z))) { early = false; sv.FreeAreaLeft = sphere.Index; }
                         any = newly.Count > 0;
                     }
                     // grant what the reached zones hold, then set off what can go off
                     bool gained = true;
                     var toApply = new Dictionary<int, List<string>>();
-                    // where the player stands when a change that takes ways away goes off (level, x, y)
+                    // where the player stands when a change that takes ways away goes off (level, x, y), and the zones of those squares before it
                     var stood = new List<List<int[]>>();
+                    var stoodZones = new HashSet<int>();
                     Func<Func<NavMechanism, string, bool>, bool> fire = which =>
                     {
                         bool some = false;
@@ -1266,7 +1320,7 @@ namespace UwEditor.Core.Randomizer
                                 var fev = new TimelineEvent { Sphere = sphere.Index, Kind = "flag", Token = f, Mechanism = kv.Key, Requires = kv.Value.ToString() };
                                 spentSince(fev, n0);
                                 sv.Events.Add(fev);
-                                if (Closing.Contains(f)) stood.AddRange(StandingTiles(kv.Key, cur, ctx));
+                                if (Closing.Contains(f)) stood.AddRange(StandingTiles(kv.Key, cur, ctx, stoodZones));
                                 fired.Add(f);
                                 sv.Fired.Add(f);
                                 sphere.SetOff.Add(f);
@@ -1284,6 +1338,9 @@ namespace UwEditor.Core.Randomizer
                     };
                     Action apply = () =>
                     {
+                        // the world before the changes, for the cut-off check: what the player could still get to from where he stood
+                        var linksBefore = links;
+                        var curBefore = stood.Count > 0 ? new Dictionary<int, LevelState>(cur) : null;
                         foreach (var kv in toApply)
                         {
                             List<string> a;
@@ -1296,9 +1353,10 @@ namespace UwEditor.Core.Randomizer
                             sv.Applied.AddRange(kv.Value);
                         }
                         if (toApply.Count > 0) links = LinksOf(cur, so);
-                        if (stood.Count > 0) StillReached(sv, ctx, cur, links, stood, sphere);
+                        if (stood.Count > 0) StillReached(sv, ctx, cur, links, stood, sphere, stoodZones, linksBefore, curBefore);
                         toApply.Clear();
                         stood.Clear();
+                        stoodZones.Clear();
                     };
                     // what the player cannot avoid goes off before he takes anything: a square he walks onto that
                     // seals part of the zone behind it leaves the things there out of his reach
@@ -1309,11 +1367,15 @@ namespace UwEditor.Core.Randomizer
                         foreach (var p in Placements)
                         {
                             string t = Requirement.Normalize(p.Grants);
+                            if (so.SingleUseOnly != null && t.StartsWith("once:") && !so.SingleUseOnly.Contains(t.Substring(5))) continue;     // a single-use thing that is not to count
                             bool counts = t.Length == 0 && !string.IsNullOrEmpty(p.Counts);
                             bool once = (so.SingleUseItems && t.StartsWith("once:")) || handed.Contains(t);
                             if (counts ? counted.Contains(p) : once ? onceSeen.Contains(p) : (t.Length == 0 || ctx.Tokens.Contains(t))) continue;
+                            if (early && p.Circle > so.NewCharacterCircle) continue;       // a spell a new character cannot cast yet
                             int z = PlacementZone(p, cur);
-                            if (!ctx.Reach.Contains(z) || (banned != null && banned.Contains(z))) continue;
+                            if (!(ctx.Reach.Contains(z) || (z == start && everywhere.Contains(p))) || (banned != null && banned.Contains(z))) continue;
+                            // a source the game takes away whatever the player does: only inside its window, as the solve stands now
+                            if (SolverOptions.Gone(p, ctx, Req)) continue;
                             int n0 = sv.OnceSpent.Count;
                             List<string> over = null;
                             if (p.UsesUp != null && !string.IsNullOrEmpty(p.Requires))
@@ -1395,6 +1457,8 @@ namespace UwEditor.Core.Randomizer
                         sv.Blocked.Add(bl);
                     }
                 }
+                // the zones cut off that the solve got to again afterwards
+                foreach (var c in sv.CutOff) foreach (int z in c.Value) if (ctx.Reach.Contains(z)) sv.CutOffRegained.Add(z);
                 lastWorld = cur;
                 lastLinks = links;
                 return sv;
@@ -1404,10 +1468,36 @@ namespace UwEditor.Core.Randomizer
             List<ZoneLink> lastLinks;
 
             /// <summary>
-            /// Where the player can stand when he sets a mechanism off: one square of each region its
-            /// set-off names whose zone is reached, in the world as it is before the change.
+            /// The start's free area: the start zone and every zone it reaches over ways whose
+            /// requirement holds with nothing held (walking, a free jump or drop, a door that opens or
+            /// is bashed, a look that any Search finds), in the world as it starts. While the player
+            /// has reached nothing outside it, he is taken to be the new character the game made
+            /// (SolverOptions.NewCharacterCircle).
             /// </summary>
-            List<List<int[]>> StandingTiles(NavMechanism m, Dictionary<int, LevelState> cur, Ctx ctx)
+            HashSet<int> FreeArea(int start, List<ZoneLink> links, SolverOptions so)
+            {
+                var ctx = new Ctx { Options = so };
+                ctx.Reach.Add(start);
+                for (bool grew = true; grew;)
+                {
+                    grew = false;
+                    foreach (var k in links)
+                    {
+                        if (k.Confidence == "todo" && !so.TrustTodoLinks) continue;
+                        bool fwd = ctx.Reach.Contains(k.From) && !ctx.Reach.Contains(k.To);
+                        bool back = k.TwoWay && ctx.Reach.Contains(k.To) && !ctx.Reach.Contains(k.From);
+                        if ((fwd || back) && Req(k.Requires).Eval(ctx)) { ctx.Reach.Add(fwd ? k.To : k.From); grew = true; }
+                    }
+                }
+                return ctx.Reach;
+            }
+
+            /// <summary>
+            /// Where the player can stand when he sets a mechanism off: one square of each region its
+            /// set-off names whose zone is reached, in the world as it is before the change; the
+            /// zones of those regions (before the change) go into zones.
+            /// </summary>
+            List<List<int[]>> StandingTiles(NavMechanism m, Dictionary<int, LevelState> cur, Ctx ctx, HashSet<int> zones)
             {
                 var list = new List<List<int[]>>();
                 LevelState st;
@@ -1423,6 +1513,7 @@ namespace UwEditor.Core.Randomizer
                     if (r < 0 || r >= g.Regions.Count || g.Regions[r].Tiles.Count == 0) continue;
                     int z = st != null ? st.Zone[r] : g.Regions[r].Zone;
                     if (!ctx.Reach.Contains(z)) continue;
+                    zones.Add(z);
                     var tiles = g.Regions[r].Tiles.Select(t => new[] { m.Level, t % 64, t / 64 });
                     if (tx >= 0) tiles = tiles.OrderBy(t => Math.Max(Math.Abs(t[1] - tx), Math.Abs(t[2] - ty))).ThenBy(t => t[2] * 64 + t[1]);
                     list.Add(tiles.ToList());
@@ -1436,8 +1527,15 @@ namespace UwEditor.Core.Randomizer
             /// sapling is planted), in the world as it is now. What he holds stays his; the zones
             /// he can no longer get to are no longer a place to go on from. Zones are only taken
             /// off here: new ones come in the next round, as always.
+            /// The cut-off reported is narrower: only the zones the player could still get to from
+            /// where he stood just before the change (the same search over the ways of the world
+            /// before it, from the zones of the squares he stood on: stoodZones, linksBefore,
+            /// curBefore) and cannot after it. A zone already out of his reach before (the start
+            /// zone left by a one-way way, and what lies only behind it) was not cut off by this
+            /// change, though it leaves the reach all the same.
             /// </summary>
-            void StillReached(TimelineSolve sv, Ctx ctx, Dictionary<int, LevelState> cur, List<ZoneLink> links, List<List<int[]>> stood, TimelineSphere sphere)
+            void StillReached(TimelineSolve sv, Ctx ctx, Dictionary<int, LevelState> cur, List<ZoneLink> links, List<List<int[]>> stood, TimelineSphere sphere,
+                HashSet<int> stoodZones = null, List<ZoneLink> linksBefore = null, Dictionary<int, LevelState> curBefore = null)
             {
                 var seeds = new HashSet<int>();
                 foreach (var region in stood)
@@ -1456,47 +1554,73 @@ namespace UwEditor.Core.Randomizer
                     sv.Warnings.Add("Sphere " + sphere.Index + ": a change took ways away, but the square it was set off from is gone; the zones reached before are taken as still reached.");
                     return;
                 }
-                if (plantedRequires != null && Req(plantedRequires).Eval(ctx)) seeds.Add(zs.StartZone);
+                bool planted = plantedRequires != null && Req(plantedRequires).Eval(ctx);
+                if (planted) seeds.Add(zs.StartZone);
                 var old = ctx.Reach;
+                var warps = res.Warps.Where(f => f.To != null && !f.To.IsPlanted).Select(f => new KeyValuePair<Fact, int>(f, WarpTarget(f))).Where(w => old.Contains(w.Value)).ToList();
+                var now = ReachAmong(seeds, links, old, ctx, cur, warps);
+                // what he could get to just before the change, from where he stood, in the world as it was then
+                HashSet<int> before = null;
+                if (stoodZones != null && stoodZones.Count > 0 && linksBefore != null)
+                {
+                    var from = new HashSet<int>(stoodZones.Where(old.Contains));
+                    if (planted) from.Add(zs.StartZone);
+                    before = ReachAmong(from, linksBefore, old, ctx, curBefore ?? cur, warps);
+                }
+                ctx.Reach = now;
+                foreach (int z in seeds) if (!sv.ZoneSphere.ContainsKey(z)) { sv.ZoneSphere[z] = sphere.Index; sphere.Zones.Add(z); sv.Events.Add(new TimelineEvent { Sphere = sphere.Index, Kind = "zone", Zone = z }); }
+                var lost = old.Where(z => !now.Contains(z) && (before == null || before.Contains(z))).OrderBy(z => z).ToList();
+                if (lost.Count > 0) sv.CutOff.Add(new KeyValuePair<int, List<int>>(sphere.Index, lost));
+            }
+
+            /// <summary>
+            /// The zones the player gets to from seeds over the given ways, among the zones of within
+            /// (and the seeds): ways that do not hold yet are tried again whenever the reach grows
+            /// (zone:N terms, warps from a level). ctx.Reach is the growing set while it runs, and is
+            /// left as it was.
+            /// </summary>
+            HashSet<int> ReachAmong(HashSet<int> seeds, List<ZoneLink> links, HashSet<int> within, Ctx ctx, Dictionary<int, LevelState> cur, List<KeyValuePair<Fact, int>> warps)
+            {
+                var keep = ctx.Reach;
                 var now = new HashSet<int>(seeds);
                 ctx.Reach = now;
-                var warps = res.Warps.Where(f => f.To != null && !f.To.IsPlanted).Select(f => new KeyValuePair<Fact, int>(f, WarpTarget(f))).Where(w => old.Contains(w.Value)).ToList();
-                // the ways out of each zone, among the zones reached before
-                var outOf = new Dictionary<int, List<KeyValuePair<int, ZoneLink>>>();
-                Action<int, int, ZoneLink> way = (a, z, k) =>
+                try
                 {
-                    if (!old.Contains(z) && !seeds.Contains(z)) return;
-                    List<KeyValuePair<int, ZoneLink>> l;
-                    if (!outOf.TryGetValue(a, out l)) outOf[a] = l = new List<KeyValuePair<int, ZoneLink>>();
-                    l.Add(new KeyValuePair<int, ZoneLink>(z, k));
-                };
-                foreach (var k in links) { way(k.From, k.To, k); if (k.TwoWay) way(k.To, k.From, k); }
-                // ways that did not hold yet are tried again whenever the reach grows (zone:N terms, warps from a level)
-                var waiting = new List<KeyValuePair<int, ZoneLink>>();
-                var queue = new Queue<int>(now);
-                while (true)
-                {
-                    while (queue.Count > 0)
+                    // the ways out of each zone, among the zones reached before
+                    var outOf = new Dictionary<int, List<KeyValuePair<int, ZoneLink>>>();
+                    Action<int, int, ZoneLink> way = (a, z, k) =>
                     {
+                        if (!within.Contains(z) && !seeds.Contains(z)) return;
                         List<KeyValuePair<int, ZoneLink>> l;
-                        if (!outOf.TryGetValue(queue.Dequeue(), out l)) continue;
-                        foreach (var w in l)
+                        if (!outOf.TryGetValue(a, out l)) outOf[a] = l = new List<KeyValuePair<int, ZoneLink>>();
+                        l.Add(new KeyValuePair<int, ZoneLink>(z, k));
+                    };
+                    foreach (var k in links) { way(k.From, k.To, k); if (k.TwoWay) way(k.To, k.From, k); }
+                    var waiting = new List<KeyValuePair<int, ZoneLink>>();
+                    var queue = new Queue<int>(now);
+                    while (true)
+                    {
+                        while (queue.Count > 0)
                         {
-                            if (now.Contains(w.Key)) continue;
-                            if (Req(w.Value.Requires).Eval(ctx)) { now.Add(w.Key); queue.Enqueue(w.Key); }
-                            else waiting.Add(w);
+                            List<KeyValuePair<int, ZoneLink>> l;
+                            if (!outOf.TryGetValue(queue.Dequeue(), out l)) continue;
+                            foreach (var w in l)
+                            {
+                                if (now.Contains(w.Key)) continue;
+                                if (Req(w.Value.Requires).Eval(ctx)) { now.Add(w.Key); queue.Enqueue(w.Key); }
+                                else waiting.Add(w);
+                            }
                         }
+                        foreach (var w in waiting)
+                            if (!now.Contains(w.Key) && Req(w.Value.Requires).Eval(ctx)) { now.Add(w.Key); queue.Enqueue(w.Key); }
+                        foreach (var w in warps)
+                            if (!now.Contains(w.Value) && WarpHolds(w.Key, ctx, cur)) { now.Add(w.Value); queue.Enqueue(w.Value); }
+                        waiting.RemoveAll(w => now.Contains(w.Key));
+                        if (queue.Count == 0) break;
                     }
-                    foreach (var w in waiting)
-                        if (!now.Contains(w.Key) && Req(w.Value.Requires).Eval(ctx)) { now.Add(w.Key); queue.Enqueue(w.Key); }
-                    foreach (var w in warps)
-                        if (!now.Contains(w.Value) && WarpHolds(w.Key, ctx, cur)) { now.Add(w.Value); queue.Enqueue(w.Value); }
-                    waiting.RemoveAll(w => now.Contains(w.Key));
-                    if (queue.Count == 0) break;
+                    return now;
                 }
-                foreach (int z in seeds) if (!sv.ZoneSphere.ContainsKey(z)) { sv.ZoneSphere[z] = sphere.Index; sphere.Zones.Add(z); sv.Events.Add(new TimelineEvent { Sphere = sphere.Index, Kind = "zone", Zone = z }); }
-                var lost = old.Where(z => !now.Contains(z)).OrderBy(z => z).ToList();
-                if (lost.Count > 0) sv.CutOff.Add(new KeyValuePair<int, List<int>>(sphere.Index, lost));
+                finally { ctx.Reach = keep; }
             }
 
             /// <summary>
@@ -1505,6 +1629,11 @@ namespace UwEditor.Core.Randomizer
             /// can he get back to the start? If not, the zone is a one-way trap. Once the silver
             /// sapling's requirement holds (a warp fact to "planted"), the player plants it before
             /// going one way, so every zone reached later can return (death takes him back).
+            /// When the walk back stalls, the changes the solve applied in the following spheres join
+            /// in, one sphere at a time, while each of them only opens ways and its set-off holds for
+            /// the walk (he can set it off himself from where he got to); the first that does not ends
+            /// the walk. From a start other than the game's own, back may also mean a zone the start
+            /// leads out into (ReRoot).
             /// </summary>
             public void ReturnCheck(TimelineSolve sv, SolverOptions so)
             {
@@ -1513,10 +1642,9 @@ namespace UwEditor.Core.Randomizer
                 var states = new Dictionary<string, List<ZoneLink>>();
                 var warpTo = res.Warps.Where(f => f.To != null && !f.To.IsPlanted).ToDictionary(f => f, f => WarpTarget(f));
                 var trapZones = new Dictionary<int, OneWayTrap>();
-                foreach (var kv in sv.ZoneSphere.OrderBy(x => x.Value).ThenBy(x => x.Key))
+                // from zone z, reached in sphere sp: the zones he gets to, stopping once one of home is among them (then back is true)
+                Func<int, int, ICollection<int>, Tuple<bool, HashSet<int>>> walk = (z, sp, home) =>
                 {
-                    int z = kv.Key, sp = kv.Value;
-                    if (z == start || doorways.Contains(z)) continue;
                     var ctx = new Ctx { Options = so, Before = new HashSet<int>(sv.ZoneSphere.Where(x => x.Value < sp).Select(x => x.Key)) };
                     foreach (var t in sv.TokenSphere) if (t.Value < sp) ctx.Tokens.Add(t.Key);
                     if (so.SingleUseItems)
@@ -1525,7 +1653,7 @@ namespace UwEditor.Core.Randomizer
                         ctx.OnceAllowed = new HashSet<string>();
                         if (sp > 0 && sp - 1 < sv.Spheres.Count) foreach (var kv2 in sv.Spheres[sp - 1].OnceLeft) if (kv2.Value > 0) ctx.OnceAllowed.Add(kv2.Key);
                     }
-                    if (planted != null && planted.Eval(ctx)) { sv.SavedBySapling++; continue; }
+                    if (planted != null && planted.Eval(ctx)) return null;
                     // the world at the end of sphere sp
                     var st = sp < sv.Spheres.Count ? sv.Spheres[sp].State : new Dictionary<int, string>();
                     string key = string.Join(";", st.OrderBy(x => x.Key).Select(x => x.Value));
@@ -1534,37 +1662,78 @@ namespace UwEditor.Core.Randomizer
                     if (!states.TryGetValue(key, out links)) states[key] = links = LinksOf(cur, so);
                     ctx.Reach.Add(z);
                     bool back = false;
-                    for (int round = 0; round <= 300 && !back; round++)
+                    // stuck in the world at the end of sphere sp: the changes the solve applied in the next spheres count too, as long as
+                    // each only opens ways (not Closing) and he can set it off from where the walk got to (a walk-on square in a zone
+                    // reached, as the floor of the moonstone room opening after Gate Travel); the first one that does not ends it
+                    for (int next = sp + 1; ; next++)
                     {
-                        if (round == 300) { sv.Warnings.Add("The return check of zone " + z + " stopped after 300 rounds."); break; }
-                        bool any = false;
-                        foreach (var p in Placements)
+                        if (next > sp + 1)
                         {
-                            string t = Requirement.Normalize(p.Grants);
-                            bool onceHere = ctx.OnceAllowed != null && t.StartsWith("once:") && !ctx.OnceAllowed.Contains(t);
-                            // a spell is cast wherever the player is, once he holds its runes (those placements lie in the start zone)
-                            bool anywhere = t.StartsWith("cast:");
-                            if (t.Length == 0 || (ctx.Tokens.Contains(t) && !onceHere) || (!anywhere && !ctx.Reach.Contains(PlacementZone(p, cur)))) continue;
-                            if (!string.IsNullOrEmpty(p.Requires) && !Req(p.Requires).Eval(ctx)) continue;
-                            if (onceHere) ctx.OnceAllowed.Add(t);
-                            ctx.Tokens.Add(t); any = true;
+                            if (back || next - 1 >= sv.Spheres.Count) break;
+                            var sph = sv.Spheres[next - 1];
+                            if (sph.Applied.Count == 0) continue;
+                            bool opens = sph.Applied.All(f => !Closing.Contains(f) && sv.Events.Any(e => e.Kind == "flag" && e.Sphere == next - 1 && e.Token == f && Req(e.Requires).Eval(ctx)));
+                            if (!opens) break;
+                            string key2 = string.Join(";", sph.State.OrderBy(x => x.Key).Select(x => x.Value));
+                            if (!states.TryGetValue(key2, out links)) states[key2] = links = LinksOf(sph.State.ToDictionary(x => x.Key, x => cache[x.Value]), so);
+                            cur = sph.State.ToDictionary(x => x.Key, x => cache[x.Value]);
                         }
-                        foreach (var k in links)
+                        for (int round = 0; round <= 300 && !back; round++)
                         {
-                            bool fwd = ctx.Reach.Contains(k.From) && !ctx.Reach.Contains(k.To);
-                            bool rev = k.TwoWay && ctx.Reach.Contains(k.To) && !ctx.Reach.Contains(k.From);
-                            if ((fwd || rev) && Req(k.Requires).Eval(ctx)) { ctx.Reach.Add(fwd ? k.To : k.From); any = true; }
+                            if (round == 300) { sv.Warnings.Add("The return check of zone " + z + " stopped after 300 rounds."); break; }
+                            bool any = false;
+                            foreach (var p in Placements)
+                            {
+                                string t = Requirement.Normalize(p.Grants);
+                                bool onceHere = ctx.OnceAllowed != null && t.StartsWith("once:") && !ctx.OnceAllowed.Contains(t);
+                                // a spell is cast wherever the player is, once he holds its runes (those placements lie in the start zone)
+                                bool anywhere = t.StartsWith("cast:");
+                                if (t.Length == 0 || (ctx.Tokens.Contains(t) && !onceHere) || (!anywhere && !ctx.Reach.Contains(PlacementZone(p, cur)))) continue;
+                                // from a zone reached before the solve left the start's free area, a new character's casting
+                                if (anywhere && sv.FreeArea != null && (sv.FreeAreaLeft < 0 || sp < sv.FreeAreaLeft) && p.Circle > so.NewCharacterCircle) continue;
+                                if (!string.IsNullOrEmpty(p.Requires) && !Req(p.Requires).Eval(ctx)) continue;
+                                if (onceHere) ctx.OnceAllowed.Add(t);
+                                ctx.Tokens.Add(t); any = true;
+                            }
+                            foreach (var k in links)
+                            {
+                                bool fwd = ctx.Reach.Contains(k.From) && !ctx.Reach.Contains(k.To);
+                                bool rev = k.TwoWay && ctx.Reach.Contains(k.To) && !ctx.Reach.Contains(k.From);
+                                if ((fwd || rev) && Req(k.Requires).Eval(ctx)) { ctx.Reach.Add(fwd ? k.To : k.From); any = true; }
+                            }
+                            foreach (var w in warpTo)
+                                if (w.Value > ZoneSet.Unassigned && !ctx.Reach.Contains(w.Value) && WarpHolds(w.Key, ctx, null)) { ctx.Reach.Add(w.Value); any = true; }
+                            if (home.Any(ctx.Reach.Contains)) back = true;
+                            if (!any) break;
                         }
-                        foreach (var w in warpTo)
-                            if (w.Value > ZoneSet.Unassigned && !ctx.Reach.Contains(w.Value) && WarpHolds(w.Key, ctx, null)) { ctx.Reach.Add(w.Value); any = true; }
-                        if (ctx.Reach.Contains(start)) back = true;
-                        if (!any) break;
                     }
-                    if (back) continue;
+                    return Tuple.Create(back, ctx.Reach);
+                };
+                // every zone reached but the start (and the doorways), and what the walk back found
+                var walks = new List<Tuple<int, int, Tuple<bool, HashSet<int>>>>();
+                var home0 = new HashSet<int> { start };
+                foreach (var kv in sv.ZoneSphere.OrderBy(x => x.Value).ThenBy(x => x.Key))
+                {
+                    if (kv.Key == start || doorways.Contains(kv.Key)) continue;
+                    walks.Add(Tuple.Create(kv.Key, kv.Value, walk(kv.Key, kv.Value, home0)));
+                }
+                // a start other than the game's own that the player leaves for good: back to where he came out counts as back (ReRoot)
+                var exits = walks.Any(w => w.Item3 != null && !w.Item3.Item1) ? ReRoot(sv, start, walks.ToDictionary(w => w.Item1, w => w.Item2), new HashSet<int>(walks.Where(w => w.Item3 != null && w.Item3.Item1).Select(w => w.Item1)), walk) : null;
+                if (exits != null)
+                {
+                    sv.ReturnTo.AddRange(exits.OrderBy(x => x));
+                    var home = new HashSet<int>(exits) { start };
+                    walks = walks.Select(w => exits.Contains(w.Item1) ? Tuple.Create(w.Item1, w.Item2, Tuple.Create(true, new HashSet<int>())) : Tuple.Create(w.Item1, w.Item2, walk(w.Item1, w.Item2, home))).ToList();
+                }
+                foreach (var w in walks)
+                {
+                    int z = w.Item1, sp = w.Item2;
+                    if (w.Item3 == null) { sv.SavedBySapling++; continue; }
+                    if (w.Item3.Item1) continue;
                     var trap = new OneWayTrap { Zone = z, Sphere = sp };
                     ZoneLink entry;
                     if (sv.FirstLink.TryGetValue(z, out entry)) trap.Entry = entry;
-                    trap.Inside.AddRange(ctx.Reach.Where(x => x != z).OrderBy(x => x));
+                    trap.Inside.AddRange(w.Item3.Item2.Where(x => x != z).OrderBy(x => x));
                     trapZones[z] = trap;
                     sv.Traps.Add(trap);
                 }
@@ -1584,6 +1753,65 @@ namespace UwEditor.Core.Randomizer
                         trap.Holds.Add(t);
                     }
                 }
+            }
+
+            /// <summary>
+            /// The return check from a start other than the game's own (StartOverride, or a start
+            /// teleport): the zones the player comes out into from the start, to count as back as the
+            /// start does, or null to keep the start alone. The game's own start can be gone back to
+            /// (the levels were made so); a random one may be a sealed room or a ledge left one way, from
+            /// which every zone reached would be a trap, although nothing needed lies behind. They count
+            /// when all of this holds, so that being back in one of them is as good as being at the start:
+            /// the start's pocket is the start zone, the doorways out of it and the zones the walk got back
+            /// to it from (pocket); nothing in the pocket is taken after the sphere the solve first leaves
+            /// it in (no placement there but what stands for "anywhere" gives a token first gained later,
+            /// no mechanism set off from it later), so going back there is never needed for what lies in
+            /// it; the exits are every zone entered from the pocket, and those entered by a warp in the
+            /// sphere that first leaves it or by a warp cast on its levels, so every way the solve leaves
+            /// the pocket begins in one of them; and each exit, with what was held when it was reached, gets to every other (walk:
+            /// the return check's own search), so from any of them the player can take any other way the
+            /// solve takes. A zone that gets back to an exit then gets on to all that the solve reaches.
+            /// What is not covered, as for a one-way way into the goal's area: a player who leaves the
+            /// pocket before taking what lies in it.
+            /// </summary>
+            HashSet<int> ReRoot(TimelineSolve sv, int start, Dictionary<int, int> sphereOf, HashSet<int> pocket, Func<int, int, ICollection<int>, Tuple<bool, HashSet<int>>> walk)
+            {
+                // a zone set solved on its own (Timeline.OnZones) has no game and no start square: nothing to compare
+                if (s == null || b.Nav == null || b.Auto == null) return null;
+                var own = b.Nav.BaseStartOf(s);
+                var at = b.Auto.Start;
+                if (at == null || own == null || (at.Level == own.Level && (int)at.X == (int)own.X && (int)at.Y == (int)own.Y)) return null;
+                // the start's pocket: the start, the doorways out of it and the zones the walk got back to it from
+                var front = new HashSet<int>(pocket) { start };
+                for (bool grew = true; grew;)
+                {
+                    grew = false;
+                    foreach (var e in sv.Events) if (e.Kind == "zone" && front.Contains(e.From) && doorways.Contains(e.Zone) && front.Add(e.Zone)) grew = true;
+                }
+                var entered = sv.Events.Where(e => e.Kind == "zone" && !front.Contains(e.Zone) && sphereOf.ContainsKey(e.Zone)).ToList();
+                if (entered.Count == 0) return null;
+                int first = entered.Where(e => front.Contains(e.From) || e.Warp != null).Select(e => e.Sphere).DefaultIfEmpty(-1).Min();
+                if (first < 0) return null;
+                // nothing of the pocket is taken after the sphere he first leaves it in
+                var none = new Dictionary<int, LevelState>();
+                foreach (var p in Placements)
+                {
+                    if (!front.Contains(PlacementZone(p, none)) || Everywhere(p, res.Facts)) continue;
+                    string t = Requirement.Normalize(p.Grants);
+                    int tsp;
+                    if (t.Length > 0 && sv.TokenSphere.TryGetValue(t, out tsp) && tsp > first) return null;
+                }
+                var inPocket = new Regex(@"\bzone:(" + string.Join("|", front) + @")\b");
+                if (sv.Events.Any(e => e.Kind == "flag" && e.Sphere > first && inPocket.IsMatch(e.Requires ?? ""))) return null;
+                var levels = new HashSet<int>(front.SelectMany(z => zs.LevelsOf(z)));
+                var exits = new HashSet<int>(entered.Where(e => front.Contains(e.From) || (e.Warp != null && (e.Sphere == first || levels.Contains(e.Warp.FromLevel)))).Select(e => e.Zone));
+                // an exit reached once the silver sapling is planted needs no way back (death takes him to it)
+                var walks = exits.ToDictionary(d => d, d => walk(d, sphereOf[d], new int[0]));
+                exits.RemoveWhere(d => walks[d] == null);
+                if (exits.Count == 0) return null;
+                foreach (int d in exits)
+                    if (!exits.All(walks[d].Item2.Contains)) return null;
+                return exits;
             }
         }
 
@@ -1616,12 +1844,12 @@ namespace UwEditor.Core.Randomizer
                 foreach (var w in res.Abilities.Auto.Warnings.Where(w => w.Contains("zoning") || w.Contains("by hand"))) sb.AppendLine("Zoning: " + w);
             }
             else
-                sb.AppendLine("Zones are those of the base state" + (given != null ? " (the automatic zoning given)" : "") + ". After a change, its level alone is rebuilt; each group of regions takes the base zone that has the most tiles in it; a part split off gets a new zone (ids from 1000); a base zone left without a group is joined by a free link to the one that took its tiles.");
+                sb.AppendLine("Zones are those of the base state" + (given != null ? " (the automatic zoning given)" : "") + ". After a change, its level alone is rebuilt; each group of regions takes the base zone that has the most tiles in it; a part split off gets a new zone (ids from 1000000); a base zone left without a group is joined by a free link to the one that took its tiles.");
             sb.AppendLine();
             if (sv != null)
             {
                 sb.AppendLine(string.Format("SOLVE ({0}): {1}; {2} spheres, {3} of {4} zones reached, {5} changes set off, {6} applied.", sv.Label, sv.GoalReached ? "goal reached" : "goal NOT reached",
-                    sv.Spheres.Count, sv.ZoneSphere.Count(kv => kv.Key < 1000), zs.Zones.Count(z => z.Id > ZoneSet.Unassigned), sv.Fired.Count, sv.Applied.Count));
+                    sv.Spheres.Count, BaseZonesReached(sv), zs.Zones.Count(z => z.Id > ZoneSet.Unassigned), sv.Fired.Count, sv.Applied.Count));
                 sb.AppendLine("  Goal: " + Z(res, sv, res.GoalZone) + (res.GoalFact != null ? " (facts: " + res.GoalFact.Id + "), needs " + res.GoalRequires : " (no goal fact: the largest zone of the last level)") + (sv.GoalMissing.Count > 0 ? "; missing: " + string.Join(", ", sv.GoalMissing.Distinct().Take(20)) : ""));
                 if (res.Ends.Count > 0)
                     sb.AppendLine("  Or the end of the game: " + string.Join("; ", res.Ends.Select(e => e.Key + " (trigger #" + e.Key.Trigger + "), " + Z(res, sv, e.Value))) + (sv.GoalReached && sv.GoalBy.Length > 0 ? ". Reached by " + sv.GoalBy + "." : "."));
@@ -1629,13 +1857,16 @@ namespace UwEditor.Core.Randomizer
                 if (missing.Count > 0) sb.AppendLine("  What blocks the links out of the reached part (token: links): " + string.Join(", ", missing.Select(x => x.Key + " " + x.Count())));
                 if (sv.SafeZones >= 0) sb.AppendLine(string.Format("  Taking nothing from inside the one-way traps: {0} zones{1}.", sv.SafeZones, sv.SafeGoal ? ", goal reached" : ""));
                 foreach (var w in sv.Warnings.Distinct()) sb.AppendLine("  Warning: " + w);
+                if (sv.FreeArea != null)
+                    sb.AppendLine(string.Format("  A new character casts from runes up to circle {0}: higher circles count {1} (the start's free area: {2} zone{3}).", sv.Options.NewCharacterCircle,
+                        sv.FreeAreaLeft < 0 ? "never, as the solve does not leave the start's free area" : "from sphere " + sv.FreeAreaLeft + ", when the solve first leaves the start's free area", sv.FreeArea.Count, sv.FreeArea.Count == 1 ? "" : "s"));
                 if (sv.OnceSpent.Count > 0) sb.AppendLine("  Single-use items spent (one per way, item or change that only they open): " + string.Join(", ", sv.OnceSpent.GroupBy(t => t).Select(g => g.Key + " " + g.Count())) + ".");
                 foreach (var c in sv.CutOff)
                     sb.AppendLine(string.Format("  Sphere {0}: a change cut the player off from {1} zone(s) reached before: {2}.", c.Key, c.Value.Count, string.Join(", ", c.Value.Take(8).Select(z => Z(res, sv, z))) + (c.Value.Count > 8 ? ", …" : "")));
                 sb.AppendLine();
                 sb.AppendLine("  The main option sets (zones reached, spheres, changes applied, traps, goal):");
                 foreach (var kv in res.Variants)
-                    sb.AppendLine(string.Format("    {0}: {1} zones, {2} spheres, {3} applied, {4} one-way traps{5}{6}", kv.Key, kv.Value.ZoneSphere.Count(x => x.Key < 1000), kv.Value.Spheres.Count, kv.Value.Applied.Count, kv.Value.Traps.Count,
+                    sb.AppendLine(string.Format("    {0}: {1} zones, {2} spheres, {3} applied, {4} one-way traps{5}{6}", kv.Key, BaseZonesReached(kv.Value), kv.Value.Spheres.Count, kv.Value.Applied.Count, kv.Value.Traps.Count,
                         kv.Value.SafeZones >= 0 ? " (" + kv.Value.SafeZones + " safe)" : "", kv.Value.GoalReached ? ", goal reached" : ""));
                 sb.AppendLine();
                 sb.AppendLine("TIMELINE (each sphere: zones reached, tokens gained, changes set off and applied)");
@@ -1662,6 +1893,7 @@ namespace UwEditor.Core.Randomizer
             if (sv != null)
             {
                 sb.AppendLine(string.Format("RETURN CHECK (from each zone reached, back to the start with what was held then; {0} one-way traps{1})", sv.Traps.Count, sv.SavedBySapling > 0 ? ", " + sv.SavedBySapling + " zones saved by the planted sapling" : ""));
+                if (sv.ReturnTo.Count > 0) sb.AppendLine("  The start is not the game's own and nothing in it is needed after the first sphere: back in a zone it leads out into counts as back (" + string.Join(", ", sv.ReturnTo.Select(z => Z(res, sv, z))) + ").");
                 foreach (var t in sv.Traps)
                     sb.AppendLine(string.Format("  {0} (sphere {1}){2}{3}{4}{5}", Z(res, sv, t.Zone), t.Sphere, t.Entry != null ? " entered by [" + t.Entry.Kind + "] " + t.Entry.Requires + (t.Entry.Level > 0 ? " at L" + t.Entry.Level + " (" + t.Entry.X + ", " + t.Entry.Y + ")" : "") : "",
                         t.Inside.Count > 0 ? "; leads on to " + string.Join(", ", t.Inside.Take(5).Select(z => Z(res, sv, z))) + (t.Inside.Count > 5 ? " …" : "") : "",

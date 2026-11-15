@@ -237,6 +237,34 @@ namespace UwEditor.Core.Tests
         }
 
         [Fact]
+        public void A_floor_that_a_lever_steps_is_stood_at_the_height_that_leads_on()
+        {
+            string game = GameData.Game("UW2"); if (game == null) return;
+            var s = GameSession.Open(game);
+            var m = s.LoadLevel(25);
+            var g = NavGraph.Build(s, l => l == 25 ? m : s.LoadLevel(l), new NavOptions(), new[] { 25 });
+            // the Ice Caverns, east of the bridge to the control island: the lever at (53, 15) steps (54, 16) and (53, 16) between 10 and 14
+            var tiles = g.OscillatorTiles[25];
+            Assert.Equal(new[] { "53,16", "54,16" }, tiles.Select(t => t.X + "," + t.Y).OrderBy(x => x).ToArray());
+            Assert.All(tiles, t => { Assert.Equal(10, t.Low); Assert.Equal(14, t.High); Assert.Equal(10, t.Height); Assert.Equal("flag:oscillator_L25_742", t.Flag); Assert.Equal(743, t.Control); });
+            // the level is left as it was
+            Assert.Equal(14, m.Tiles[53, 16].Height);
+            Assert.Equal(14, m.Tiles[54, 16].Height);
+            // each is a region of its own, passed with the lever's flag, and the lever is a mechanism that grants it
+            int r = g.RegionOf(25, 54, 16);
+            Assert.Equal("toggle", g.Regions[r].DoorKind);
+            Assert.Contains(g.Edges, e => e.From == g.RegionOf(25, 55, 16) && e.To == r && e.Requires.Contains("flag:oscillator_L25_742"));
+            var mech = g.Mechanisms.Single(x => x.Level == 25 && x.Kind == "oscillator");
+            Assert.Equal("flag:oscillator_L25_742", mech.Flag);
+            Assert.NotEqual("", mech.SetOff);
+            // the two-state controls are as they were
+            Assert.Equal(6, g.ToggleTiles[25].Count);
+            // so the control island is reached with no spell
+            var t2 = Timeline.Build(s, l => s.LoadLevel(l), new NavOptions(), new AbilityOptions { Magic = false, SingleUseItems = false }, null, null, variants: false);
+            Assert.Contains(t2.Set.ZoneAt(25, 39, 16), t2.Solve.ZoneSphere.Keys);
+        }
+
+        [Fact]
         public void The_Academys_telekinesis_wand_works_on_its_level_only()
         {
             string game = GameData.Game("UW2"); if (game == null) return;
