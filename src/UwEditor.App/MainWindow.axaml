@@ -268,8 +268,29 @@
       <DockPanel Grid.Column="2">
       <Border DockPanel.Dock="Top" Classes="toolbar" IsVisible="{Binding HasGame}">
         <WrapPanel>
-          <ComboBox x:Name="ToolBox" ItemsSource="{Binding Tools}" SelectedIndex="{Binding ToolIndex}" Width="96" Margin="0,0,6,0"
-                    ToolTip.Tip="Select: click to pick. Move: click a tile to move the selected object there. Paint: drag over tiles to paint them with the brush; Ctrl+click a tile to take the brush from it (its template, textures, type or height). Try Jump: click the square to jump from, then the square to land on; the flight is drawn green if the player lands there, red up to where it ends if not." />
+          <StackPanel x:Name="ToolButtons" Orientation="Horizontal" Margin="0,0,6,0">
+            <ToggleButton x:Name="ToolSelectButton" Classes="tool" Tag="0" Click="OnToolButton" ToolTip.Tip="Select: click to pick.">
+              <Canvas Width="16" Height="16">
+                <Path Data="M 3,1.5 L 3,13 L 6,10.4 L 8.2,15 L 10.2,14 L 8,9.6 L 12,9.6 Z" Classes="solid" />
+              </Canvas>
+            </ToggleButton>
+            <ToggleButton x:Name="ToolMoveButton" Classes="tool" Tag="1" Click="OnToolButton" ToolTip.Tip="Move: click a tile to move the selected object there.">
+              <Canvas Width="16" Height="16">
+                <Path Data="M 8,1.5 L 8,14.5 M 1.5,8 L 14.5,8 M 6,3.5 L 8,1.5 L 10,3.5 M 6,12.5 L 8,14.5 L 10,12.5 M 3.5,6 L 1.5,8 L 3.5,10 M 12.5,6 L 14.5,8 L 12.5,10" Classes="line" StrokeThickness="1.4" StrokeLineCap="Round" StrokeJoin="Round" />
+              </Canvas>
+            </ToggleButton>
+            <ToggleButton x:Name="ToolPaintButton" Classes="tool" Tag="2" Click="OnToolButton" ToolTip.Tip="Paint: drag over tiles to paint them with the brush; Ctrl+click a tile to take the brush from it (its template, textures, type or height).">
+              <Canvas Width="16" Height="16">
+                <Path Data="M 13.4,1.4 L 14.6,2.6 L 8.2,10 L 6,7.8 Z" Classes="solid" />
+                <Path Data="M 5.4,8.8 C 3.4,9 3,11 2.6,12.8 C 2.2,13.8 1.4,14.2 1.4,14.2 C 4,15 7.6,13.6 7.2,10.6 Z" Classes="solid" />
+              </Canvas>
+            </ToggleButton>
+            <ToggleButton x:Name="ToolJumpButton" Classes="tool" Tag="3" Click="OnToolButton" ToolTip.Tip="Try Jump: click the square to jump from, then the square to land on; the flight is drawn green if the player lands there, red up to where it ends if not.">
+              <Canvas Width="16" Height="16">
+                <Path Data="M 2.5,12.5 C 3.5,2.5 11.5,2.5 13.2,11 M 10.6,9.2 L 13.3,11.5 L 14.8,8.3 M 1,14.5 L 4.5,14.5 M 11.5,14.5 L 15,14.5" Classes="line" StrokeThickness="1.4" StrokeLineCap="Round" StrokeJoin="Round" />
+              </Canvas>
+            </ToggleButton>
+          </StackPanel>
           <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding IsPainting}" Margin="0,0,6,0">
             <ComboBox x:Name="PaintModeBox" ItemsSource="{Binding PaintModes}" SelectedIndex="{Binding PaintMode}" Width="140" />
             <ComboBox x:Name="SlotBox" ItemsSource="{Binding Slots}" SelectedIndex="{Binding PaintSlot}" IsVisible="{Binding PaintsTexture}" Width="170">

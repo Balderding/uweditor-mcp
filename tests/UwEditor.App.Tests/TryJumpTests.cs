@@ -86,5 +86,41 @@ namespace UwEditor.App.Tests
             Assert.True(w.ShownJump.Leap);
             w.Close();
         }
+        /// <summary>The four tool buttons: the one of the tool in use is down, a click takes its tool, a click on the one in use leaves it down; each is square with a tool tip.</summary>
+        [AvaloniaFact]
+        public void The_tool_buttons_follow_the_tool_and_set_it()
+        {
+            string g = GameData.Game("UW"); if (g == null) return;
+            var w = Ui.Open(g);
+            w.AskBeforeDiscarding = false;
+            var vm = w.ViewModel;
+            vm.LoadLevel(1);
+            Ui.Pump();
+            var names = new[] { "ToolSelectButton", "ToolMoveButton", "ToolPaintButton", "ToolJumpButton" };
+            var b = System.Linq.Enumerable.ToArray(System.Linq.Enumerable.Select(names, n => w.FindControl<Avalonia.Controls.Primitives.ToggleButton>(n)));
+            for (int i = 0; i < 4; i++)
+            {
+                Assert.NotNull(b[i]);
+                Assert.Equal(i == 0, b[i].IsChecked);
+                Assert.Contains(vm.Tools[i], (string)Avalonia.Controls.ToolTip.GetTip(b[i]));
+                Assert.Equal(b[i].Bounds.Width, b[i].Bounds.Height);
+                Assert.True(b[i].Bounds.Width > 0);
+            }
+            vm.ToolIndex = 2;
+            Ui.Pump();
+            for (int i = 0; i < 4; i++) Assert.Equal(i == 2, b[i].IsChecked);
+            // a capture when TOOLBAR_SHOTS names a folder (to look at the buttons)
+            string shots = System.Environment.GetEnvironmentVariable("TOOLBAR_SHOTS");
+            if (!string.IsNullOrEmpty(shots)) { System.IO.Directory.CreateDirectory(shots); new Ui.Codec().Save(Ui.Capture(w), System.IO.Path.Combine(shots, "tool-buttons.png")); }
+            b[3].RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Avalonia.Controls.Button.ClickEvent));
+            Ui.Pump();
+            Assert.Equal(MainWindow.TryJumpTool, vm.ToolIndex);
+            for (int i = 0; i < 4; i++) Assert.Equal(i == 3, b[i].IsChecked);
+            b[3].IsChecked = false;      // as a click on the button already down would leave it
+            b[3].RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Avalonia.Controls.Button.ClickEvent));
+            Ui.Pump();
+            Assert.Equal(MainWindow.TryJumpTool, vm.ToolIndex);
+            Assert.True(b[3].IsChecked);
+        }
     }
 }

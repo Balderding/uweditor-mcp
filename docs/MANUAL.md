@@ -204,7 +204,8 @@ with it. The **Undo history** window counts the steps of the level shown; going 
 change made with other levels undoes all of it. **Save levels** (Ctrl+S) writes LEV.ARK and
 keeps `LEV.ARK.BKP`, plus `LEV.ARK.ORIG` the first time.
 
-The toolbar above the view chooses the tool:
+The four square buttons at the left of the toolbar above the view choose the tool (the one
+in use stays down; each says what it does when the mouse rests on it):
 - **Select:** a click picks an object or tile; a double click also moves the view to it
   (so does double-clicking in the list).
 - **Move:** click a square and the selected object goes there, keeping its height above the

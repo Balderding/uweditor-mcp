@@ -30,11 +30,27 @@ namespace UwEditor.App
         /// <summary>"start" or "player" while the Move tool carries that arrow.</summary>
         string carrying;
 
+        /// <summary>The four tool buttons (Select, Move, Paint, Try Jump): the one of the tool in use is down.</summary>
+        void SyncToolButtons()
+        {
+            foreach (var c in ToolButtons.Children)
+                if (c is Avalonia.Controls.Primitives.ToggleButton b && b.Tag is string t) b.IsChecked = int.Parse(t) == vm.ToolIndex;
+        }
+
+        /// <summary>A tool button was clicked: its tool is taken (a click on the one in use leaves it down).</summary>
+        void OnToolButton(object sender, Avalonia.Interactivity.RoutedEventArgs e)
+        {
+            if (sender is Avalonia.Controls.Primitives.ToggleButton b && b.Tag is string t) vm.ToolIndex = int.Parse(t);
+            SyncToolButtons();
+        }
+
         void InitEditing()
         {
             vm.LevelEdited += OnLevelEdited;
+            SyncToolButtons();
             vm.ToolChanged += () =>
             {
+                SyncToolButtons();
                 View.Tool = vm.ToolIndex == 1 ? ViewTool.Move : vm.ToolIndex == 2 ? ViewTool.Paint : ViewTool.Select;
                 carrying = null;
                 bool hadJump = jumpFromX >= 0;
