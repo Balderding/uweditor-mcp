@@ -43,7 +43,7 @@ namespace UwEditor.Core.Randomizer
         public bool Anywhere = true;
         /// <summary>At Apply: the spoiler log in the map notes: a warning on page 9, the hints from page 10, a page saying the solutions come next, then the solutions (SpoilerNotes).</summary>
         public bool SpoilerNotes;
-        /// <summary>Where the game starts: the game's own square, a random one (StartScope, drawn from each attempt's seed by StartPicker), or StartAt. UW1 only, as the shuffle.</summary>
+        /// <summary>Where the game starts: the game's own square, a random one (StartScope, drawn from each attempt's seed by StartPicker), or StartAt. Both games (UW2 since 0.1.49).</summary>
         public StartChoice Start = StartChoice.Own;
         /// <summary>With a random start: level 1 only or any level.</summary>
         public StartScope StartScope = StartScope.FirstLevels;
@@ -92,6 +92,8 @@ namespace UwEditor.Core.Randomizer
         public bool Key;
         /// <summary>What it gives, as the placements of the levels read it (tokens, and count facts with quantities).</summary>
         public readonly List<Placement> Gives = new List<Placement>();
+        /// <summary>The flag facts that follow this object (a "match": the game checks it by its kind), whose placements are among Gives and go where it goes.</summary>
+        public readonly List<string> FollowFacts = new List<string>();
         /// <summary>Why it stays where it is, or null when it moves.</summary>
         public string Stays;
         /// <summary>What its place needs besides being reached (the locked container it lies in), or "".</summary>
@@ -210,8 +212,18 @@ namespace UwEditor.Core.Randomizer
         /// <summary>The categories whose items are always worth a hint: the talismans and the Key of Infinity's parts.</summary>
         public static readonly HashSet<string> Artifacts = new HashSet<string> { "talismans", "infinity" };
 
+        /// <summary>The game the shuffle ran on (what IsArtifact reads the item numbers by).</summary>
+        public GameKind Game = GameKind.UW1;
+
         /// <summary>An artifact: a talisman, a part of the Key of Infinity, or a unique item with a proper name (Caliburn's blade and hilt: NamedItems). Other plot items (six orb rocks, the flutes) are hinted only when crucial.</summary>
-        public static bool IsArtifact(ShuffleObject o) { return Artifacts.Contains(o.Category) || NamedItems.Of(UltimateEditor.Games.GameKind.UW1, o.Item) != null; }
+        public static bool IsArtifact(ShuffleObject o) { return IsArtifact(o, GameKind.UW1); }
+
+        /// <summary>An artifact of the game: UW1's as above; in UW2 a blackrock key gem (0x118-0x11F), the eight things the castle's plot turns on. Item numbers mean other things in the two games (UW1's 0x118 is Caliburn's blade, UW2's a key gem).</summary>
+        public static bool IsArtifact(ShuffleObject o, GameKind game)
+        {
+            if (game == GameKind.UW2) return o.Item >= 0x118 && o.Item <= 0x11F;
+            return Artifacts.Contains(o.Category) || NamedItems.Of(game, o.Item) != null;
+        }
         internal Func<ShuffleObject, bool> crucialTest;
         readonly Dictionary<ShuffleObject, bool> crucial = new Dictionary<ShuffleObject, bool>();
 
@@ -231,12 +243,13 @@ namespace UwEditor.Core.Randomizer
         }
 
         /// <summary>An item the spoiler notes give: an artifact, whatever placed it (Caliburn's blade is no key the logic asks for, yet worth a hint), or a key item the game cannot be finished without.</summary>
-        public bool WorthAHint(KeyShuffleMove m) { return IsArtifact(m.Item) || m.ByFill && IsCrucial(m.Item); }
+        public bool WorthAHint(KeyShuffleMove m) { return IsArtifact(m.Item, Game) || m.ByFill && IsCrucial(m.Item); }
         public IEnumerable<ShuffleObject> Moving { get { return Objects.Where(o => o.Stays == null); } }
     }
 
     /// <summary>
-    /// The key item shuffle (Phase D of the automatic zones, UW1): the key items (keys, the Key of
+    /// The key item shuffle (Phase D of the automatic zones; UW1, and UW2 from the game's own start with
+    /// UW2's categories, Uw2Categories, and the facts that follow their object, Fact.Match): the key items (keys, the Key of
     /// Infinity's parts, the talismans lying as objects, runestones and the rune bag, ability items,
     /// the dragon skin boots' ingredients, plot items lying in the levels) move to new places so that
     /// the game stays beatable under the chosen logic. The method is assumed fill: the key items in
@@ -254,7 +267,8 @@ namespace UwEditor.Core.Randomizer
     /// start teleport at the game's square (StartTeleport); the fill needs nothing else: it places
     /// each key item among the places the solver reaches from the start. A gift a conversation hands
     /// over only for a time (a fact of kind b with a "gift") that the unshuffled game's solve from the
-    /// start does not get, and that the logic needs, is made anew: a key item with no original place
+    /// start does not get (UW2 from a start elsewhere: the solve with every moving item held, as the
+    /// start filter's), and that the logic needs, is made anew: a key item with no original place
     /// (ShuffleObject.Made), placed by the fill on the floor of a place and created there by Apply
     /// (TimedGifts). A new character casts from runes only up to AbilityOptions.NewCharacterCircle until
     /// he leaves the start's free area (Timeline's solve); when the way out of it needs more (a sealed
@@ -266,8 +280,30 @@ namespace UwEditor.Core.Randomizer
     /// </summary>
     public static class KeyShuffle
     {
-        /// <summary>The categories that can move.</summary>
+        /// <summary>The categories that can move (UW1's; UW2 has <see cref="Uw2Categories"/>).</summary>
         public static readonly string[] Categories = { "keys", "infinity", "talismans", "runes", "abilities", "ingredients", "plot" };
+
+        /// <summary>
+        /// UW2's categories: the same names as four of UW1's, so the options and the settings file
+        /// serve both games; UW2 has no Key of Infinity, no talismans lying as objects and no boots'
+        /// ingredients. Its key gems, basilisk oil, crystals and the like are plot items.
+        /// </summary>
+        public static readonly string[] Uw2Categories = { "keys", "runes", "abilities", "plot" };
+
+        /// <summary>The categories of a game (UW1's when s is null).</summary>
+        public static string[] CategoriesOf(GameSession s) { return s != null && s.IsUw2 ? Uw2Categories : Categories; }
+
+        /// <summary>A category's name in the window and the log, for the game.</summary>
+        public static string CategoryName(string c, bool uw2)
+        {
+            if (!uw2) return CategoryName(c);
+            switch (c)
+            {
+                case "abilities": return "Ability items (scrolls, wands, potions, lock picks, enchanted things)";
+                case "plot": return "Plot items (key gems, basilisk oil, crystals, eggshells, dream plants …)";
+                default: return CategoryName(c);
+            }
+        }
 
         public static string CategoryName(string c)
         {
@@ -379,6 +415,7 @@ namespace UwEditor.Core.Randomizer
         {
             int it = o.Item;
             if (KeyIndex.IsKey(it, s.Kind)) return "keys";
+            if (s.IsUw2) return Uw2CategoryOf(s, o, abilityItems, gives);
             if (it >= 0xE1 && it <= 0xE7) return "infinity";
             string kind;
             string tok = KeyItems.Classify(s, o, out kind);
@@ -390,8 +427,31 @@ namespace UwEditor.Core.Randomizer
             return null;
         }
 
-        /// <summary>The tokens the logic asks for anywhere (links, facts, placements' conditions, mechanisms, the goal), with what each ability or count stands for.</summary>
-        static HashSet<string> Needed(TimelineResult t, SolverOptions so)
+        /// <summary>
+        /// UW2's categories (the keys aside): runestones (0xE8-0xFF) and the rune bag; the things
+        /// the logic counts as abilities (AbilitySources: scrolls, wands, potions, worn enchanted
+        /// things) and lock picks (item 0x101); the quest items (ItemCategories' quest range, the
+        /// blackrock gems among them). Items 0xE1-0xE7 are potions in UW2, not the Key of Infinity.
+        /// </summary>
+        static string Uw2CategoryOf(GameSession s, ObjectInfo o, HashSet<int> abilityItems, IEnumerable<Placement> gives)
+        {
+            int it = o.Item;
+            if ((it >= 0xE8 && it <= 0xFF) || it == Challenges.RuneBag) return "runes";
+            if (abilityItems.Contains(o.Index) || it == 0x101) return "abilities";
+            string kind;
+            KeyItems.Classify(s, o, out kind);
+            if (kind == "quest item" || kind == "talisman") return "plot";
+            return null;
+        }
+
+        /// <summary>
+        /// The tokens the logic asks for anywhere (links, facts, placements' conditions, mechanisms, the goal), with what each ability or count stands for.
+        /// uw2: a lock (pick:Z) also stands for the Open spell's sources, which the solver counts for it (Requirement: the Open spell tries the lock
+        /// as a pick of skill 45): left out, a thing of Opening (UW2's cudgel of Entry, level 57 #484) was filler, held all through the fill and then
+        /// put anywhere, and a start whose way out is a locked door failed the check every time (0.1.49). UW1 keeps its list, so its seeds give
+        /// what they gave.
+        /// </summary>
+        static HashSet<string> Needed(TimelineResult t, SolverOptions so, bool uw2 = false)
         {
             var texts = new List<string>();
             texts.AddRange(t.Set.Links.Select(k => k.Requires));
@@ -416,7 +476,36 @@ namespace UwEditor.Core.Randomizer
                 string head = c < 0 ? k : k.Substring(0, c), tail = c < 0 ? "" : k.Substring(c + 1);
                 if (head == "spell" || head == "use") { foreach (var p in new[] { "cast:", "worn:", "perm:", "once:", "spell:" }) h.Add(p + tail); }
                 if (head == "talismans") h.Add("talisman:*");
-                if (head == "pick") h.Add("item:lockpick");
+                if (head == "pick") { h.Add("item:lockpick"); if (uw2) foreach (var p in new[] { "cast:", "worn:", "perm:", "once:", "spell:", "use:" }) h.Add(p + "open"); }
+            }
+            return h;
+        }
+
+        static readonly Regex TurnsToRock = new Regex(@"\((\d+), (\d+)\)(?: to \((\d+), (\d+)\))? becomes rock");
+
+        /// <summary>
+        /// UW2: the squares a trap turns to rock (the timeline's mechanisms of kind "terrain", as
+        /// their description gives each part of the change; the schedule's scheduled triggers among
+        /// them). A tile that becomes solid removes the static objects on it (event/WORLDEV.C
+        /// change_terrain, raise_up: Obj_Punt when solid), so no place is there; a tile that only
+        /// rises or sinks carries its objects along (raise_up, put_down). "L:x:y" keys; empty for
+        /// UW1, whose scatter stays as it was.
+        /// </summary>
+        internal static HashSet<string> ChangingSquares(GameSession s, TimelineResult t)
+        {
+            var h = new HashSet<string>();
+            if (!s.IsUw2 || t?.Abilities?.Auto?.Graph == null) return h;
+            foreach (var m in t.Abilities.Auto.Graph.Mechanisms)
+            {
+                if (m.Kind != "terrain") continue;
+                foreach (Match mm in TurnsToRock.Matches(m.What ?? ""))
+                {
+                    int x0 = int.Parse(mm.Groups[1].Value), y0 = int.Parse(mm.Groups[2].Value);
+                    int x1 = mm.Groups[3].Success ? int.Parse(mm.Groups[3].Value) : x0, y1 = mm.Groups[4].Success ? int.Parse(mm.Groups[4].Value) : y0;
+                    for (int x = Math.Min(x0, x1); x <= Math.Max(x0, x1); x++)
+                        for (int y = Math.Min(y0, y1); y <= Math.Max(y0, y1); y++)
+                            if (x >= 0 && y >= 0 && x < 64 && y < 64) h.Add(m.Level + ":" + x + ":" + y);
+                }
             }
             return h;
         }
@@ -467,10 +556,20 @@ namespace UwEditor.Core.Randomizer
             }
             var abilityItems = new Dictionary<int, HashSet<int>>();
             foreach (var src in t.Abilities.Sources) { HashSet<int> h; if (!abilityItems.TryGetValue(src.Level, out h)) abilityItems[src.Level] = h = new HashSet<int>(); h.Add(src.Index); }
+            // things that work on their own level only (UW2's telekinesis wands of levels 43 and 19, AbilitySources.OnlyLevel)
+            var levelBound = new HashSet<string>(t.Abilities.Sources.Where(x => x.OnlyLevel > 0).Select(x => x.Level + ":" + x.Index));
             // objects the facts name by object as an item to have (flag facts) or as a warp's destination: they stay
             var factNamed = new Dictionary<string, string>();
+            // flag facts that follow their object (match: the game checks the thing by its kind): the object may move, the fact's placements go with it
+            var follows = new Dictionary<string, List<Fact>>();
             foreach (var f in t.Facts.Facts)
             {
+                FactSpot at;
+                if (f.Kind == "flag" && f.Match != null)
+                {
+                    if (t.Abilities.FactObjects.TryGetValue(f.Id, out at)) { List<Fact> fl; if (!follows.TryGetValue(at.Level + ":" + at.Object, out fl)) follows[at.Level + ":" + at.Object] = fl = new List<Fact>(); fl.Add(f); }
+                    continue;
+                }
                 if (f.Kind == "flag" && f.Object >= 0) factNamed[f.Level + ":" + f.Object] = f.Id;
                 if (f.Kind == "warp" && f.To != null && f.To.HasObject) factNamed[f.To.Level + ":" + f.To.Object] = f.Id;
             }
@@ -483,6 +582,7 @@ namespace UwEditor.Core.Randomizer
                 foreach (var o in w.Model(l).Objects)
                     if (!o.Free && o.OnTile && o.IsCritter && o.Record.Length > 0x1A && (o.Record[0x1A] == Challenges.ShakWhoami || o.Record[0x1A] == Challenges.ZakWhoami))
                         for (int dx = -1; dx <= 1; dx++) for (int dy = -1; dy <= 1; dy++) exceptionSquares.Add(l + ":" + (o.TileX + dx) + ":" + (o.TileY + dy));
+            var changing = ChangingSquares(s, t);
             var filler = opt.Filler ? new HashSet<string>(ItemShuffle.Candidates(s, w.Model).Select(c => c.Level + ":" + c.Index)) : new HashSet<string>();
             var extra = opt.Extra ?? new HashSet<int>();
             foreach (int level in w.Levels)
@@ -511,6 +611,15 @@ namespace UwEditor.Core.Randomizer
                         continue;
                     }
                     string cat = CategoryOf(s, o, abil, gives);
+                    // a fact that follows this object: its token goes where the object goes, if it moves (Requires free only: the place's own requirement replaces it)
+                    List<Fact> follow;
+                    var followGives = new List<Placement>();
+                    if (follows.TryGetValue(key, out follow))
+                    {
+                        foreach (var ff in follow)
+                            followGives.AddRange(t.Set.Placements.Where(p => p.Source == "facts: " + ff.Id && (string.IsNullOrWhiteSpace(p.Requires) || Requirement.Normalize(p.Requires) == "free")));
+                        if (followGives.Count > 0) { cat = cat ?? "plot"; gives = gives.Concat(followGives).ToList(); }
+                    }
                     bool fill = filler.Contains(key) || (extra.Contains(o.Item) && ExtraItems.ClassOf(s, o.Item) != null);
                     if (cat == null && !fill) continue;
                     var so = new ShuffleObject
@@ -519,6 +628,7 @@ namespace UwEditor.Core.Randomizer
                         Category = cat ?? "filler", Record = RecordOf(o), Zone = t.Set.ZoneOf(level, m, o),
                     };
                     so.Gives.AddRange(gives);
+                    foreach (var fp in followGives) so.FollowFacts.Add(fp.Source.Substring(7));
                     List<Placement> inside;
                     if (cat == null && boxes.TryGetValue(o.Index, out inside)) { so.Container = true; so.Gives.AddRange(inside); }
                     so.OnFloor = o.OnTile;
@@ -526,13 +636,14 @@ namespace UwEditor.Core.Randomizer
                     so.Requires = AbilityZones.ContainerLock(m, o) ?? "";
                     if (so.Requires.Length > 0) so.Holder += " (locked: " + so.Requires + ")";
                     // who holds it, and whether that keeps it
-                    bool trap = false, template = false;
+                    bool trap = false, template = false, namedHolder = false;
                     ObjectInfo carrier = null;
                     for (int up = o.Parent, g = 0; up >= 0 && g < 64; up = m.Objects[up].Parent, g++)
                     {
                         var u = m.Objects[up];
                         if (u.IsTrapOrTrigger) { trap = true; if (u.Item == 0x187) template = true; }
                         if (u.IsCritter && carrier == null) carrier = u;
+                        if (named.Contains(up)) namedHolder = true;
                     }
                     if (o.Parent >= 0)
                     {
@@ -546,6 +657,9 @@ namespace UwEditor.Core.Randomizer
                     else if (template) so.Stays = "a create trap's template (the trap makes it)";
                     else if (trap) so.Stays = "inside a trap";
                     else if (named.Contains(o.Index)) so.Stays = "a trap or trigger names it";
+                    // UW2: what lies in a container a trap names goes with the container (a delete trap takes it all)
+                    else if (s.IsUw2 && namedHolder) so.Stays = "it lies in a container a trap or trigger names (a delete trap would take it along)";
+                    else if (s.IsUw2 && changing.Contains(level + ":" + o.TileX + ":" + o.TileY)) so.Stays = "on a square a trap turns to rock (that removes what lies on it)";
                     else if (o.Children.Any(c => m.Objects[c].IsTrapOrTrigger)) so.Stays = "it holds a trap or trigger";
                     else if (!o.IsQuantity && o.Link != 0 && !so.Container) so.Stays = extra.Contains(o.Item) && ExtraItems.IsContainer(s, o.Item)
                         ? "a container holding something the logic needs or a key item (its contents take part instead)" : "it holds other objects (its list stays on its level)";
@@ -555,12 +669,18 @@ namespace UwEditor.Core.Randomizer
                     else if (carrier != null && !opt.CreatureInventories) so.Stays = "carried by a creature (creature inventories off)";
                     else if (carrier != null && carrier.Record.Length > 0x1A && carrier.Record[0x1A] != 0) so.Stays = "carried by an NPC with a conversation (it may hand it over)";
                     else if (factNamed.TryGetValue(key, out factId)) so.Stays = "the fact " + factId + " names it by its object";
+                    // UW2: the game puts the Academy's telekinesis wand back on its level whenever the player leaves it (game/GAMEWRAP.C do_level_hacks, event/WORLDEV.C remove_TK_wand), and the logic reads it as working there only
+                    else if (levelBound.Contains(key)) so.Stays = "it works on its own level only, and the game puts it back there when the player leaves (remove_TK_wand)";
                     else if (gives.Any(p => p.Grants.Length > 0 && traded.Contains(Requirement.Normalize(p.Grants)))) so.Stays = "a trade fact ties its token to who holds it";
-                    else if (o.Item == 0x117) so.Stays = "an orb (Tyball's orb on L7 is the same item, and the facts name it)";
+                    else if (!s.IsUw2 && o.Item == 0x117) so.Stays = "an orb (Tyball's orb on L7 is the same item, and the facts name it)";
+                    // UW2: a blackrock key gem that the facts give where it lies (carried, on the Void's platform, picked up into a trigger chain), not by its kind
+                    else if (s.IsUw2 && o.Item >= 0x118 && o.Item <= 0x11F && followGives.Count == 0) so.Stays = "a blackrock key gem the facts give where it lies, not wherever it is (obj/USEITEMS.C UseKeyGem takes any gem of its kind, but the facts that give this one name its place)";
                     else if (guarded.Contains(o.Item)) so.Stays = "the game looks for this kind (the emerald puzzle, an inventory trap)";
                     else if (exceptionSquares.Contains(level + ":" + o.TileX + ":" + o.TileY) && (Challenges.IsCoinOrGem(s, o.Item) || Challenges.IsFood(s, o.Item)) && cat == null)
                         so.Stays = "beside Shak or Zak (the challenges' exceptions)";
-                    else if (o.Item == 0x126) so.Stays = "the moonstone: Gate Travel goes to it (fact gate_travel), and the sealed moonorb area beside it is entered only that way";
+                    // UW2: a plot item the logic asks for nothing of stays: a puzzle the logic does not model may look for it (the Void's and Talorus's artifacts and spheres)
+                    else if (s.IsUw2 && cat == "plot" && !so.Key && !fill) so.Stays = "a plot item the logic does not ask for (a puzzle the logic does not model may look for it)";
+                    else if (o.Item == 0x126) so.Stays = s.IsUw2 ? "a moonstone: Gate Travel goes to it" : "the moonstone: Gate Travel goes to it (fact gate_travel), and the sealed moonorb area beside it is entered only that way";
                     list.Add(so);
                 }
             }
@@ -641,7 +761,7 @@ namespace UwEditor.Core.Randomizer
         /// <summary>The items a shuffle with these logic options would make for the start t was built from (its own solve, the logic's needs).</summary>
         internal static List<ShuffleObject> MadeFor(GameSession s, TimelineResult t, AbilityOptions logic)
         {
-            return MadeItems(s, t, t.Solve, Needed(t, Timeline.SolverFor(t, logic, null)));
+            return MadeItems(s, t, t.Solve, Needed(t, Timeline.SolverFor(t, logic, null), s.IsUw2));
         }
 
         /// <summary>
@@ -654,7 +774,8 @@ namespace UwEditor.Core.Randomizer
         internal static List<ShuffleObject> MadeAbilities(GameSession s, TimelineResult t, AbilityOptions logic, IEnumerable<ShuffleObject> moving)
         {
             var list = new List<ShuffleObject>();
-            if (StartAbilities.Withheld(s, logic).Count == 0) return list;
+            int startLevel = StartAbilities.StartLevel(t);
+            if (StartAbilities.Withheld(s, logic, startLevel).Count == 0) return list;
             foreach (var ab in StartAbilities.Needed(s, t, logic, GivesTokens(t, moving.Where(o => o.Stays == null)).ToList()))
             {
                 string token;
@@ -664,7 +785,7 @@ namespace UwEditor.Core.Randomizer
                 var o = new ShuffleObject
                 {
                     Level = -1, Index = -1, Item = g.Item, Name = s.Names.Get(g.Item) + " of " + SpellTables.Name(s, spell), Category = "abilities", Key = true, Holder = "(made anew)", Zone = -1,
-                    Made = new MissedGift { Ability = ab, Object = g, Token = token, Reason = StartAbilities.Why(s, logic, ab) },
+                    Made = new MissedGift { Ability = ab, Object = g, Token = token, Reason = StartAbilities.Why(s, logic, ab, startLevel) },
                     Record = new ItemRewrite { Index = -1, Item = g.Item, Quality = g.Quality, Flags = g.Flags & 7, Link = g.Link, Owner = g.Owner, Enchanted = g.Enchanted, IsQuantity = g.IsQuantity, Exact = true },
                 };
                 o.Gives.Add(new Placement { Grants = token, Notes = "made for the start's way out: " + ab, Source = "made" });
@@ -716,11 +837,14 @@ namespace UwEditor.Core.Randomizer
         {
             // what moves, and what rides along inside a container that moves: their placements are the movers' now
             var moving = new HashSet<string>(objs.Where(o => o.Stays == null || o.RidesIn != null).Select(o => o.Key2));
+            // and the facts that follow a moving object: their placements are the mover's
+            var followed = new HashSet<string>(objs.Where(o => o.Stays == null).SelectMany(o => o.FollowFacts).Select(id => "facts: " + id));
             var fixedList = new List<Placement>();
             foreach (var p in t.Set.Placements)
             {
                 var mm = p.Source == "levels" ? PlacedObject.Match(p.Notes ?? "") : Match.Empty;
                 if (mm.Success && moving.Contains(mm.Groups[2].Value + ":" + mm.Groups[1].Value)) continue;
+                if (followed.Count > 0 && followed.Contains(p.Source ?? "")) continue;
                 fixedList.Add(p);
             }
             return new Solver { T = t, Opt = opt, Fixed = fixedList, Places = objs.Where(o => o.Stays == null).ToList() };
@@ -743,7 +867,7 @@ namespace UwEditor.Core.Randomizer
 
         /// <summary>
         /// Computes a shuffle of the levels as they are (with their unsaved edits): nothing is
-        /// written. UW1 only (the facts and the time-aware solver are UW1's).
+        /// written. Both games, from the game's own start or another (KeyShuffleOptions.Start).
         /// </summary>
         public static KeyShuffleResult Run(GameSession s, LevelEdits edits, KeyShuffleOptions opt, FactSet facts = null)
         {
@@ -757,7 +881,6 @@ namespace UwEditor.Core.Randomizer
         public static KeyShuffleResult RunOn(GameSession s, LevelSnapshot levels, KeyShuffleOptions opt, FactSet facts = null)
         {
             opt = opt.Clone();
-            if (s.IsUw2) { var u = new KeyShuffleResult { Options = opt }; u.Refused = "The key item shuffle works on Ultima Underworld 1 only: its facts and solver cover no other game."; u.Log.AppendLine(u.Refused); return u; }
             if (opt.Start != StartChoice.Own) return RunWithStart(s, levels, opt, facts);
             TimelineResult t;
             var r = RunCore(s, levels, opt, facts, out t);
@@ -767,13 +890,60 @@ namespace UwEditor.Core.Randomizer
         }
 
         /// <summary>
+        /// UW2: a warning for a start in a world the castle's blackrock gem does not open at plot 0,
+        /// or null (UW1, Britannia, the Prison Tower). Each world's arrival area has a teleport back to
+        /// the gem cavern, but the gem takes the player to a world only through the facet it shows,
+        /// from the first 1, 3, 6 or 8 by the castle plot (below 4, 8, 13), or one whose key gem has
+        /// been fused (event/WORLDEV.C black_gem_trip, black_gem_rotate; facets 0 to 7: levels 9, 17,
+        /// 25, 33, 41, 57, 49, 69). Under plot 4 only the Prison Tower's facet comes up (every other
+        /// turn), so it can be gone back to. Karl: leaving such a world too soon is the player's own
+        /// risk; the fill is not changed for it, the log and the walkthrough say so.
+        /// </summary>
+        public static string LockedWorldNote(GameSession s, int level)
+        {
+            if (s == null || !s.IsUw2 || level < 1) return null;
+            int world = (level - 1) / 8;
+            string name = Uw2WorldName(level); int plot; string when;
+            switch (world)
+            {
+                case 2: plot = 4; when = "Miranda's news after level 14 of the Prison Tower"; break;
+                case 3: plot = 4; when = "Miranda's news after level 14 of the Prison Tower"; break;
+                case 4: plot = 8; when = "Miranda's news that Nystul has something to say"; break;
+                case 5: plot = 8; when = "Miranda's news that Nystul has something to say"; break;
+                case 6: plot = 13; when = "Patterson's death"; break;
+                case 7: plot = 8; when = "Miranda's news that Nystul has something to say"; break;
+                case 8: plot = 13; when = "Patterson's death"; break;
+                default: return null;
+            }
+            return string.Format("You start in {0}, which the blackrock gem does not open until the castle plot reaches {1} ({2}), or until this world's key gem has been fused. You can leave for the castle at once, but you cannot come back until then. The logic takes all it needs from this world before it leaves it (the walkthrough's step \"Leave {0} now\"), and asks for nothing here again until the world is open; explore it well and take what you need before you leave, or you may get stuck.", name, plot, when);
+        }
+
+        /// <summary>UW2: the name of a level's world (levels 1 to 8 the castle, 9 to 16 the Prison Tower, and so on to the Ethereal Void, 65 to 72), or "" past them.</summary>
+        public static string Uw2WorldName(int level)
+        {
+            switch ((level - 1) / 8)
+            {
+                case 0: return "the castle";
+                case 1: return "the Prison Tower";
+                case 2: return "Killorn Keep";
+                case 3: return "the Ice Caverns";
+                case 4: return "Talorus";
+                case 5: return "the Scintillus Academy";
+                case 6: return "the Tomb of Praecor Loth";
+                case 7: return "the Pits of Carnage";
+                case 8: return "the Ethereal Void";
+                default: return "";
+            }
+        }
+
+        /// <summary>
         /// The tokens every item that moves gives, with these options (the shuffle's "every moving
         /// item held"): what the start picker's zone solves assume.
         /// </summary>
         internal static List<string> MovingTokens(GameSession s, Func<int, LevelModel> level, TimelineResult t, KeyShuffleOptions opt)
         {
             var w = new World { S = s, From = level, Levels = s.LevelSlots().Where(x => x.Present).Select(x => x.Level).ToList() };
-            var needed = Needed(t, Timeline.SolverFor(t, opt.Logic, null));
+            var needed = Needed(t, Timeline.SolverFor(t, opt.Logic, null), s.IsUw2);
             return GivesTokens(t, Survey(s, w, t, opt, needed).Where(o => o.Stays == null)).ToList();
         }
 
@@ -793,7 +963,7 @@ namespace UwEditor.Core.Randomizer
             var from = baseOpt.Nav.BaseStartOf(s);
             StartPicker picker;
             try { picker = StartPicker.For(s, w0.Model, baseOpt, facts); }
-            catch (Exception ex) { var u = new KeyShuffleResult { Options = opt, Refused = "The start could not be checked: " + ex.Message }; u.Log.AppendLine(u.Refused); return u; }
+            catch (Exception ex) { var u = new KeyShuffleResult { Options = opt, Game = s.Kind, Refused = "The start could not be checked: " + ex.Message }; u.Log.AppendLine(u.Refused); return u; }
             var failures = new List<string>();
             KeyShuffleResult r = null;
             TimelineResult t = null;
@@ -806,7 +976,7 @@ namespace UwEditor.Core.Randomizer
                     c = opt.Start == StartChoice.Given && opt.StartAt != null ? picker.Check(opt.StartAt.Level, (int)opt.StartAt.X, (int)opt.StartAt.Y) : picker.Pick(seed, opt.StartScope);
                 if (!c.Viable)
                 {
-                    var u = new KeyShuffleResult { Options = opt, Refused = opt.Start == StartChoice.Given ? "The given start " + c + " cannot be used: " + c.Reason + "." : "No random start: " + c.Reason + "." };
+                    var u = new KeyShuffleResult { Options = opt, Game = s.Kind, Refused = opt.Start == StartChoice.Given ? "The given start " + c + " cannot be used: " + c.Reason + "." : "No random start: " + c.Reason + "." };
                     u.Log.AppendLine(u.Refused);
                     return u;
                 }
@@ -832,16 +1002,23 @@ namespace UwEditor.Core.Randomizer
 
         static KeyShuffleResult RunCore(GameSession s, LevelSnapshot levels, KeyShuffleOptions opt, FactSet facts, out TimelineResult t)
         {
-            var r = new KeyShuffleResult { Options = opt };
+            var r = new KeyShuffleResult { Options = opt, Game = s.Kind };
             var w0 = levels.W.Copy();
             foreach (int l in w0.Levels) { r.Before[l] = (byte[])w0.Data[l].Clone(); r.Textures[l] = w0.Tex[l]; }
             var w = w0.Copy();
             t = Timeline.Build(s, w.Model, opt.Nav, opt.Logic, null, facts, false, opt.Zoning);
             var so0 = Timeline.SolverFor(t, opt.Logic, null);
-            var needed = Needed(t, so0);
+            var needed = Needed(t, so0, s.IsUw2);
             var objs = Survey(s, w, t, opt, needed);
-            // ---- gifts only there for a time that the start cannot get: made anew, placed by the fill (TimedGifts)
-            var made = MadeItems(s, t, t.Solve, needed);
+            // ---- gifts only there for a time that the start cannot get: made anew, placed by the fill (TimedGifts). UW2 from a start
+            // elsewhere judges them by the solve with every moving item held, as the start filter does: the unshuffled game's solve from
+            // there misses most givers only because their keys lie elsewhere, which the fill puts within reach (UW1 keeps its own solve)
+            bool elsewhere = opt.Nav.StartOverride != null;
+            var heldTokens = s.IsUw2 && elsewhere ? GivesTokens(t, objs.Where(o => o.Stays == null)).ToList() : null;
+            var giftSolve = heldTokens != null ? Timeline.Solve(t, opt.Logic, "every moving item held (timed gifts)", heldTokens) : t.Solve;
+            var made = MadeItems(s, t, giftSolve, needed);
+            // (a gift whose token a moving item also gives, Charles's key 2 as the key of level 3, is not missed: the fill places that item)
+            if (heldTokens != null) made.RemoveAll(o => heldTokens.Contains(o.Made.Token));
             // ---- what leads out of the start's free area that a new character cannot cast from runes: a scroll or a wand made, placed by the fill (StartAbilities)
             made.AddRange(MadeAbilities(s, t, opt.Logic, objs.Concat(made)));
 
@@ -850,7 +1027,7 @@ namespace UwEditor.Core.Randomizer
             if (r.Unlocked.Count > 0)
             {
                 so0 = Timeline.SolverFor(t, opt.Logic, null);
-                needed = Needed(t, so0);
+                needed = Needed(t, so0, s.IsUw2);
                 objs = Survey(s, w, t, opt, needed);
             }
             // Place anywhere: the squares are worked out once; each attempt scatters the places with its own seed
@@ -861,6 +1038,13 @@ namespace UwEditor.Core.Randomizer
             var places = solver.Places;
             if (places.Count == 0) { r.Refused = "Nothing moves with these categories."; return r; }
 
+            // UW2: with these logic options the unshuffled game cannot be finished either (magic off with no single-use Iron Flesh for the djinn): no seed can pass the check, so say so at once
+            // (a start elsewhere: the unshuffled solve from there misses the goal as a rule, its keys lying elsewhere; the start filter has solved it with every moving item held)
+            if (s.IsUw2 && !elsewhere && !t.Solve.GoalReached)
+            {
+                r.Refused = "With these logic options the game cannot be finished even unshuffled (it misses " + string.Join(", ", t.Solve.GoalMissing.Distinct().Take(6)) + "), so no scatter can pass the check. On UW2 a game without rune magic needs single-use items to count, for Iron Flesh (the djinn).";
+                return r;
+            }
             var keys = places.Where(o => o.Key).OrderBy(o => o.Level).ThenBy(o => o.Index).Concat(made).ToList();
             var rest = places.Where(o => !o.Key).OrderBy(o => o.Level).ThenBy(o => o.Index).ToList();
             var assumedRest = GivesTokens(t, rest).ToList();
@@ -965,6 +1149,9 @@ namespace UwEditor.Core.Randomizer
                 var strands = check.Traps.Where(x => x.Strands.Count > 0).ToList();
                 if (!check.GoalReached) { r.Failures.Add("seed " + seed + ": the shuffled levels do not reach the goal (missing " + string.Join(", ", check.GoalMissing.Distinct().Take(6)) + ")"); continue; }
                 if (strands.Count > 0) { r.Failures.Add("seed " + seed + ": a one-way trap strands the player (" + string.Join("; ", strands.Select(x => SolveResult.ZoneName(tv.Set, x.Zone) + ": " + string.Join(", ", x.Strands))) + ")"); continue; }
+                // UW2: the castle plot's set traps reached out of the game's order (a start elsewhere; never from the game's own)
+                string plotOrder = s.IsUw2 ? Timeline.PlotOrderProblem(tv, check) : null;
+                if (plotOrder != null) { r.Failures.Add("seed " + seed + ": " + plotOrder); continue; }
                 // success
                 r.Success = true;
                 r.UsedSeed = seed;
@@ -1046,6 +1233,7 @@ namespace UwEditor.Core.Randomizer
             if (free.Count == 0) return -1;
             why = "no square within reach qualifies";
             var graph = t.Abilities.Auto.Graph;
+            var changing = ChangingSquares(s, t);
             foreach (var sphere in sv.ZoneSphere.Where(kv => kv.Key > ZoneSet.Unassigned && kv.Key < Timeline.FreshZoneIds).GroupBy(kv => kv.Value).OrderBy(g => g.Key))
             {
                 var zones = new HashSet<int>(sphere.Select(kv => kv.Key));
@@ -1054,7 +1242,7 @@ namespace UwEditor.Core.Randomizer
                 foreach (int level in zones.SelectMany(z => t.Set.LevelsOf(z)).Distinct().OrderBy(l => l))
                     foreach (var sq in Anywhere.Squares(s, world.Model(level), terrain, (x, y) =>
                     {
-                        if (!zones.Contains(t.Set.ZoneAt(level, x, y)) || graph.NearBarrier(level, x, y)) return false;
+                        if (!zones.Contains(t.Set.ZoneAt(level, x, y)) || graph.NearBarrier(level, x, y) || changing.Contains(level + ":" + x + ":" + y)) return false;
                         int reg = graph.RegionOf(level, x, y);
                         return (reg < 0 || !graph.Regions[reg].Folded) && !SquareLost(facts, level, x, y);
                     }))
@@ -1119,6 +1307,7 @@ namespace UwEditor.Core.Randomizer
             var sv = Timeline.Solve(t, opt.Logic, "every moving item held", GivesTokens(t, objs.Where(o => o.Stays == null)).ToList());
             var zones = new HashSet<int>(sv.ZoneSphere.Keys);
             var terrain = CreatureTerrain.TryLoad(s);
+            var changing = ChangingSquares(s, t);
             var plan = new AnywherePlan();
             foreach (var g in floor.GroupBy(o => o.Level).OrderBy(g => g.Key))
             {
@@ -1131,6 +1320,8 @@ namespace UwEditor.Core.Randomizer
                 {
                     int z = t.Set.ZoneAt(level, x, y);
                     if (z <= ZoneSet.Unassigned || !zones.Contains(z)) return false;
+                    // UW2: nor where a trap turns the square to rock (ChangingSquares)
+                    if (changing.Count > 0 && changing.Contains(level + ":" + x + ":" + y)) return false;
                     // nor on or beside a square an object closes for good
                     if (graph.NearBarrier(level, x, y)) return false;
                     int reg = graph.RegionOf(level, x, y);
@@ -1407,17 +1598,21 @@ namespace UwEditor.Core.Randomizer
             b.AppendLine();
             b.AppendLine(string.Format("Seed {0}{1}.", opt.Seed, r.Success ? (r.UsedSeed != opt.Seed ? ", used seed " + r.UsedSeed + " after " + (r.Attempts - 1) + " failed attempt" + (r.Attempts == 2 ? "" : "s") : "") : ": NO SHUFFLE FOUND in " + r.Attempts + " attempts"));
             b.AppendLine("Logic: " + opt.Logic + ".");
-            b.AppendLine("Moving: " + string.Join(", ", Categories.Where(opt.Move.Contains).Select(CategoryName)) + (opt.Filler ? ", and everything else as filler" : "")
+            bool uw2 = s.IsUw2;
+            b.AppendLine("Moving: " + string.Join(", ", CategoriesOf(s).Where(opt.Move.Contains).Select(c => CategoryName(c, uw2))) + (opt.Filler ? ", and everything else as filler" : "")
                 + (opt.Extra != null && opt.Extra.Count > 0 ? ", and " + opt.Extra.Count + " additional item kind" + (opt.Extra.Count == 1 ? "" : "s") : "")
                 + "; creature inventories " + (opt.CreatureInventories ? "in (creatures without a conversation)" : "out") + ".");
             b.AppendLine("Method: assumed fill on the time-aware solver; a fresh solve of the shuffled levels (with the return check) must reach the goal.");
             if (opt.Start == StartChoice.Own) b.AppendLine("Start: the game's own square.");
             else if (r.Start != null)
                 b.AppendLine(string.Format("Start: {0}: level {1} ({2}, {3}), zone {4}{5}. The game still puts the player on level {6} ({7}, {8}); his first step there teleports him to the start, once (Apply writes the teleport). Start check: {9}{10}.",
-                    opt.Start == StartChoice.Random ? "random (" + (opt.StartScope == StartScope.AnyLevel ? "any level" : "level 1 only") + "), drawn from the seed" : "given",
+                    opt.Start == StartChoice.Random ? "random (" + (opt.StartScope == StartScope.AnyLevel ? (uw2 ? "any world" : "any level") : (uw2 ? "the castle" : "level 1 only")) + "), drawn from the seed" : "given",
                     r.Start.Level, (int)r.Start.X, (int)r.Start.Y, r.StartCheck != null ? r.StartCheck.Zone : 0, opt.Names != null ? " " + PlaceName(opt.Names, r.Start.Level, (int)r.Start.X, (int)r.Start.Y) : "",
                     r.StartFrom.Level, (int)r.StartFrom.X, (int)r.StartFrom.Y, r.StartCheck != null ? r.StartCheck.Reason : "",
                     r.StartCheck != null && r.StartCheck.HostilesNear > 0 ? "; " + r.StartCheck.HostilesNear + " hostile creature" + (r.StartCheck.HostilesNear == 1 ? "" : "s") + " on or beside the square" : ""));
+            // UW2: a start in a world the castle's gem does not open yet (Karl: the player's own risk, so said plainly)
+            string locked = r.Start != null ? LockedWorldNote(s, r.Start.Level) : null;
+            if (locked != null) b.AppendLine("Note: " + locked);
             b.AppendLine(opt.Anywhere
                 ? "Place anywhere: on; " + r.Relocated + " places on the floor moved to random squares of their level that the logic reaches (not water or lava, no door, trap or trigger)" + (r.AnywhereNotes.Count > 0 ? "; " + string.Join("; ", r.AnywhereNotes) : "") + "."
                 : "Place anywhere: off; items trade the places where items lay.");
@@ -1434,7 +1629,7 @@ namespace UwEditor.Core.Randomizer
             b.AppendLine();
             var moving = r.Moving.Where(o => o.Made == null).ToList();
             b.AppendLine(string.Format("{0} objects move ({1} key items placed by the fill, {2} others), over {0} places. By category: {3}.", moving.Count, moving.Count(o => o.Key), moving.Count(o => !o.Key),
-                string.Join(", ", moving.GroupBy(o => o.Category).OrderBy(g => g.Key).Select(g => CategoryName(g.Key) + " " + g.Count() + " (" + g.Count(o => o.Key) + " key)"))));
+                string.Join(", ", moving.GroupBy(o => o.Category).OrderBy(g => g.Key).Select(g => CategoryName(g.Key, uw2) + " " + g.Count() + " (" + g.Count(o => o.Key) + " key)"))));
             var stays = r.Objects.Where(o => o.Stays != null && o.Stays != "its category does not move").ToList();
             b.AppendLine("Stay where they are: " + (stays.Count == 0 ? "none" : string.Join("; ", stays.GroupBy(o => o.Stays).OrderByDescending(g => g.Count()).Select(g => g.Key + ": " + g.Count()))) + ".");
             foreach (var o in stays.Where(o => o.Category != "filler" && o.Gives.Any())) b.AppendLine("  " + o + " [" + o.Tokens + "]: " + o.Stays);
@@ -1452,12 +1647,16 @@ namespace UwEditor.Core.Randomizer
             b.AppendLine("Doors unlocked: " + (r.Unlocked.Count == 0 ? "none" : string.Join("; ", r.Unlocked)) + ".");
             if (!r.Success) return;
             b.AppendLine();
+            // UW2's zone ids are level * 256 + number, so its zones are counted below the ids changes split off
             b.AppendLine(string.Format("ROUTE: the shuffled game reaches the goal in {0} spheres (the original, with these options, in {1}); {2} zones reached; one-way traps {3}.", r.SpheresAfter, r.SpheresBefore,
-                r.Check.ZoneSphere.Count(kv => kv.Key < 1000), r.Check.Traps.Count));
-            var milestones = new[] { "talisman:sword", "talisman:shield", "talisman:ring", "talisman:taper", "talisman:cup", "talisman:wine", "talisman:book", "talisman:standard", "item:key_of_truth", "item:key_of_love", "item:key_of_courage", "item:key_of_infinity", "flag:garamon_buried", "flag:orb_destroyed", "item:rune_bag", "worn:lava", "spell:lava" };
+                uw2 ? Timeline.BaseZonesReached(r.Check) : r.Check.ZoneSphere.Count(kv => kv.Key < 1000), r.Check.Traps.Count));
+            var milestones = uw2
+                ? new[] { "item:key_gem_1", "item:key_gem_2", "item:key_gem_3", "item:key_gem_4", "item:key_gem_5", "item:key_gem_6", "item:key_gem_7", "item:key_gem_8", "flag:gems_fused", "item:pearl_tipped_rod", "flag:lines_cut", "item:horn", "item:mors_gotha_book", "item:rune_bag" }
+                : new[] { "talisman:sword", "talisman:shield", "talisman:ring", "talisman:taper", "talisman:cup", "talisman:wine", "talisman:book", "talisman:standard", "item:key_of_truth", "item:key_of_love", "item:key_of_courage", "item:key_of_infinity", "flag:garamon_buried", "flag:orb_destroyed", "item:rune_bag", "worn:lava", "spell:lava" };
             var got = milestones.Where(m => r.Check.TokenSphere.ContainsKey(m)).Select(m => m + " " + r.Check.TokenSphere[m]).ToList();
             if (got.Count > 0) b.AppendLine("  Milestones (token sphere): " + string.Join(", ", got) + ".");
-            if (r.Check.ZoneSphere.ContainsKey(r.CheckBuild.GoalZone)) b.AppendLine("  Level 9 reached in sphere " + r.Check.ZoneSphere[r.CheckBuild.GoalZone] + ".");
+            if (uw2) { if (r.Check.GoalReached) b.AppendLine("  The castle plot reaches " + Requirement.PlotClock(r.Check.TokenSphere.Keys) + " (Nystul's ceremony) in sphere " + (r.Check.Spheres.Count - 1) + "."); }
+            else if (r.Check.ZoneSphere.ContainsKey(r.CheckBuild.GoalZone)) b.AppendLine("  Level 9 reached in sphere " + r.Check.ZoneSphere[r.CheckBuild.GoalZone] + ".");
             b.AppendLine();
             b.AppendLine("WHERE EACH KEY ITEM WENT (by the sphere at which the shuffled game reaches its new place)");
             foreach (var g in r.Moves.Where(m => m.ByFill).GroupBy(m => m.Sphere).OrderBy(g => g.Key))
@@ -1519,6 +1718,17 @@ namespace UwEditor.Core.Randomizer
             b.AppendLine("  the logic reaches but you cannot get to from where you are: an oversight to look at.");
             if (r.Start != null && r.StartFrom != null)
                 b.AppendLine(string.Format("  The game puts you on level {0} ({1}, {2}) as always: your first step there teleports you, once, to level {3} ({4}, {5}), where the steps begin.", r.StartFrom.Level, (int)r.StartFrom.X, (int)r.StartFrom.Y, r.Start.Level, (int)r.Start.X, (int)r.Start.Y));
+            string lockedWorld = r.Start != null ? LockedWorldNote(s, r.Start.Level) : null;
+            if (lockedWorld != null) b.AppendLine("  " + lockedWorld);
+            // UW2 from a start elsewhere: the castle's gem no longer keeps the plot's steps in their order (StateRules, the facts' plot steps), so say which wait for their turn
+            if (s.IsUw2 && r.Start != null)
+            {
+                var turn = wt.Steps.Where(st => st.Event != null && ((st.Event.Token ?? "").StartsWith("plotstep:") || (st.Event.Token ?? "").StartsWith("plotset:") || st.Uses.Any(u => u.StartsWith("plotstep:miranda") || u.StartsWith("plotset:"))))
+                    .Select(st => st.Number).Distinct().OrderBy(n => n).ToList();
+                if (turn.Count > 0)
+                    b.AppendLine("  The castle plot: from this start the plot's steps must come in the game's order, which the castle's gem keeps from its own start. Do not do any of steps " + string.Join(", ", turn) +
+                        " before its turn, even in passing: do not talk to Zoranthus, pick up key gems 3 and 5, kill the listener with Altara's dagger or fuse gem 4 early, and do not step on level 14's trigger at (28, 35) before the sewers' at level 3 (16, 53) and the Prison Tower's landing at level 9 (33, 32). A step taken early is lost and the plot ends short.");
+            }
             foreach (var d in wt.Doubts.Distinct()) b.AppendLine("  Could not justify: " + d);
             foreach (var d in wt.NoWay) b.AppendLine("  No way: " + d);
             foreach (var l in wt.Lines()) b.AppendLine(l);

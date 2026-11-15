@@ -143,7 +143,9 @@ namespace UwEditor.Core.Tests
             var g = Graph(); if (g == null) return;
             var toks = g.States.Where(x => x.Token.StartsWith("plot")).ToDictionary(x => x.Token, x => x.Requires);
             Assert.Equal(new[] { "plotset:1", "plotset:2", "plotset:3", "plotstep:l26_797", "plotstep:l48_901" }, toks.Keys.OrderBy(x => x, System.StringComparer.Ordinal).ToArray());
-            Assert.Equal("flag:variable_L14_945", toks["plotset:3"]);
+            // the plot in the game's order (0.1.49): the set to 3 counts once the lower sets have gone off, a trap's step once the set to 3 has
+            Assert.Equal("(flag:variable_L14_945) & plotset:1 & plotset:2", toks["plotset:3"]);
+            Assert.Equal("(flag:variable_L26_796) & plotset:3", toks["plotstep:l26_797"]);
             // every trap flag named is a mechanism's, and every other flag is a state or a schedule row that is listed too
             var flags = new HashSet<string>(g.Mechanisms.Select(m => m.Flag));
             var listed = new HashSet<string>(g.States.Select(x => x.Token));

@@ -252,6 +252,8 @@ namespace UwEditor.Core.Tests
             Assert.Matches(@"met by .* \(step \d+\)", text);
             // the unshuffled Key of Love: Judy and the picture of Tom
             Assert.Contains(w.Steps, x => x.Event != null && x.Event.Token == "item:key_of_love");
+            // the bash through the door at L7 (30, 20), toughness class 2: charge each blow
+            Assert.Contains("bash it open (bashing is allowed; charge each blow, the door takes only a quarter of it, so it may take a while)", text);
         }
 
         [Fact]

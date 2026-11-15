@@ -162,12 +162,32 @@ namespace UwEditor.Core.Randomizer
                     Notes = ways.Count == 0 ? "no set variable trap the player sets off brings this about (a conversation, a schedule or the game's code may)" : string.Join(" / ", notes),
                 });
             }
+            // the plot in the game's order: a set trap writes its value whatever the plot stands at (event/TRIGGER.C set_numbered_variable, do_math_op),
+            // and the triggers of UW2's three (levels 3, 9 and 14: 1, 2, 3) are used once. The plot ends at the value of the last set to go off, and a
+            // step added before it is overwritten; from the game's own start the castle's gem keeps them in order, from a start elsewhere nothing
+            // does. So the highest set counts only once every lower one is held (it must go off last), and a trap's step only once the highest set
+            // is (Timeline.PlotOrderProblem checks that the highest set's trigger is not reached before the lower sets). The lower sets among
+            // themselves may go either way: nothing asks for the plot at 1 or 2 exactly.
+            var plotSets = sets.Where(x => x.Variable == PlotVariable && x.Flags.Count > 0 && x.Op == 2).Select(x => x.Value).Distinct().OrderBy(v => v).ToList();
             foreach (var x in sets.Where(x => x.Variable == PlotVariable && x.Flags.Count > 0))
             {
-                if (x.Op == 2) list.Add(new NavState { Token = "plotset:" + x.Value, Requires = x.Requires, Notes = "the castle plot: " + x });
-                else if (x.Op == 0 && x.Value > 0) for (int i = 0; i < x.Value; i++) list.Add(new NavState { Token = string.Format("plotstep:l{0}_{1}{2}", x.Level, x.Trap, i > 0 ? "_" + i : ""), Requires = x.Requires, Notes = "the castle plot: " + x });
+                if (x.Op == 2)
+                {
+                    var below = x.Value == plotSets.Max() ? plotSets.Where(v => v < x.Value).ToList() : new List<int>();
+                    list.Add(new NavState { Token = "plotset:" + x.Value, Requires = below.Count == 0 ? x.Requires : And(x.Requires, string.Join(" & ", below.Select(v => "plotset:" + v))),
+                        Notes = "the castle plot: " + x + (below.Count == 0 ? "" : " (counted once the plot's lower sets, " + string.Join(" and ", below) + ", have gone off: it must be the last)") });
+                }
+                else if (x.Op == 0 && x.Value > 0)
+                    for (int i = 0; i < x.Value; i++)
+                        list.Add(new NavState { Token = string.Format("plotstep:l{0}_{1}{2}", x.Level, x.Trap, i > 0 ? "_" + i : ""), Requires = plotSets.Count == 0 ? x.Requires : And(x.Requires, "plotset:" + plotSets.Max()),
+                            Notes = "the castle plot: " + x + (plotSets.Count == 0 ? "" : " (counted once the plot has been set to " + plotSets.Max() + ": before, the set overwrites it)") });
             }
             return list;
+        }
+
+        static string And(string req, string term)
+        {
+            return string.IsNullOrWhiteSpace(req) || req.Trim() == "free" ? term : "(" + req + ") & " + term;
         }
 
         static bool Holds(StateTest t, Dictionary<int, int> state)

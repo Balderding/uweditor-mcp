@@ -37,8 +37,8 @@
       "grants": "plotstep:listener",
       "level": 4,
       "object": 201,
-      "requires": "item:jewelled_dagger",
-      "notes": "Killing the listener (whoami 0x91, in the sewers under the castle) with Altara's dagger adds one to the castle plot; any other weapon leaves it with 1 hit point.",
+      "requires": "item:jewelled_dagger & plotstep:miranda_tower",
+      "notes": "Killing the listener (whoami 0x91, in the sewers under the castle) with Altara's dagger adds one to the castle plot; any other weapon leaves it with 1 hit point. Counted after Miranda's step at plot 3 (plotstep:miranda_tower): the game's gem shows Killorn Keep and the Ice Caverns only from plot 4, so from its own start this comes then; from a start elsewhere it could come sooner, and a step before the last set (level 14) is overwritten, one between the set and Miranda's talk makes her skip hers (she moves the plot only at exactly 3), and the plot then ends short.",
       "source": "event/WORLDEV.C (case 0x91: using_altaras_dagger, xclock[XC_CASTLE]++); combat/COMBAT.C using_altaras_dagger"
     },
     {
@@ -65,8 +65,8 @@
       "grants": "plotstep:zoranthus",
       "level": 58,
       "object": 227,
-      "requires": "free",
-      "notes": "Meeting Zoranthus for the first time adds one to the castle plot.",
+      "requires": "plotstep:miranda_7",
+      "notes": "Meeting Zoranthus for the first time adds one to the castle plot, and never again: do not talk to him before this step. Counted after Miranda's step at plot 7 (plotstep:miranda_7): the game's gem shows Talorus, the Academy and the Pits only from plot 8, so from its own start this comes then; from a start elsewhere it could come sooner, and a step taken before her talk at exactly 7 makes her skip hers, and the plot then ends short.",
       "source": "conversation 96 (Zoranthus): if (met_before == 0) x_clock(1, x_clock(1, 10001) + 1)"
     },
     {
@@ -75,6 +75,7 @@
       "grants": "item:key_gem_4",
       "level": 34,
       "object": 1022,
+      "match": { "item": "0x11B" },
       "requires": "free",
       "notes": "The blackrock key gem of Talorus (item 0x11B, gem 4) lies on level 34 at (30, 34).",
       "source": "level 34 object #1022; obj/USEITEMS.C UseKeyGem (gem number = item - 0x117)"
@@ -85,8 +86,8 @@
       "grants": "plotstep:gem_4",
       "level": 5,
       "object": 934,
-      "requires": "item:key_gem_4 & npc:nystul",
-      "notes": "Nystul treats a key gem when asked (he sets its owner field), and the treated gem used on the large blackrock gem on level 5 fuses with it; fusing gem 4 adds one to the castle plot.",
+      "requires": "item:key_gem_4 & npc:nystul & plotstep:miranda_7",
+      "notes": "Nystul treats a key gem when asked (he sets its owner field), and the treated gem used on the large blackrock gem on level 5 fuses with it; fusing gem 4 adds one to the castle plot. Counted after Miranda's step at plot 7 (plotstep:miranda_7): the game's gem shows Talorus, the Academy and the Pits only from plot 8, so from its own start this comes then; from a start elsewhere it could come sooner, and a step taken before her talk at exactly 7 makes her skip hers, and the plot then ends short.",
       "source": "conversation 130 (Nystul): x_obj_stuff(gem, 1, -1, 1, ...); obj/USEITEMS.C UseKeyGem (if (gem == 4) xclock[XC_CASTLE]++)"
     },
     {
@@ -147,6 +148,7 @@
       "grants": "item:key_gem_2",
       "level": 18,
       "object": 907,
+      "match": { "item": "0x119" },
       "requires": "free",
       "notes": "The blackrock key gem of world 2 (item 0x119): lies on level 18 at (56, 52).",
       "source": "level 18 object #907"
@@ -157,8 +159,8 @@
       "grants": "item:key_gem_3",
       "level": 26,
       "object": 931,
-      "requires": "free",
-      "notes": "The blackrock key gem of world 3 (item 0x11A): lies on level 26 at (28, 7).",
+      "requires": "plotstep:miranda_tower",
+      "notes": "The blackrock key gem of world 3 (item 0x11A): lies on level 26 at (28, 7). Picking it up adds one to the castle plot (trap #797, once), so it is taken only in its turn (see variable_l26_gem_turn). Counted after Miranda's step at plot 3 (plotstep:miranda_tower): the game's gem shows Killorn Keep and the Ice Caverns only from plot 4, so from its own start this comes then; from a start elsewhere it could come sooner, and a step before the last set (level 14) is overwritten, one between the set and Miranda's talk makes her skip hers (she moves the plot only at exactly 3), and the plot then ends short.",
       "source": "level 26 object #931"
     },
     {
@@ -167,9 +169,25 @@
       "grants": "item:key_gem_5",
       "level": 48,
       "object": 898,
-      "requires": "free",
-      "notes": "The blackrock key gem of world 5 (item 0x11C): lies on level 48 at (37, 30).",
+      "requires": "plotstep:miranda_7",
+      "notes": "The blackrock key gem of world 5 (item 0x11C): lies on level 48 at (37, 30). Picking it up adds one to the castle plot (trap #901, once), so it is taken only in its turn (see variable_l48_gem_turn). Counted after Miranda's step at plot 7 (plotstep:miranda_7): the game's gem shows Talorus, the Academy and the Pits only from plot 8, so from its own start this comes then; from a start elsewhere it could come sooner, and a step taken before her talk at exactly 7 makes her skip hers, and the plot then ends short.",
       "source": "level 48 object #898"
+    },
+    {
+      "id": "variable_l26_gem_turn",
+      "kind": "needs",
+      "token": "flag:variable_L26_796",
+      "requires": "plotstep:miranda_tower",
+      "notes": "The pick-up trigger under key gem 3 (level 26 #796) runs the set variable trap #797 that adds one to the castle plot: picked up in its turn only, after Miranda's step at plot 3.",
+      "source": "level 26 #796, #797 (xclock1 += 1); conversation 136 (Miranda: if x_clock(1) == 3)"
+    },
+    {
+      "id": "variable_l48_gem_turn",
+      "kind": "needs",
+      "token": "flag:variable_L48_899",
+      "requires": "plotstep:miranda_7",
+      "notes": "The pick-up trigger under key gem 5 (level 48 #899) runs the set variable trap #901 that adds one to the castle plot: picked up in its turn only, after Miranda's step at plot 7.",
+      "source": "level 48 #899, #901 (xclock1 += 1); conversation 136 (Miranda's news table, entry 7)"
     },
     {
       "id": "key_gem_6",
@@ -177,6 +195,7 @@
       "grants": "item:key_gem_6",
       "level": 49,
       "object": 1004,
+      "match": { "item": "0x11D" },
       "requires": "free",
       "notes": "The blackrock key gem of world 6 (item 0x11D): lies on level 49 at (23, 41).",
       "source": "level 49 object #1004"
@@ -238,6 +257,7 @@
       "grants": "item:basilisk_oil",
       "level": 3,
       "object": 583,
+      "match": { "item": "0xE6", "link": 579 },
       "requires": "free",
       "notes": "A flask of basilisk oil: a colourless potion (item 0xE6) carrying special spell 3 (link 512 + 67).",
       "source": "level 3 object #583; obj/OBJUSE.C decode_obj_spell; motion/OBJPHYS.C do_filanium"
@@ -248,6 +268,7 @@
       "grants": "item:basilisk_oil",
       "level": 57,
       "object": 790,
+      "match": { "item": "0xE6", "link": 579 },
       "requires": "free",
       "notes": "A flask of basilisk oil: a colourless potion (item 0xE6) carrying special spell 3 (link 512 + 67).",
       "source": "level 57 object #790; obj/OBJUSE.C decode_obj_spell; motion/OBJPHYS.C do_filanium"
@@ -258,6 +279,7 @@
       "grants": "item:basilisk_oil",
       "level": 59,
       "object": 823,
+      "match": { "item": "0xE6", "link": 579 },
       "requires": "free",
       "notes": "A flask of basilisk oil: a colourless potion (item 0xE6) carrying special spell 3 (link 512 + 67).",
       "source": "level 59 object #823; obj/OBJUSE.C decode_obj_spell; motion/OBJPHYS.C do_filanium"
@@ -268,6 +290,7 @@
       "grants": "item:basilisk_oil",
       "level": 67,
       "object": 902,
+      "match": { "item": "0xE6", "link": 579 },
       "requires": "free",
       "notes": "A flask of basilisk oil: a colourless potion (item 0xE6) carrying special spell 3 (link 512 + 67).",
       "source": "level 67 object #902; obj/OBJUSE.C decode_obj_spell; motion/OBJPHYS.C do_filanium"
@@ -304,8 +327,8 @@
       "grants": "item:bottle",
       "level": 58,
       "object": 227,
-      "requires": "item:sceptre_deadly_seeker",
-      "notes": "Karl: there are two djinn bottles. Zoranthus (the Pits, level 58 (55, 3)), asked for his bottle, wants the Sceptre of the Deadly Seeker of a colleague lost studying dreams (quest 26); handed a sceptre that identifies as Deadly Seeker he keeps it (quest 27) and gives the bottle, and another whenever asked after that. Nothing else asks for the sceptre, so it is not marked as used up. The other bottle lies in the Void pyramid's room at level 69 (3, 20), which the levels give by its name.",
+      "requires": "item:sceptre_deadly_seeker & plotstep:miranda_7",
+      "notes": "Karl: there are two djinn bottles. Zoranthus (the Pits, level 58 (55, 3)), asked for his bottle, wants the Sceptre of the Deadly Seeker of a colleague lost studying dreams (quest 26); handed a sceptre that identifies as Deadly Seeker he keeps it (quest 27) and gives the bottle, and another whenever asked after that. Nothing else asks for the sceptre, so it is not marked as used up. The other bottle lies in the Void pyramid's room at level 69 (3, 20), which the levels give by its name. Asked for only after Miranda's step at plot 7: the first talk with Zoranthus is a step of the plot (plot_zoranthus).",
       "source": "Karl, 2026-11-14; conversation 96 (Zoranthus): set_quest(26, 1), find_barter(170), identify_inv contains 'Deadly Seeker', give_ptr_npc, set_quest(27, 1), do_inv_create(278), take_from_npc(278)"
     },
     {
@@ -492,7 +515,12 @@
       "twoWay": false,
       "linkKind": "stairs",
       "notes": "Karl: the Historian of Talorus (level 33 (31, 4)), once the new Ductosnore has been made (quest 38), sends the Avatar to the island in the middle of the lava lake of level 34, where the key gem lies: teleport_player(31, 35, 34), once (quest 39). He asks for nothing else: quest 38 is all the conversation tests (see talorus_new_ductosnore for what sets it).",
-      "source": "conversation 156 (Historian): if (!get_quest(39)) { if (!get_quest(38)) { talk } set_quest(39, 1); teleport_player(31, 35, 34) }"
+      "source": "conversation 156 (Historian): if (!get_quest(39)) { if (!get_quest(38)) { talk } set_quest(39, 1); teleport_player(31, 35, 34) }",
+      "once": true,
+      "mayBeLost": {
+        "kind": "a",
+        "why": "the Historian sends the Avatar to the island only once (conversation 156 sets quest 39 as he does it); the brass plate's bridge leads off it one way, and only lava protection brings him back: take what lies on the island before stepping on the plate"
+      }
     },
     {
       "id": "talorus_crystal_e0y2",
@@ -500,6 +528,7 @@
       "grants": "item:crystal_e0y2",
       "level": 34,
       "object": 947,
+      "match": { "item": "0xA1", "quality": 6 },
       "requires": "free",
       "notes": "The information crystal E0Y2 with the old Ductosnore pattern, which the Historian says lies among the debris north of the lava: a storage crystal (item 0xA1) of quality 6 at level 34 (30, 42), the only one of that quality. The Skup Chamber takes it by its quality.",
       "source": "level 34 object #947; conversation 156 (Historian): 'You should be able to find the kryztal amongst the debris to the north of the lava. Iz kryztal E0Y2.'; event/WORLDEV.C skup_ductosnore (quality 2 or 6)"
@@ -510,6 +539,7 @@
       "grants": "item:controller_crystal",
       "level": 33,
       "object": 819,
+      "match": { "item": "0xA1", "quality": 2 },
       "requires": "free",
       "notes": "The controller crystal the Futurian keeps in his Necessity Chamber behind him: a storage crystal (item 0xA1) of quality 2 at level 33 (2, 5), the only one of that quality.",
       "source": "level 33 object #819; conversation 157 (Futurian): 'a crystal with the proper program to encode this pattern into the Skup Chamber control mechanisms. This crystal awaits you in the chamber behind me.'; event/WORLDEV.C skup_ductosnore (quality 2 or 6)"
@@ -591,9 +621,9 @@
       "grants": "once:iron_flesh",
       "level": 17,
       "object": 226,
-      "requires": "free",
-      "notes": "Karl: Merzan in Killorn Keep sells one potion of Iron Flesh when asked for it by name, for up to 100 gold (less with Charm). The gold is not counted: by the time the potion is wanted for the djinn there is loot enough. He flees when the keep is about to fall (quest 50).",
-      "source": "conversation 105 (Merzan): babl_ask contains 'iron flesh', do_inv_create(226) with link 512 + 59, take_from_npc(226), once (global66); the_keeps_going_down (quest 50)",
+      "requires": "item:gold_100",
+      "notes": "Karl: Merzan in Killorn Keep sells one potion of Iron Flesh when asked for it by name. The price is 2 x (50 - a Charm discount) gold: 100 with no Charm. He takes gold coins (item 160) by their number and treasures (items 161 to 170) at a third of their value; the logic counts the coins alone, a hundred of them (gold_100). He flees when the keep is about to fall (quest 50).",
+      "source": "conversation 105 (Merzan): babl_ask contains 'iron flesh', global34 = 2 * (50 - global37), func_16CB (item 160 count_inv, 161-170 identify_inv / 3), do_inv_create(226) with link 512 + 59, take_from_npc(226), once (global66); the_keeps_going_down (quest 50)",
       "mayBeLost": {
         "kind": "a",
         "why": "Merzan only cries that the keep is going down once both brain creatures on level 18 ((29, 30), (32, 28)) are dead (quest 50): do not kill them before buying the potion"
@@ -616,7 +646,11 @@
       "twoWay": true,
       "linkKind": "walk",
       "notes": "The force field before Bishop's cell at the top of the Prison Tower (level 16 (31, 33)) is lifted out of the way for one who wears fraznium gauntlets or the fraznium circlet. Gauntlets lie on level 13 (28, 33) and in a chest on level 11, and Borne and the goblin armorer each hand a pair over; Bishop takes a pair to leave, so two are needed to come out again by the same way.",
-      "source": "event/WORLDEV.C check_fraznium (hack 11); level 16 move triggers #971, #995 -> hack trap #996, #979, #994 -> #997; conversation 3 (Borne), 5 (goblin armorer), 6 (Bishop): take_from_npc(51), find_barter(51)"
+      "source": "event/WORLDEV.C check_fraznium (hack 11); level 16 move triggers #971, #995 -> hack trap #996, #979, #994 -> #997; conversation 3 (Borne), 5 (goblin armorer), 6 (Bishop): take_from_npc(51), find_barter(51)",
+      "mayBeLost": {
+        "kind": "a",
+        "why": "Bishop asks for a pair of fraznium gauntlets to leave his cell and keeps the pair he is given (conversation 6: find_barter(51), give_ptr_npc); he asks first whether the Avatar has another pair: give him one only if you carry a second pair or wear the fraznium circlet, or the force field shuts you in"
+      }
     },
     {
       "id": "academy_no_casting_42",
@@ -702,6 +736,7 @@
       "grants": "item:delivery_voucher",
       "level": 9,
       "object": 986,
+      "match": { "item": "0x136", "link": 545 },
       "requires": "free",
       "notes": "A forged kitchen delivery voucher: the scroll (item 0x136, link 512 + 33) at level 9 (31, 33), below the gate. The gate guards let its bearer through as a supplier.",
       "source": "level 9 object #986 (link 512 + 33); conversation 1 (goblin guard): do_not_try_any: find_barter_total(310), link == 33 + 512"
@@ -988,6 +1023,68 @@
       "notes": "Until Lord British has made his opening speech (quest 109) this castle conversation only sends the Avatar to hear it.",
       "source": "conversations 130 to 143 and 168: if (get_quest(109)) ... else { say ...; goodbye(); }",
       "confidence": "certain"
+    },
+    {
+      "id": "gold_100",
+      "kind": "count",
+      "grants": "item:gold_100",
+      "items": [
+        "0xA0"
+      ],
+      "atLeast": 100,
+      "notes": "A hundred gold coins, Merzan's price for the potion of Iron Flesh with no Charm: every gold coin (item 160) in the zones reached counts by its quantity. Gems and other treasures he would also take are not counted.",
+      "source": "conversation 105 (Merzan): func_16CB, count_inv of item 160; global34 = 2 * (50 - global37)",
+      "confidence": "certain"
+    },
+    {
+      "id": "carried_janar",
+      "kind": "carried",
+      "level": 12,
+      "object": 251,
+      "requires": "npc:borne | option:kill_npcs",
+      "notes": "Janar (level 12 (29, 32), whoami 17) carries the key ring #978 with key 4 (#975) and key 6 (#983). He hands the ring over for the codeword \"beacon\", which Borne gives (and sets quest 45, which Janar's question asks for) when asked, at a later meeting, whether he has keys to the other cells. Not for the asking otherwise; killing him is option:kill_npcs.",
+      "source": "conversation 17 (Janar): get_quest(45), babl_ask contains 'beacon', take_from_npc(140); conversation 3 (Borne): func_0EC7, set_quest(45, 1), 'give him the codeword, \"beacon.\"' (the question needs global3, set at the first meeting); level 12 objects #251, #978, #975, #983",
+      "confidence": "probable"
+    },
+    {
+      "id": "carried_borne",
+      "kind": "carried",
+      "level": 14,
+      "object": 253,
+      "requires": "option:kill_npcs",
+      "notes": "Borne (level 14 (35, 32)) carries keys 4, 5, 6 and 27 and a blackrock gem. He hands over the key gem (key_gem_1) and a pair of fraznium gauntlets in his conversation, never a key: the keys are had only by killing him (option:kill_npcs; Garg let out kills him too, not modelled).",
+      "source": "conversation 3 (Borne): take_from_npc(280), take_from_npc(51), no key given; level 14 objects #253, #955, #986, #999, #1001",
+      "confidence": "probable"
+    },
+    {
+      "id": "carried_gate_guard_l10_251",
+      "kind": "carried",
+      "level": 10,
+      "object": 251,
+      "requires": "option:kill_npcs",
+      "notes": "A goblin guard at the Prison Tower's gate (level 10 (29, 36)) carries key 6; the guards open the gate for the password or the voucher (prison_gate_guard) and give no key.",
+      "source": "conversation 1 (goblin guard): gronk_door(30, 34, 0), no key given; level 10 objects #251, #995",
+      "confidence": "probable"
+    },
+    {
+      "id": "carried_gate_guard_l10_255",
+      "kind": "carried",
+      "level": 10,
+      "object": 255,
+      "requires": "option:kill_npcs",
+      "notes": "A goblin guard at the Prison Tower's gate (level 10 (31, 33)) carries key 6; the guards give no key.",
+      "source": "conversation 1 (goblin guard); level 10 objects #255, #999",
+      "confidence": "probable"
+    },
+    {
+      "id": "carried_guard_l14_254",
+      "kind": "carried",
+      "level": 14,
+      "object": 254,
+      "requires": "option:kill_npcs",
+      "notes": "The goblin guard of level 14 (30, 33) carries key 6; he opens the door at (29, 32) for the password (prison_l14_guard) and gives no key.",
+      "source": "conversation 9 (goblin guard): gronk_door(29, 32, 0), no key given; level 14 objects #254, #951",
+      "confidence": "probable"
     }
   ]
 }

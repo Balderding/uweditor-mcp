@@ -15,6 +15,7 @@ namespace UwEditor.App.Tests
     public class KeyShuffleWindowTests
     {
         static string Uw1 { get { return GameData.Game("UW"); } }
+        static string Uw2 { get { return GameData.Game("UW2"); } }
 
         static CheckBox Box(Window w, string start)
         {
@@ -79,6 +80,51 @@ namespace UwEditor.App.Tests
             Ui.Pump();
             Assert.True(aw.LogicOptions.RequireOrb);
             aw.Close();
+            w.Close();
+        }
+
+        /// <summary>UW2: the window shows UW2's four categories in UW2's words, no longer says UW1 only, and Preview runs from the game's own start and from a random castle start.</summary>
+        [AvaloniaFact]
+        public void Uw2_shows_its_own_categories_and_previews_from_the_games_start()
+        {
+            if (Uw2 == null) return;
+            var w = Ui.Open(Uw2);
+            w.AskBeforeDiscarding = false;
+            var kw = w.ShowKeyShuffle();
+            Ui.Pump();
+            var labels = kw.GetLogicalDescendants().OfType<CheckBox>().Select(c => c.Content as string ?? "").ToList();
+            foreach (var c in KeyShuffle.Uw2Categories) Assert.True(Box(kw, KeyShuffle.CategoryName(c, true)).IsChecked);
+            Assert.Contains(labels, l => l.StartsWith("Plot items (key gems"));
+            Assert.DoesNotContain(labels, l => l.StartsWith("Key of Infinity parts") || l.StartsWith("Talismans") || l.StartsWith("Dragon skin"));
+            var texts = kw.GetLogicalDescendants().OfType<TextBlock>().Select(t => t.Text ?? "").ToList();
+            Assert.DoesNotContain(texts, t => t.Contains("Ultima Underworld 1 only"));
+            Assert.Contains(texts, t => t.Contains("plot at 16"));
+            var r = kw.PreviewNow();
+            Ui.Pump();
+            Assert.NotNull(r);
+            Assert.True(r.Success, r.Refused ?? string.Join("; ", r.Failures));
+            Assert.Contains("reaches the end", kw.SummaryText);
+            Assert.Contains("The castle plot reaches 16", kw.Spoiler);
+            // a random start works on UW2 (0.1.49), with the scope in UW2's words: the castle, any world
+            kw.StartBox.SelectedIndex = 1;
+            Ui.Pump();
+            Assert.Equal(new[] { "the castle", "any world" }, kw.ScopeBox.Items.Cast<string>().ToArray());
+            Assert.Contains("the castle", kw.StartNote);
+            kw.ScopeBox.SelectedIndex = 1;
+            Ui.Pump();
+            Assert.Contains("any world", kw.StartNote);
+            kw.ScopeBox.SelectedIndex = 0;
+            Ui.Pump();
+            var u = kw.PreviewNow();
+            Ui.Pump();
+            Assert.True(u.Success, u.Refused ?? string.Join("; ", u.Failures));
+            Assert.InRange(u.Start.Level, 1, 5);
+            Assert.Contains("the first step at level 1 (19, 48) teleports the player there", kw.SummaryText);
+            Assert.Contains("random (the castle)", kw.Spoiler);
+            Assert.DoesNotContain("You start in", kw.SummaryText);      // a castle start: no note about a world the gem keeps shut
+            // the spoiler log in the map notes is UW1's only: the box is off and greyed out
+            Assert.False(Box(kw, "Spoiler log in the map notes").IsEnabled);
+            kw.Close();
             w.Close();
         }
 

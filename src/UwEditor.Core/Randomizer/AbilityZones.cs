@@ -171,6 +171,8 @@ namespace UwEditor.Core.Randomizer
         public List<Placement> NpcHeld = new List<Placement>(), Created = new List<Placement>();
         /// <summary>The placements left out because they come from a creature the logic must spare (the facts' kind "spare": what it carries, what its death leaves, a fact granted on it), as "token: why".</summary>
         public List<string> Spared = new List<string>();
+        /// <summary>The objects the flag facts with a "match" stand on in these levels (FactObjects), by fact id; a fact missing here has no object of its kind left.</summary>
+        public Dictionary<string, FactSpot> FactObjects = new Dictionary<string, FactSpot>();
         /// <summary>The spells' names (block 6 0x100 + spell), for the report.</summary>
         public Dictionary<int, string> SpellNames = new Dictionary<int, string>();
     }
@@ -255,6 +257,7 @@ namespace UwEditor.Core.Randomizer
                 h.FromZone = h.FromRegion >= 0 ? g.Regions[h.FromRegion].Zone : 0;
                 foreach (int r in h.Regions) { int z = g.Regions[r].Zone; if (z > ZoneSet.Unassigned && z != h.FromZone && !h.ToZones.Contains(z)) h.ToZones.Add(z); }
             }
+            res.FactObjects = FactObjects(s, wl, facts);
             AddPlacements(s, wl, zs, facts, res);
             if (!s.IsUw2) ChainPlacements(s, wl, g, zs, facts, res);
             Explain(zs);
@@ -620,13 +623,76 @@ namespace UwEditor.Core.Randomizer
             return added;
         }
 
+        /// <summary>The object a flag fact stands on: the one FactObjects found for a fact that follows its object, else the one it names.</summary>
+        static bool FactObject(Fact f, Dictionary<string, FactSpot> moved, out int level, out int index)
+        {
+            FactSpot at;
+            if (f.Match != null) { if (moved != null && moved.TryGetValue(f.Id, out at)) { level = at.Level; index = at.Object; return true; } level = index = -1; return false; }
+            level = f.Level; index = f.Object;
+            return f.Level > 0 && f.Object >= 0;
+        }
+
+        /// <summary>
+        /// Where the flag facts that follow their object (a "match": the game checks the thing by its
+        /// kind, quality or link, not by where it lies) stand in these levels: the object the fact
+        /// names when it is still of that kind, else an object of that kind no other such fact has
+        /// taken, the first in level and index order. So after the key item scatter has moved a key
+        /// gem or a crystal, the fact finds it where it went, in the scatter's own check and in any
+        /// later solve of the shuffled levels. Objects inside a trap (a create trap's template: not
+        /// made yet) or carried by a creature that talks (it may hand the thing over or not) are not
+        /// taken. A fact with no object of its kind left is missing from the result.
+        /// </summary>
+        public static Dictionary<string, FactSpot> FactObjects(GameSession s, Func<int, LevelModel> level, FactSet facts)
+        {
+            var res = new Dictionary<string, FactSpot>();
+            var follow = facts.OfKind("flag").Where(f => f.Match != null && f.Match.Valid && f.Id.Length > 0).ToList();
+            if (follow.Count == 0) return res;
+            var models = new Dictionary<int, LevelModel>();
+            Func<int, LevelModel> model = l => { LevelModel m; if (!models.TryGetValue(l, out m)) { try { m = level(l); } catch (Exception) { m = null; } models[l] = m; } return m; };
+            Func<LevelModel, ObjectInfo, bool> usable = (m, o) =>
+            {
+                if (o == null || o.Free || o.TileX < 0) return false;
+                for (int up = o.Parent, g = 0; up >= 0 && up < m.Objects.Length && g < 64; up = m.Objects[up].Parent, g++)
+                {
+                    var u = m.Objects[up];
+                    if (u.IsTrapOrTrigger || (u.IsCritter && u.Record != null && u.Record.Length > 0x1A && u.Record[0x1A] != 0)) return false;
+                }
+                return true;
+            };
+            var taken = new HashSet<string>();
+            var left = new List<Fact>();
+            foreach (var f in follow)
+            {
+                var m = f.Level > 0 ? model(f.Level) : null;
+                var o = m != null && f.Object >= 0 && f.Object < m.Objects.Length ? m.Objects[f.Object] : null;
+                if (o != null && f.Match.Matches(o) && usable(m, o) && taken.Add(f.Level + ":" + f.Object)) res[f.Id] = new FactSpot { Level = f.Level, Object = f.Object };
+                else left.Add(f);
+            }
+            if (left.Count == 0) return res;
+            foreach (var slot in s.LevelSlots())
+            {
+                if (!slot.Present || left.Count == 0) continue;
+                var m = model(slot.Level);
+                if (m == null || !m.Present) continue;
+                foreach (var o in m.Objects)
+                {
+                    if (left.Count == 0) break;
+                    var f = left.FirstOrDefault(x => x.Match.Matches(o));
+                    if (f == null || !usable(m, o) || !taken.Add(slot.Level + ":" + o.Index)) continue;
+                    res[f.Id] = new FactSpot { Level = slot.Level, Object = o.Index };
+                    left.Remove(f);
+                }
+            }
+            return res;
+        }
+
         /// <summary>
         /// The facts' mayBeLost on the placements (docs/UW2-RANDOMIZER-NEXT-STEPS.md 2.1): a
         /// "lost" fact naming a token marks every source of it; one naming a place marks the
         /// placements of the objects of the levels that lie there or are carried by its creature
         /// (KeyItems and the item scan note them as "#N name ..., level L (x, y)").
         /// </summary>
-        static void MarkLost(ZoneSet zs, Func<int, LevelModel> level, FactSet facts)
+        static void MarkLost(ZoneSet zs, Func<int, LevelModel> level, FactSet facts, Dictionary<string, FactSpot> moved)
         {
             var lost = facts.OfKind("lost").ToList();
             if (lost.Count == 0) return;
@@ -640,7 +706,7 @@ namespace UwEditor.Core.Randomizer
                 var mm = PlacedObject.Match(p.Notes ?? "");
                 if (p.Source == "levels" && mm.Success) { l = int.Parse(mm.Groups[2].Value); i = int.Parse(mm.Groups[1].Value); }
                 // a flag fact on an object of a place that may be lost (the key gem of Killorn's lower level)
-                else if ((p.Source ?? "").StartsWith("facts: ") && byId.TryGetValue(p.Source.Substring(7), out own) && own.Kind == "flag" && own.Level > 0 && own.Object >= 0) { l = own.Level; i = own.Object; }
+                else if ((p.Source ?? "").StartsWith("facts: ") && byId.TryGetValue(p.Source.Substring(7), out own) && own.Kind == "flag" && FactObject(own, moved, out l, out i)) { }
                 else continue;
                 if (!lost.Any(f => f.Level == l)) continue;
                 LevelModel m;
@@ -658,7 +724,7 @@ namespace UwEditor.Core.Randomizer
         /// where creatures' deaths become sources (fights are taken as won, so what a creature carries
         /// is otherwise there to take), so nothing can ask for them later. Each is listed in res.Spared.
         /// </summary>
-        static void Spare(ZoneSet zs, Func<int, LevelModel> level, FactSet facts, AbilityZoneResult res)
+        static void Spare(ZoneSet zs, Func<int, LevelModel> level, FactSet facts, AbilityZoneResult res, Dictionary<string, FactSpot> moved)
         {
             if (!facts.OfKind("spare").Any()) return;
             var models = new Dictionary<int, LevelModel>();
@@ -670,7 +736,7 @@ namespace UwEditor.Core.Randomizer
                 Fact own;
                 var mm = PlacedObject.Match(p.Notes ?? "");
                 if (p.Source == "levels" && mm.Success) { l = int.Parse(mm.Groups[2].Value); i = int.Parse(mm.Groups[1].Value); }
-                else if ((p.Source ?? "").StartsWith("facts: ") && byId.TryGetValue(p.Source.Substring(7), out own) && own.Kind == "flag" && own.Level > 0 && own.Object >= 0) { l = own.Level; i = own.Object; }
+                else if ((p.Source ?? "").StartsWith("facts: ") && byId.TryGetValue(p.Source.Substring(7), out own) && own.Kind == "flag" && FactObject(own, moved, out l, out i)) { }
                 else return false;
                 var m = model(l);
                 if (m == null || i < 0 || i >= m.Objects.Length || m.Objects[i].Free) return false;
@@ -776,15 +842,25 @@ namespace UwEditor.Core.Randomizer
                                 else res.Warnings.Add("Facts: " + f.Id + ": no zone at L" + f.Level + " (" + f.X + ", " + f.Y + ").");
                                 break;
                             }
-                            var o = m != null && f.Object >= 0 && f.Object < m.Objects.Length ? m.Objects[f.Object] : null;
-                            if (o == null || o.Free || o.TileX < 0) { res.Warnings.Add("Facts: " + f.Id + ": no object #" + f.Object + " on L" + f.Level + "."); break; }
-                            Add(zs, zs.ZoneOf(f.Level, m, o), f.Grants, f.Requires, f.Notes + " (#" + o.Index + " " + o.Name + ")", "facts: " + f.Id, false, f.UsesUp)?.MarkLost(f);
+                            // a fact that follows its object (match): where an object of its kind lies now (FactObjects), or nowhere
+                            int fl = f.Level, fo = f.Object;
+                            if (f.Match != null)
+                            {
+                                FactSpot at;
+                                if (!res.FactObjects.TryGetValue(f.Id, out at)) { res.Warnings.Add("Facts: " + f.Id + ": no object of its kind (" + f.Match + ") in the levels."); break; }
+                                fl = at.Level; fo = at.Object;
+                                if (fl != f.Level) { m = null; try { m = level(fl); } catch (Exception) { } }
+                            }
+                            var o = m != null && fo >= 0 && fo < m.Objects.Length ? m.Objects[fo] : null;
+                            if (o == null || o.Free || o.TileX < 0) { res.Warnings.Add("Facts: " + f.Id + ": no object #" + fo + " on L" + fl + "."); break; }
+                            Add(zs, zs.ZoneOf(fl, m, o), f.Grants, f.Requires, f.Notes + " (#" + o.Index + " " + o.Name + ")", "facts: " + f.Id, false, f.UsesUp)?.MarkLost(f);
                             break;
                         }
                 }
             }
-            MarkLost(zs, level, facts);
-            Spare(zs, level, facts, res);
+            MarkLost(zs, level, facts, res.FactObjects);
+            Spare(zs, level, facts, res, res.FactObjects);
+            Carried(zs, level, facts);
             // a thing that works on its own level only: the ways and grants of that level take its flag in place of the ability
             foreach (var src in res.Sources.Where(x => x.OnlyLevel > 0))
             {
@@ -837,6 +913,40 @@ namespace UwEditor.Core.Randomizer
         public static int CountOf(ObjectInfo o) { return o.IsQuantity && o.Link > 0 && o.Link < 0x200 ? o.Link : 1; }
 
         static readonly Regex PlacedObject = new Regex(@"^#(\d+) .*?level (\d+) \(");
+
+        /// <summary>
+        /// The facts' kind "carried": every placement of an object a named creature carries (in
+        /// its inventory, or in a container it carries) also needs the fact's requirement. UW2 reads
+        /// no NPC's inventory as needing anything (ChainPlacements, UW1's rule, does not run there);
+        /// this covers the creatures the facts name: Janar's key ring, which he hands over for
+        /// Borne's codeword (conversation 17), and the keys the Prison Tower's goblins carry and do
+        /// not give.
+        /// </summary>
+        static void Carried(ZoneSet zs, Func<int, LevelModel> level, FactSet facts)
+        {
+            var list = facts.OfKind("carried").Where(f => f.Level > 0 && f.Object >= 0 && !string.IsNullOrWhiteSpace(f.Requires)).ToList();
+            if (list.Count == 0) return;
+            var models = new Dictionary<int, LevelModel>();
+            foreach (var p in zs.Placements)
+            {
+                if (string.IsNullOrEmpty(p.Grants)) continue;
+                var mm = PlacedObject.Match(p.Notes ?? "");
+                if (!mm.Success) continue;
+                int l = int.Parse(mm.Groups[2].Value), i = int.Parse(mm.Groups[1].Value);
+                foreach (var f in list.Where(x => x.Level == l))
+                {
+                    LevelModel m;
+                    if (!models.TryGetValue(l, out m)) { try { m = level(l); } catch (Exception) { m = null; } models[l] = m; }
+                    if (m == null || i < 0 || i >= m.Objects.Length || f.Object >= m.Objects.Length) continue;
+                    int at = m.Objects[i].Parent, guard = 0;
+                    while (at >= 0 && at != f.Object && guard++ < 16) at = m.Objects[at].Parent;
+                    if (at != f.Object) continue;
+                    string r = f.Requires.Trim();
+                    p.Requires = ZoneLink.JoinAnd(new[] { p.Requires, r });
+                    p.Notes = (p.Notes ?? "") + "; carried by #" + f.Object + " " + m.Objects[f.Object].Name + " (" + f.Id + ": " + r + ")";
+                }
+            }
+        }
 
         /// <summary>
         /// Phase C's corrections to the placements read from the levels:

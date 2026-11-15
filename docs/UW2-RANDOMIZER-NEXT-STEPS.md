@@ -3,7 +3,10 @@
 Written 2026-11-14, at editor version 0.1.36 (uncommitted on top of `d48d0901`); section 1
 and the starting positions brought up to date at 0.1.37, section 2 at 0.1.38, 2.1 at 0.1.39;
 at 0.1.41 the Pits' gem by Blog (2.3), the brain creatures' rule (2.1) and timed gifts (3);
-at 0.1.44 where magic works: Britannia's circle rule and the no-magic squares (end of 3).
+at 0.1.44 where magic works: Britannia's circle rule and the no-magic squares (end of 3);
+at 0.1.47 the key item scatter on UW2 from the game's own start (4.1); at 0.1.49 random and
+given starts on UW2 (end of 3, 4.1); at 0.1.50 a start in a shut world, links taken once or
+marked, what the Prison Tower's goblins carry, Merzan's gold (2.1, 2.6, end of 3).
 
 ## Where it stands
 
@@ -62,7 +65,7 @@ Ordered by how much a shuffle could be hurt by the gap.
      stands when the source is reached; with no `when`, never. The solve takes each plot step
      as soon as it can, so a window met in its order can be met by the player.
    - **c**, a place that closes with what lies in it: as b. The key item shuffle puts no key
-     item in a place of kind b or c (`KeyShuffle.KeyPlaceAllowed`); it still refuses UW2.
+     item in a place of kind b or c (`KeyShuffle.KeyPlaceAllowed`); it runs on UW2 since 0.1.47 (4.1).
 
    What is marked:
 
@@ -90,10 +93,18 @@ Ordered by how much a shuffle could be hurt by the gap.
      the servants' demands (conversation 142, quest 116; the Avatar can take them to him even
      after refusing Nanna, conversation 137): it does not close for good.
    - Bishop takes a pair of fraznium gauntlets to leave his cell, and asks first whether the
-     Avatar has another pair (conversation 6). An avoidable choice on a link
-     (`bishop_force_field`); links carry no mark yet, so the walkthrough does not warn there.
-   - The Historian sends the Avatar to the island once (quest 39). The solve takes what lies
-     there on arrival; a place there needing something only found later is not modelled.
+     Avatar has another pair (conversation 6: find_barter(51), item 0x33, give_ptr_npc). Marked at
+     0.1.50: `bishop_force_field` carries `mayBeLost` of kind a, and the walkthrough warns at the
+     step that crosses it. A link may carry only kind a (`FactSet.Check`).
+   - The Historian sends the Avatar to the island once (conversation 156: `set_quest(39, 1)`
+     then `teleport_player(31, 35, 34)`, the whole talk skipped once quest 39 is set). Modelled at
+     0.1.50: a link fact may be `"once": true` (`ZoneLink.Once`). The solve crosses it once; the
+     zone it leads to gives what it gives on arrival, is walked out of in the next round, and then
+     leaves the reach unless another way into it holds (the island: lava protection from the
+     shore, a repeatable link); the return check and the walkthrough's routes never use it. The
+     default solve is unchanged token for token (the island holds only the key gem, needing
+     nothing). Left: what the arrival round grants comes from the whole sphere, so in principle a
+     token gained elsewhere in the same sphere could count on the island (nothing there needs one).
    - Bishop killed after the Avatar tells Borne to have him killed (quest 2, block 15 rows
      42 to 45): `npc:bishop` is then lost, by choice (a); Mystell is the other way to
      Altara's trust. Not marked: npc tokens of creatures are not marked one by one.
@@ -117,9 +128,35 @@ Ordered by how much a shuffle could be hurt by the gap.
    warning (lost_killorn_17/18, kind a) stays. `SpareCreaturesTests`.
 
    What remains: npc:X tokens stay held after a creature of kind b leaves (only the facts'
-   own placements carry windows); `npc:mors_gotha` is granted before the schedule makes her
-   (plot 14), an older gap; marks on links; a choice between a lasting and a timed source
-   is not weighed (the solve simply takes what comes first in its order).
+   own placements carry windows); a choice between a lasting and a timed source is not weighed
+   (the solve simply takes what comes first in its order). `npc:mors_gotha` is granted before the
+   schedule makes her (plot 14), but nothing asks for it (checked at 0.1.50, below).
+
+   **Mors Gotha before plot 14 (checked at 0.1.50).** She cannot be met before it, from any
+   start or route: the Mors Gotha of level 17 (#240) is the template of create object trap #534,
+   held off the map, and only scheduled trigger #861 at (16, 43) sets the trap off (schedule block
+   1 row 50, at plot 14); her book is shown by #819 on the same square at the same time
+   (`mors_gotha_book` needs both flags). The other Mors Gotha (level 1 #243) is the template of create
+   object trap #851, on the walled-in square (1, 62), for her attack on the castle. So no early meeting or kill is possible; the token
+   `npc:mors_gotha` (given at the template's zone) is asked for by no fact or way. Nothing changed.
+
+   **What creatures carry on UW2 (0.1.50).** UW1's rule that what a named, friendly creature
+   carries needs `option:kill_npcs` (`AbilityZones.ChainPlacements`, with the create trap
+   templates and the locked containers) does not run on UW2: there, 36 placements of things NPCs
+   carry are free (keys 4, 5, 6 and 27 on Borne, key 6 on three goblin guards, keys 4 and 6 in
+   Janar's key ring, Altara's and Zaria's runes, the horn on Praecor Loth, Fissif's lock picks …).
+   A new fact kind `carried` adds a requirement to what one creature carries. Janar (level 12
+   #251) gives his key ring (#978, keys 4 and 6) for the codeword "beacon", which Borne tells
+   when asked at a later meeting whether he has keys to the other cells (conversation 3 func_0EC7
+   sets quest 45; conversation 17 asks for it and the word, `take_from_npc(140)`):
+   `carried_janar` asks `npc:borne | option:kill_npcs`. Borne and the goblin guards of levels 10
+   (#251, #255) and 14 (#254) never hand over their keys: `option:kill_npcs` (Garg let out kills
+   them, not modelled). The default solve changes: keys 4 and 6 come at sphere 11 (Janar, after
+   Borne) instead of 9 and 6, key 27 is no longer reached (nothing needs it), the solve still
+   ends at plot 16 with 334 zones; the pure fighter too (257 zones). Left for later: the other
+   NPC-carried things (the runes of Altara, Zaria and the liches, the horn, which comes by a
+   fight, Fissif's lock picks, the create trap templates and locked containers) are still free on
+   UW2; a review creature by creature, or UW1's rule with trade facts for what is given.
 2. **Doors that only a conversation opens.** Modelled at 0.1.38 with a new fact kind,
    `door` (an "or" beside a door's lock). The Prison Tower's gate, level 10 (30, 34), opens
    for the gate guards' word (`prison_gate_guard`): the password, or the forged delivery
@@ -168,8 +205,11 @@ Ordered by how much a shuffle could be hurt by the gap.
    anything.
 5. **Fights are taken as won**, everywhere. A challenge setting for UW2 (as UW1 has) would
    need the creature tables reviewed.
-6. **Gold and Charm** are not counted (Merzan's potion, the gate guard's bribe, Altara's
-   trust by Charm).
+6. **Gold and Charm.** At 0.1.50 Merzan's potion of Iron Flesh asks for a hundred gold coins
+   (conversation 105: the price 2 x (50 - a Charm discount), paid in coins, item 160, or in
+   treasures at a third of their value): a count fact `gold_100` over the coins in the zones
+   reached. The gate guards' bribe and Altara's trust by Charm are other ways beside the ones
+   the logic takes (the password or voucher, Bishop or Mystell), so leaving them out is safe.
 7. **Level 48 west of x 25** restores no mana: done at 0.1.38 (`academy_no_casting_48`,
    a `nomana` fact with a rect).
 8. **Reveal spots** (level 3 (44, 55), level 59 (40, 41), level 26 (18, 45)): still asking
@@ -224,7 +264,7 @@ on level 2 (9, 35).
   flag facts at those NPCs (Miranda's plot steps, Dupre's and Charles's keys, Nystul's plot steps,
   Patterson's) ask for it too. A start elsewhere gets the speech when the Avatar first meets him;
   the default solve is unchanged (336 zones, plot 16). Not played.
-- **Random starts on UW2 (picker only; the key shuffle still refuses UW2).** Candidate squares:
+- **Random starts on UW2 (0.1.40 numbers, the stand-in; superseded at 0.1.49, end of this section).** Candidate squares:
   2,563 in 25 zones in the castle (slots 1 to 5), 18,031 in 252 zones in the nine worlds. The
   stand-in filter (the unshuffled game's solve from each zone) passes 20 of the 25 castle zones
   and 159 of the 252 (the others need a key from elsewhere, which only a key shuffle could place).
@@ -259,8 +299,8 @@ put by hand):
   makes a new key item for each missed gift the logic needs (`ShuffleObject.Made`): the fill
   puts it on the floor of a reachable place (the place keeps its item), the check solve and
   Apply see it as a new object (a scratch `LevelEditor.AddObject` on the attempt's bytes), Undo
-  removes it, the log says why. Tested on UW1 with a test fact (`TimedGiftTests`); UW2 still
-  refused. The numbers for Dupre (sweep of every UW2 zone with candidate squares, default
+  removes it, the log says why. Tested on UW1 with a test fact (`TimedGiftTests`); on UW2 (0.1.47, the game's own start
+  only) the solve gets every gift in time, so nothing is made (4.1). The numbers for Dupre (sweep of every UW2 zone with candidate squares, default
   options): of 159 viable start zones (20 of 25 in the castle), 153 do not take his key (15 in
   the castle); all of them still end the game. The castle plot goes to 1 at level 3's sewer
   entry: move triggers #571, #573 at (16, 53), (15, 53) set off the set variable trap #572 (the
@@ -301,7 +341,8 @@ put by hand):
     start zone (not explained yet). Sweep 2 ran before the pocket change of ReRoot; its 20
     failures were rerun one by one after it (the 4 on level 6 now pass; the change only makes
     the return check more lenient, so no success could turn into a failure).
-  - Not yet: the UW2 shuffle is still refused; nothing of this is played in the game.
+  - Since 0.1.49 the UW2 shuffle takes a random or given start too (end of this section);
+    nothing of this is played in the game.
 
 - **A new character's rune casting (0.1.43).** Casting from runes asks for level 2 x circle - 1,
   mana 3 x circle and a Casting roll (combat/RUNES.C player_cast, both games), and a new
@@ -399,14 +440,159 @@ put by hand):
     for a start whose runes fail where it lies (UW1 level 7 before the orb with every circle
     counted).
 
+- **Random and given starts on UW2 (0.1.49).** `KeyShuffle.RunOn` no longer refuses them;
+  `RunWithStart` works as on UW1 and Apply writes the teleport at level 1 (19, 48).
+  `Uw2KeyShuffleStartTests`.
+  - *The filter's real solve.* `StartPicker.For` holds the moving items' tokens on UW2 too
+    (`KeyShuffle.MovingTokens`, the UW2 survey: 61 tokens); `StandIn` is false. Castle: 22 of 25
+    zones viable (was 20 with the stand-in), 2,516 of 2,563 squares; the nine worlds: 195 of 252
+    (was 159), 16,810 of 18,031 squares; 207 before the plot-order rule below. Rejected: 45 small
+    pockets (1 to 8 zones reached even with every item held: Fissif's cell L1 (38, 38), the
+    listener's area L4 (48, 3) and room (17, 19), rooms and ledges of levels 16, 17, 18, 25, 26, 33, 34, 46,
+    49, 50, 51, 52, 57, 65, 67, 69, 72), 12 by the plot's order (Prison Tower levels 10 to 16). About
+    2 minutes for every zone (112 s with the stand-in), 5 s for the castle; lazy as before.
+  - *The plot from a start elsewhere.* Read in uw2 event/TRIGGER.C set_numbered_variable: a set
+    variable trap on X clock 1 writes its value (op 2) whatever the clock holds; the triggers of
+    level 3 #571/#573, level 9 #965/#966 and level 14 #945 have flags 4 only (no flag 10), so each
+    goes off once. Conversations 136 (Miranda) test the clock for exactly 3, 7 and 11; the + steps
+    (listener, gem 3 #797, gem 5 #901, Zoranthus's first talk, gem 4 fused) add one. The count
+    model took sets as a maximum and steps in any order, which only the castle gem's facets made
+    true. Now: `plotset:3` needs `plotset:1 & plotset:2` (`StateRules`), the early steps
+    (listener, gem 3 and its trigger, a `needs` fact) need `plotstep:miranda_tower`, the late ones
+    (Zoranthus, his bottle, gem 4 fused, gem 5 and its trigger) need `plotstep:miranda_7`;
+    `Timeline.PlotOrderProblem` rejects a start or a check whose solve reaches level 14's trigger
+    before the other sets are held. The game's own start is unchanged. The walkthrough of a start
+    elsewhere names the steps that must wait. Lord British's speech was already modelled (0.1.40).
+    Dupre's window (plot 0) and Charles's (9 to 11) are judged as the solve reaches them (AvoidLost).
+  - *Britannia.* `StartAbilities.Withheld(s, logic, startLevel)` adds, for a start on levels 1 to 8,
+    every ability whose spells are all above circle 3 whatever the circle option; `Needed` also
+    accepts a solve that never leaves Britannia. No shipped castle zone needs it.
+  - *Made objects.* The records match the game's wand of Light (L67 #899: item 0x9B, quality 40,
+    link 517 = 0x200 + 5, flags 4, enchanted, a quantity) and scroll of Portal (L57 #477: 0x137,
+    link 566 = 0x200 + 54); `Abilities.Find` reads the made wand as `perm:`. Spell numbers checked:
+    Levitate 32, Gate Travel 43, Portal 54, Light 5. Eight zones get a wand of Levitate.
+  - *Gifts.* From a start elsewhere the missed gifts come from the solve with every moving item
+    held, less those whose token a moving item gives (Charles's key 2 was made needlessly from the
+    castle before that rule).
+  - *The kit.* UW2's new game has a sack at level 1 (20, 49) with torch #1012 and map #834 (item
+    0x13A); `StartAids.PutKit` now does the same beside a UW2 start (torch filled to 63, map).
+  - *The map notes.* Left UW1 only (UW2 has 80 levels and no pages past them); the window greys the
+    box out on UW2.
+  - *A start in a world the gem keeps shut, in the logic (0.1.50).* `Timeline.Engine.Run`: from a
+    start on levels 17 to 72 (a world whose facet the gem does not show at plot 0;
+    `SealedWorld`), the solve first takes no way off the world's levels and runs to its end; then
+    it leaves by a way out that holds (to the castle when one does, else to the lowest zone of
+    another world a way leads to, which is taken the same way when it is shut too), stands there
+    alone (the reach is that zone), and goes on. The world's zones come back only by a way that
+    holds: the gem's facets (plot) or a copy of them with the world's key gem treated and fused
+    (`item:key_gem_N & npc:nystul`; gem n lights facet n - 1 with 6 and 7 swapped, obj/USEITEMS.C
+    UseKeyGem; facet 5 is the Pits, gem 7). `TimelineSolve.Leaves` records each leaving (sphere,
+    event, the zone come out in, what opens the world). The return check walks the zones reached
+    after a leaving back to the zone come out in, those before it to the start (ReRoot only over
+    those). The fill, the check, the start filter and the walkthrough all use this solve; the
+    walkthrough marks the leaving step (">>> Leave the Pits of Carnage now: …") and its routes
+    then need the gem. The Pits seed 8 start: no NO WAY FOUND (10 before), reverse check passes,
+    Zoranthus's plot step after the Pits reopen (key gem 7 fused). Start filter, before and after:
+    castle 22 of 25 zones (2,516 squares), the nine worlds 195 of 252 (16,810 squares), the same
+    zones (one rejected zone, level 52 (29, 2), now reaches 2 zones instead of 8). A first version
+    that left only for the castle lost 17 zones (level 67's, level 72's, the Pits room at level 59
+    (53, 41)), whose ways out lead through another world; they pass again. Not modelled: an
+    excursion into another world that comes back (Killorn to level 72 and back) counts as leaving.
+    `Uw2LogicGapTests`.
+  - *The note* (Karl's request): `KeyShuffle.LockedWorldNote` (levels
+    17 to 72; facets from black_gem_rotate: plot 4 Killorn and the Ice Caverns, 8 Talorus, the
+    Academy and the Pits, 13 the Tomb and the Void; also open once the world's gem is fused) goes
+    into the log's start lines, the walkthrough's head and the window's summary. The Prison Tower
+    is not marked: below plot 4 the gem shows only its facet (every other turn: range 1 gives facet
+    0, then 8 when 0 was the last). Since 0.1.50 the logic orders the steps instead (above).
+  - *Things of Opening* (found by the sweep): `KeyShuffle.Needed` did not count the Open spell's
+    sources for a lock (`pick:Z`), though the solver does, so the cudgel of Entry (L57 #484) and
+    the scroll of Open (L50 #855) were filler: assumed held through the whole fill, then put
+    anywhere. Starts whose way out is a locked door (L3 (33, 16), L2 (37, 34) and (46, 44), L51
+    (11, 14) and (14, 21)) failed every check. Fixed for UW2 only (`Needed(t, so, uw2)`); UW1 has the
+    same gap (its Open scrolls) but keeps its seeds. Measured at 0.1.50 (a temporary switch, not
+    kept): with the Open sources counted and the UW2 place rules (containers a trap names, squares a
+    trap turns to rock: UW1 has 6 such squares, no place on them) on UW1 too, the game's own start
+    gives the same placements for seeds 1 to 6, all on the first attempt; random UW1 starts were not
+    measured.
+  - *Sample sweep* (every castle zone and 30 random zones of the other worlds, 2 seeds, no retries):
+    55 zones looked at, 42 of them viable
+    (the castle's 22, and 20 of the 30 drawn: the other 10 are pockets the filter rejects). 84 of
+    84 runs fill on the first attempt (Britannia 44, the Tomb's levels 16, the Void 10, the Academy
+    6, Killorn, the Ice Caverns, Talorus and the Pits 2 each); 49 minutes, about 33 s a run, 2
+    threads at low priority beside other work. Nothing made in the sample (no sealed zone was
+    drawn); a place moved into reach in 12 runs (L2 (46, 44), L2 (37, 34), L59 (53, 42), L51
+    (11, 14), (16, 22), (9, 19)). Before the fix for things of Opening the same sample filled 72 of 84,
+    the 12 failures all "the shuffled levels do not reach the goal" from the six zones behind a
+    locked door. A random castle start (seed 1, L1 (37, 47)) and one in the Pits (seed 8, L58
+    (52, 5), beside Zoranthus) were read through: plot 16, no cut-off, the reverse check passes;
+    in the Pits log the walkthrough left the Pits, went to the Prison Tower and came back to
+    level 59 before plot 8 ("NO WAY FOUND", 10 lines): fixed at 0.1.50 (above).
+  - To check in the game: a random UW2 start's teleport fires on the first step from the bedroom;
+    Lord British's speech when first met; from a start in another world, the walkthrough's order of
+    the plot steps holds (Miranda at 3, 7 and 11 moves the plot each time); a made wand of
+    Levitate works.
+
 ## 4. Randomizer features to try on UW2
 
 The UW2 work so far is the logic. The shuffles themselves were built on UW1 and have not
 been run on UW2 in this stretch; each needs a first run and a look at its log.
 
-1. **Key shuffle** on UW2: run it, read the spoiler log and the walkthrough, and solve
-   the shuffled game again. Watch the keys the facts now add (key 28 from Dupre, key 2 from
-   Charles) and the barrier squares the shuffle must keep clear of.
+1. **Key shuffle** on UW2: done at 0.1.47, from the game's own start; random and given starts
+   at 0.1.49 (end of 3). `Uw2KeyShuffleTests`, `Uw2KeyShuffleStartTests`.
+   - *Categories.* UW2 has its own list (`KeyShuffle.Uw2Categories`): keys, runes, ability
+     items, plot items, with the same names as UW1's so the options and settings files serve
+     both. Items 0xE1-0xE7 are potions in UW2, not the Key of Infinity; UW1's orb rule (item
+     0x117, UW2's amethyst rod) and `NamedItems` (UW1's 0x118 is Caliburn's blade, UW2's a key
+     gem) are UW1's only. The artifacts hinted on UW2 are the key gems.
+   - *Facts that follow their object.* A flag fact may carry `match` (item, quality, link):
+     the game checks the thing by its kind (key gems: obj/USEITEMS.C UseKeyGem, item - 0x117,
+     with the owner Nystul sets; basilisk oil: motion/OBJPHYS.C do_filanium, the spell in the
+     link; the crystals: event/WORLDEV.C skup_ductosnore, quality 2 or 6; the voucher:
+     conversation 1, find_barter_total(310) with link 545). `AbilityZones.FactObjects` finds the
+     object wherever it lies (the named one if still of its kind, else an untaken one of its
+     kind, never in a trap or carried by a creature that talks), so the scatter moves it with its
+     token and the check, and any later solve of the shuffled levels, finds it. On: key gems 2,
+     4, 6, basilisk oil 1-4, the crystals E0Y2 and controller, the voucher.
+   - *Held fixed, and why.* Key gem 1 (Borne), 3 and 5 (pick-up triggers), 7 (Dorstag; Blog's
+     copy is a create trap's template), 8 (the facts give it on the Void's platform; a second
+     gem 8 lies on level 65); the Sceptre of the Deadly Seeker (its spell is an object in it) and
+     the Delgnizator (a pick-up trigger in it); the horn (Praecor Loth); the Void's bottle (a
+     mobile record); the Academy's telekinesis wand (game/GAMEWRAP.C do_level_hacks and
+     event/WORLDEV.C remove_TK_wand put it back on level 43 whenever the player leaves, and
+     `AbilitySources` makes it level-bound only where it lies: moved, the check read it as a
+     telekinesis wand for everywhere); every plot item the logic asks nothing of (strange
+     artifacts, resilient spheres, eyeballs …: a puzzle not modelled may look for them).
+     Moving: keys, runes and the bag, lock picks, the ability items the logic counts, amethyst
+     rods, black eggshells and dream plants (taken by kind).
+   - *Places.* As before (lost marks b and c, spared creatures, traps and their templates,
+     barrier squares), and on UW2 also: inside a container a trap names (a delete trap takes it
+     along), and squares a trap turns to rock (the terrain mechanisms' descriptions; change_terrain
+     removes static objects on a tile made solid), for places and for Place anywhere. The
+     schedule's rows (SCD.ARK) were read: its creature removals touch creatures with
+     conversations or lost marks only, its freeze floors (hack 3) and the standing wave lift
+     objects with the floor (raise_up), its scheduled triggers' terrain changes are among the
+     mechanisms.
+   - *Gifts.* From the game's own start every gift is taken in its window (Dupre's key at sphere
+     0, Altara's dagger at 12, rod at 13; Charles's key when key 2 has moved): nothing is made.
+   - *A game the options cannot finish.* Magic off with single-use things not counted cannot
+     glaze the djinn (Iron Flesh), so the scatter now refuses at once with the reason (UW2 only)
+     instead of trying 21 seeds. The pure fighter (magic off, single-use Iron Flesh only) fills.
+   - *Numbers* (seeds 1-20, default options, retries 20, 2 threads at low priority): 19 fill on
+     the first attempt, 20 within the retries; the one failure (seed 9) was a fill whose fresh
+     check missed the horn (the time-aware solver is not monotone in what is held, so an assumed
+     fill can rarely place an item the unassumed solve then does not reach in time; the check
+     catches it and the next seed passes). 17 to 35 s a run on a quiet machine (most of it the
+     timeline builds: the first, the Place anywhere solve, one fill solve a key item, about 130,
+     and the check), up to 95 s with other work running. Every check: plot 16, no cut-off, no
+     strand, 332 zones (two empty ledges of level 34 fold into their neighbour once Place
+     anywhere has moved the lock pick off them; 334 when nothing moves off). Single-use on,
+     lock picking on, the Pits' gem by Blog, avoid lost off: seeds 1 and 2 fill on the first
+     attempt each.
+   - *To check in the game:* a scattered key gem fuses (treated by Nystul) wherever it was
+     found; basilisk oil found elsewhere permeates the mud; crystals found elsewhere work in the
+     Skup Chamber; the voucher found elsewhere opens the gate; the walkthrough's route of one
+     seed played through.
 2. **Item shuffle / item cleaner** on UW2: the plot items the facts name (key gems,
    dagger, rod parts, horn, bottle, basilisk oil, fraznium gauntlets, dream plant) must be
    held fixed or tracked.

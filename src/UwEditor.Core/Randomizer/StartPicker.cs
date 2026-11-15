@@ -18,7 +18,7 @@ namespace UwEditor.Core.Randomizer
         public bool Viable;
         /// <summary>Why it is not viable ("lava", "a move trigger …", "the solve from here misses …", "cut off …"), or what was found when it is.</summary>
         public string Reason = "";
-        /// <summary>The zone filter used the unshuffled game's solve (UW2, where the key shuffle does not run yet), not the key shuffle's assumed one.</summary>
+        /// <summary>The zone filter used the unshuffled game's solve (a picker made with standIn), not the key shuffle's assumed one. UW2 used it until 0.1.49.</summary>
         public bool StandIn;
         /// <summary>Hostile creatures on the square or the eight around it (reported, not a reason).</summary>
         public int HostilesNear;
@@ -59,7 +59,7 @@ namespace UwEditor.Core.Randomizer
     /// <para>A start whose free area a new character cannot leave with his runes (a spell above
     /// AbilityOptions.NewCharacterCircle, say Gate Travel out of a sealed room) is viable when the
     /// solve reaches the goal with the scroll or wand the key shuffle then makes (StartAbilities;
-    /// StartCheck.Made names them). Not for UW2's stand-in, as nothing makes them there.</para>
+    /// StartCheck.Made names them). Not with the stand-in (no tokens assumed), as nothing makes them there.</para>
     /// <para>The draw: a zone with weight the square root of its candidate squares (uniform over
     /// squares would put most starts in the few great halls, uniform over zones as many in one-square
     /// ledges as in towns), then a square of it at random; a zone the filter rejects is struck off and
@@ -73,7 +73,7 @@ namespace UwEditor.Core.Randomizer
         /// <summary>The tokens held in the zone solves.</summary>
         public readonly List<string> Assumed;
         public readonly AbilityOptions Logic;
-        /// <summary>The solves are the unshuffled game's (no tokens assumed): UW2's stand-in.</summary>
+        /// <summary>The solves are the unshuffled game's (no tokens assumed): a stand-in (UW2's until 0.1.49).</summary>
         public readonly bool StandIn;
         readonly TerrainTable terrain;
         readonly Dictionary<int, StartCheck> verdicts = new Dictionary<int, StartCheck>();
@@ -92,16 +92,16 @@ namespace UwEditor.Core.Randomizer
 
         /// <summary>
         /// A picker for a game as it is: the zones built with these options (the game's own start),
-        /// and for UW1 the key item shuffle's assumed tokens (every item that moves held); for UW2,
-        /// where the key shuffle does not run yet, the unshuffled game's solve stands in.
+        /// and the key item shuffle's assumed tokens (every item that moves held, as the shuffle's
+        /// survey has them for the game: UW2's categories and stay rules on UW2). Both games since
+        /// 0.1.49; UW2 used the unshuffled game's solve as a stand-in before.
         /// </summary>
         public static StartPicker For(GameSession s, Func<int, LevelModel> level, KeyShuffleOptions opt = null, FactSet facts = null)
         {
             opt = (opt ?? new KeyShuffleOptions()).Clone();
             opt.Nav.StartOverride = null;
             var t = Timeline.Build(s, level, opt.Nav, opt.Logic, null, facts, false, opt.Zoning);
-            var assumed = s.IsUw2 ? new List<string>() : KeyShuffle.MovingTokens(s, level, t, opt);
-            return new StartPicker(s, level, t, opt.Logic, assumed, s.IsUw2);
+            return new StartPicker(s, level, t, opt.Logic, KeyShuffle.MovingTokens(s, level, t, opt), false);
         }
 
         /// <summary>Checks one square of a game as it is (builds the zones once: seconds).</summary>
@@ -217,7 +217,7 @@ namespace UwEditor.Core.Randomizer
                 T.Set.StartZone = zone;
                 var sv = Timeline.Solve(T, Logic, "start in zone " + zone, Assumed);
                 v = new StartCheck { Zone = zone, StandIn = StandIn };
-                // a way out a new character cannot cast from runes: the key shuffle makes its scroll or wand within reach (UW1's shuffle only)
+                // a way out a new character cannot cast from runes (or, in UW2's Britannia, no one can): the key shuffle makes its scroll or wand within reach
                 var made = sv.GoalReached || StandIn ? new List<string>() : StartAbilities.Needed(Session, T, Logic, Assumed, sv);
                 if (made.Count > 0)
                 {
@@ -226,9 +226,12 @@ namespace UwEditor.Core.Randomizer
                 }
                 // a zone cut off that the solve gets to again later is not lost (the way back ran through zones not reached yet when the change went off)
                 var cut = sv.CutOff.Select(c => new KeyValuePair<int, List<int>>(c.Key, c.Value.Where(z => !sv.CutOffRegained.Contains(z)).ToList())).Where(c => c.Value.Count > 0).ToList();
+                // UW2: the castle plot's set traps reached out of the game's order (Timeline.PlotOrderProblem)
+                string order = Session.IsUw2 && sv.GoalReached ? Timeline.PlotOrderProblem(T, sv) : null;
                 if (!sv.GoalReached) v.Reason = "the solve from here misses the goal (missing " + string.Join(", ", sv.GoalMissing.Distinct().Take(6)) + "; " + Timeline.BaseZonesReached(sv) + " zones reached)";
                 else if (cut.Count > 0) v.Reason = "cut off: " + string.Join("; ", cut.Select(c => "sphere " + c.Key + ", " + c.Value.Count + " zones (" + string.Join(", ", c.Value.Take(4).Select(z => SolveResult.ZoneName(T.Set, z))) + (c.Value.Count > 4 ? " …" : "") + ")"));
-                else { v.Viable = true; v.Reason = "reaches the goal (" + Timeline.BaseZonesReached(sv) + " zones)" + (StandIn ? ", by the unshuffled game's solve (the key shuffle does not run on UW2 yet)" : ", with every moving item held") + (made.Count > 0 ? " and an object made for " + string.Join(", ", made.Select(a => a.Replace('_', ' '))) + " (a new character cannot cast it from runes)" : ""); }
+                else if (order != null) v.Reason = order;
+                else { v.Viable = true; v.Reason = "reaches the goal (" + Timeline.BaseZonesReached(sv) + " zones)" + (StandIn ? ", by the unshuffled game's solve" : ", with every moving item held") + (made.Count > 0 ? " and an object made for " + string.Join(", ", made.Select(a => a.Replace('_', ' '))) + " (a new character cannot cast it from runes)" : ""); }
             }
             finally
             {

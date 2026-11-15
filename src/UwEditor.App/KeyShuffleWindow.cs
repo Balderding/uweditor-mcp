@@ -19,7 +19,9 @@ namespace UwEditor.App
     /// move to new places so that the game stays beatable under the chosen logic (assumed fill on
     /// the automatic zones' time-aware solver), written into the levels as whole records, one
     /// undoable step a level; Undo shuffle puts every byte back. Preview shows the spoiler log
-    /// without changing anything. UW1 only.
+    /// without changing anything. Both games; on UW2 the categories are UW2's (KeyShuffle.Uw2Categories),
+    /// the goal is the castle's plot 16, a random start lies in the castle or any world, and the
+    /// spoiler log in the map notes is UW1's only.
     /// </summary>
     public sealed class KeyShuffleWindow : Window
     {
@@ -85,9 +87,9 @@ namespace UwEditor.App
                 TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = 0.75,
                 Text = "Moves the key items to new places so that the game stays beatable with the logic chosen below. The zones (the Zones window's zoning, or automatic zones when there is none) and the time-aware solver decide what is reachable. " +
                        "The key items are placed one by one, each somewhere the solver can reach while it counts the items not yet placed as held (assumed fill); the other items fill the rest. " +
-                       "A fresh solve of the shuffled levels must then reach level 9 without a one-way trap, or the next seed is tried. Items move whole (keys keep their lock numbers); with Place anywhere, the places on the floor are random squares the logic reaches. " +
+                       "A fresh solve of the shuffled levels must then reach " + (s.IsUw2 ? "the end (the castle's plot at 16, Nystul's ceremony)" : "level 9") + " without a one-way trap, or the next seed is tried. Items move whole (keys keep their lock numbers); with Place anywhere, the places on the floor are random squares the logic reaches. " +
                        "Start: the game can begin on another square, random or given; its first step then teleports the player there, and the items the way out needs are placed within reach. " +
-                       "Nothing is written until you press Apply, which makes one undoable step per level; the changes are saved with the levels." + (s.IsUw2 ? " This works for Ultima Underworld 1 only, whose facts and solver it uses." : ""),
+                       "Nothing is written until you press Apply, which makes one undoable step per level; the changes are saved with the levels.",
             });
             // the zoning: the Zones window's, or Quick autozone when there is none
             zoning = main.Zoning();
@@ -119,10 +121,10 @@ namespace UwEditor.App
             // what moves, three to a row, lined up with the options above
             top.Children.Add(LogicOptionsPanel.Heading("THE SCATTER", "what moves, and what Apply adds"));
             var moves = new OptionGrid(3);
-            var boxes = KeyShuffle.Categories.Select(c =>
+            var boxes = KeyShuffle.CategoriesOf(s).Select(c =>
             {
                 string cat = c;
-                var box = new CheckBox { Content = KeyShuffle.CategoryName(c), IsChecked = opt.Move.Contains(c) };
+                var box = new CheckBox { Content = KeyShuffle.CategoryName(c, s.IsUw2), IsChecked = opt.Move.Contains(c) };
                 box.IsCheckedChanged += (o, e) => { if (box.IsChecked == true) opt.Move.Add(cat); else opt.Move.Remove(cat); };
                 moveBoxes[cat] = box;
                 return (Control)box;
@@ -153,7 +155,9 @@ namespace UwEditor.App
             ToolTip.SetTip(anywhereBox, "On: the places on the floor become random squares of their level that the logic reaches: open floor, slopes and the open half of a diagonal, but not water or lava, and not a square with a door, a trap or a trigger. Items in containers and creatures keep those places. Off: the items trade the places where items lay.");
             notesBox.IsChecked = opt.SpoilerNotes;
             notesBox.IsCheckedChanged += (o, e) => opt.SpoilerNotes = notesBox.IsChecked == true;
-            ToolTip.SetTip(notesBox, "At Apply, the log goes into the game's own map notes, which a new game copies from DATA: page 9 (the Ethereal Void's map) gets a warning, from page 10 the hints (each artifact, and each item the game cannot be finished without, by the name of the zone it lies in, or its level and the part of it), then a page saying SOLUTIONS NEXT, then the solutions (level and square). The map screen's up arrow goes past level 9 to these pages.");
+            // the notes' pages past the last level are UW1's (the map screen's up arrow goes on past level 9); UW2's eighty levels leave no such pages
+            if (s.IsUw2) { notesBox.IsChecked = false; notesBox.IsEnabled = false; notesBox.Content = "Spoiler log in the map notes (not on Ultima Underworld 2)"; }
+            ToolTip.SetTip(notesBox, s.IsUw2 ? "Ultima Underworld 1 only: its map screen goes on past level 9 to pages that can hold the log. On Ultima Underworld 2 the log is in the window and the exported file only." : "At Apply, the log goes into the game's own map notes, which a new game copies from DATA: page 9 (the Ethereal Void's map) gets a warning, from page 10 the hints (each artifact, and each item the game cannot be finished without, by the name of the zone it lies in, or its level and the part of it), then a page saying SOLUTIONS NEXT, then the solutions (level and square). The map screen's up arrow goes past level 9 to these pages.");
             more.AddRow("Places", anywhereBox, notesBox);
             top.Children.Add(more);
             // where the game starts
@@ -188,7 +192,6 @@ namespace UwEditor.App
             var actions = new StackPanel();
             actions.Children.Add(buttons);
             actions.Children.Add(summary);
-            if (s.IsUw2) { previewButton.IsEnabled = shuffleButton.IsEnabled = false; summary.Text = "This works for Ultima Underworld 1 only."; }
 
             // the settings scroll when the window is short; the buttons stay in sight, the log takes the rest
             var root = new Grid { Margin = new Thickness(16), RowDefinitions = new RowDefinitions("Auto,Auto,*") };
@@ -459,18 +462,19 @@ namespace UwEditor.App
                 return;
             }
             summary.Text = prefix + (r.Success
-                ? string.Format("Seed {0}{1}: {2} items move ({3} key items), {4} levels change; the shuffled game reaches level 9 in {5} spheres (the original in {6}).{7}{8}",
+                ? string.Format("Seed {0}{1}: {2} items move ({3} key items), {4} levels change; the shuffled game reaches {9} in {5} spheres (the original in {6}).{7}{8}",
                     r.UsedSeed, r.UsedSeed != r.Options.Seed ? " (after " + (r.Attempts - 1) + " failed)" : "", r.Moves.Count(m => m.Item != m.Place), r.Moves.Count(m => m.ByFill && m.Item != m.Place), r.After.Count,
-                    r.SpheresAfter, r.SpheresBefore, r.Unlocked.Count > 0 ? " " + r.Unlocked.Count + " door(s) unlocked." : "", StartLine(r))
+                    r.SpheresAfter, r.SpheresBefore, r.Unlocked.Count > 0 ? " " + r.Unlocked.Count + " door(s) unlocked." : "", StartLine(r), session.IsUw2 ? "the end" : "level 9")
                 : "No shuffle passed the check in " + r.Attempts + " attempts; see the log.");
         }
 
         /// <summary>Where a shuffled game with a random or given start begins, in a sentence (empty with the game's own start).</summary>
-        static string StartLine(KeyShuffleResult r)
+        string StartLine(KeyShuffleResult r)
         {
             if (r.Start == null || r.StartFrom == null) return "";
             return string.Format(" The game starts at level {0} ({1}, {2}): the first step at level {3} ({4}, {5}) teleports the player there{6}.", r.Start.Level, (int)r.Start.X, (int)r.Start.Y,
-                r.StartFrom.Level, (int)r.StartFrom.X, (int)r.StartFrom.Y, r.MovedIntoReach.Count > 0 ? "; " + r.MovedIntoReach.Count + " key item(s) went to squares within its reach, as no place there was left" : "");
+                r.StartFrom.Level, (int)r.StartFrom.X, (int)r.StartFrom.Y, r.MovedIntoReach.Count > 0 ? "; " + r.MovedIntoReach.Count + " key item(s) went to squares within its reach, as no place there was left" : "")
+                + (KeyShuffle.LockedWorldNote(session, r.Start.Level) is string locked ? " " + locked : "");
         }
 
         /// <summary>Preview: computes a shuffle and shows its spoiler log; nothing changes.</summary>
@@ -534,7 +538,7 @@ namespace UwEditor.App
             finally
             {
                 busy = false;
-                previewButton.IsEnabled = shuffleButton.IsEnabled = !session.IsUw2;
+                previewButton.IsEnabled = shuffleButton.IsEnabled = true;
             }
         }
 

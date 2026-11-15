@@ -54,11 +54,34 @@ namespace UwEditor.Core.Randomizer
         public override string ToString() { return string.Format("item 0x{0:X}, quality {1}, owner {2}", Item, Quality, Owner); }
     }
 
+    /// <summary>
+    /// The kind of object a flag fact's object is (a fact's "match"): {"item": "0x119"}, with
+    /// quality or link when the game tells such objects apart by them (a storage crystal by its
+    /// quality, a potion by its spell in the link). The game checks the thing by its kind and not
+    /// by where it lies (a blackrock key gem: obj/USEITEMS.C UseKeyGem), so the fact follows the
+    /// object when the key item scatter moves it: AbilityZones.FactObjects finds it wherever it
+    /// lies. Null when the fact names its object by place alone.
+    /// </summary>
+    public sealed class FactMatch
+    {
+        public int Item = -1;
+        /// <summary>-1: any.</summary>
+        public int Quality = -1, Link = -1;
+        public bool Valid { get { return Item >= 0 && Item < 0x140; } }
+
+        public bool Matches(ObjectInfo o)
+        {
+            return o != null && !o.Free && o.Item == Item && (Quality < 0 || o.Quality == Quality) && (Link < 0 || o.Link == Link);
+        }
+
+        public override string ToString() { return string.Format("item 0x{0:X}{1}{2}", Item, Quality >= 0 ? ", quality " + Quality : "", Link >= 0 ? ", link " + Link : ""); }
+    }
+
     /// <summary>One hand-written fact of a facts file (docs/facts/uw1-*.json).</summary>
     public sealed class Fact
     {
         public string Id = "";
-        /// <summary>craft, trade, flag, nomana, walls, hidden; Phase C: link, warp, goal, free, needs, door; Phase D: count; lost (a token or a place that may be lost: mayBeLost); spare (creatures the logic must never kill: nothing they carry or their deaths give counts, and their token may never be required).</summary>
+        /// <summary>craft, trade, flag, nomana, walls, hidden; Phase C: link, warp, goal, free, needs, door; Phase D: count; lost (a token or a place that may be lost: mayBeLost); spare (creatures the logic must never kill: nothing they carry or their deaths give counts, and their token may never be required); carried (what a creature carries is had only with Requires: UW2's Janar and his key ring).</summary>
         public string Kind = "";
         /// <summary>craft, flag: the token granted.</summary>
         public string Grants = "";
@@ -99,6 +122,12 @@ namespace UwEditor.Core.Randomizer
         public string LinkKind = "";
         /// <summary>link: the other links between the two zones are removed (the fact is the only way between them).</summary>
         public bool Replace;
+        /// <summary>
+        /// link: "once": the way can be taken only once (the Historian's teleport to the island,
+        /// quest 39). The solve takes what lies where it leads on arrival and walks out; that place
+        /// counts again only by another way (Timeline's once links), and the walkthrough warns.
+        /// </summary>
+        public bool Once;
         /// <summary>warp: only from the zones of this level (0: from every zone).</summary>
         public int FromLevel;
         /// <summary>free: the objects (levers) and triggers whose chains count as done once their zone is reached, and the flags granted there.</summary>
@@ -138,6 +167,8 @@ namespace UwEditor.Core.Randomizer
         /// time (TimedGifts); null when the fact names none.
         /// </summary>
         public FactGift Gift;
+        /// <summary>flag: the kind of its object (FactMatch), so the fact follows the object wherever it lies; null: the object is named by place alone.</summary>
+        public FactMatch Match;
 
         /// <summary>The rank of a may-be-lost kind: "" 0, a 1, b 2, c 3 (a mark only ever moves up).</summary>
         public static int LostRank(string kind) { return kind == "c" ? 3 : kind == "b" ? 2 : kind == "a" ? 1 : 0; }
@@ -418,7 +449,7 @@ namespace UwEditor.Core.Randomizer
                     Level = I(n, "level", 0), Object = I(n, "object", -1), Trigger = I(n, "trigger", -1), X = I(n, "x", -1), Y = I(n, "y", -1),
                     Tiles = S(n, "tiles"), Notes = S(n, "notes"), Source = S(n, "source"), Confidence = S(n, "confidence"), File = file,
                     TwoWay = B(n, "twoWay") || B(n, "twoway") || B(n, "two_way"), Option = Opt(S(n, "option")), Otherwise = S(n, "otherwise"),
-                    LinkKind = S(n, "linkKind"), Replace = B(n, "replace"), FromLevel = I(n, "fromLevel", 0),
+                    LinkKind = S(n, "linkKind"), Replace = B(n, "replace"), FromLevel = I(n, "fromLevel", 0), Once = B(n, "once"),
                 };
                 var rect = n?["rect"] as JsonArray;
                 if (rect != null) f.Rect = rect.Select(x => Int(x, 0)).ToArray();
@@ -446,6 +477,8 @@ namespace UwEditor.Core.Randomizer
                         Item = I(go, "item", -1), Quality = I(go, "quality", 0x3F), Owner = I(go, "owner", 0), Link = I(go, "link", 1), Flags = I(go, "flags", 0),
                         IsQuantity = go["isQuantity"] == null || B(go, "isQuantity"), Enchanted = B(go, "enchanted"),
                     };
+                // match: {"item": "0x119", "quality": 6, "link": 579}: the kind of the flag's object (FactMatch)
+                if (n?["match"] is JsonObject mo) f.Match = new FactMatch { Item = I(mo, "item", -1), Quality = I(mo, "quality", -1), Link = I(mo, "link", -1) };
                 if (f.Kind == "count")
                 {
                     if (n?["items"] is JsonArray items) foreach (var x in items) { int k = Int(x, -1); if (k >= 0) f.Items.Add(k); }
@@ -487,11 +520,16 @@ namespace UwEditor.Core.Randomizer
                 };
                 if (f.Gift != null && !f.Gift.Valid) list.Add(f.Id + ": a gift needs 'item', an object item id below 0x140.");
                 if (f.Gift != null && (f.Kind != "flag" || f.Grants.Length == 0)) list.Add(f.Id + ": only a flag fact with 'grants' names a gift.");
+                if (f.Match != null && (f.Kind != "flag" || f.Object < 0 || !f.Match.Valid)) list.Add(f.Id + ": 'match' belongs to a flag fact with 'object', and needs 'item', an object item id below 0x140.");
                 Action<string> option = o => { if (o.Length > 0 && !KnownOptions.Contains(o)) list.Add(f.Id + ": unknown option '" + o + "' (known: " + string.Join(", ", KnownOptions) + ")."); };
                 if (f.Lost.Length > 0 && Fact.LostRank(f.Lost) == 0) list.Add(f.Id + ": mayBeLost's kind is a, b or c (not '" + f.Lost + "').");
                 if (f.Lost.Length > 0 && f.LostWhy.Trim().Length == 0) list.Add(f.Id + ": mayBeLost needs 'why'.");
                 // a window may name the fall (it says when a thing is gone, not what progress needs)
                 if (f.LostWhen.Length > 0) { string e; if (Requirement.TryParse(f.LostWhen, out e) == null) list.Add(f.Id + ": " + e); }
+                // a link carries only kind a (a choice: the walkthrough warns where it is taken); one the game lets be taken once is "once"
+                if (f.Kind == "link" && f.Lost.Length > 0 && f.Lost != "a") list.Add(f.Id + ": a link's mayBeLost is of kind a (a choice the player can avoid); a way the game allows only once is marked \"once\".");
+                if (f.Once && f.Kind != "link") list.Add(f.Id + ": 'once' belongs to a link.");
+                if (f.Once && f.TwoWay) list.Add(f.Id + ": a link taken once is one way.");
                 switch (f.Kind)
                 {
                     case "spare":
@@ -540,6 +578,11 @@ namespace UwEditor.Core.Randomizer
                         if (f.Option.Length == 0 && (f.To == null || !(f.To.HasTile || f.To.HasObject))) list.Add(f.Id + ": a goal needs where it is: 'level' with 'x' and 'y' or 'object' (or 'at').");
                         req(f.Requires);
                         option(f.Option);
+                        break;
+                    case "carried":
+                        if (f.Level <= 0 || f.Object < 0) list.Add(f.Id + ": a carried fact names the creature by 'level' and 'object'.");
+                        if (string.IsNullOrWhiteSpace(f.Requires)) list.Add(f.Id + ": a carried fact needs 'requires' (how what the creature carries is had).");
+                        else req(f.Requires);
                         break;
                     case "count":
                         if (f.Grants.Length == 0) list.Add(f.Id + ": no 'grants'.");

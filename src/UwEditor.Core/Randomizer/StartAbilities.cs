@@ -25,7 +25,13 @@ namespace UwEditor.Core.Randomizer
     /// UW1 has none, so its wand (item 0x98) follows the scroll's fields. A lasting thing is the
     /// sound choice when single-use things do not count, and Gate Travel may be needed again.</item>
     /// </list>
-    /// The runes themselves stay ordinary key items. Only UW1's key item shuffle makes the objects.
+    /// The runes themselves stay ordinary key items. A start in UW2's Britannia (levels 1 to 8)
+    /// also withholds every ability whose spells are all above circle 3, whatever the circle option:
+    /// no one casts those from runes there, later or not (combat/RUNES.C player_cast:232,
+    /// AbilityZones.BritanniaCircle), so a sealed Britannian start left only by Gate Travel gets its
+    /// object too. Both games' key item shuffles make the objects (UW2 since 0.1.49; the records
+    /// follow UW2's own wand of Light, level 67 #899, and scroll of Portal, level 57 #477: quality
+    /// 40, link 0x200 + the spell, flags 4, enchanted, a quantity).
     /// </summary>
     public static class StartAbilities
     {
@@ -34,16 +40,32 @@ namespace UwEditor.Core.Randomizer
         /// every spell of the game that gives it (and has runes) is above NewCharacterCircle. None
         /// with Magic off or no circle limit.
         /// </summary>
-        public static List<string> Withheld(GameSession s, AbilityOptions logic)
+        public static List<string> Withheld(GameSession s, AbilityOptions logic, int startLevel = -1)
         {
             var list = new List<string>();
-            if (s == null || logic == null || !logic.Magic || logic.NewCharacterCircle >= AbilityOptions.MaxCircle) return list;
+            if (s == null || logic == null || !logic.Magic) return list;
+            bool brit = AbilityZones.InBritannia(s, startLevel);
+            if (logic.NewCharacterCircle >= AbilityOptions.MaxCircle && !brit) return list;
             foreach (var ab in Abilities.Names)
             {
                 var spells = Abilities.SpellsGiving(s.IsUw2, ab);
-                if (spells.Count > 0 && spells.All(sp => SpellTables.Circle(s.IsUw2, sp) > logic.NewCharacterCircle)) list.Add(ab);
+                if (spells.Count == 0) continue;
+                if ((logic.NewCharacterCircle < AbilityOptions.MaxCircle && spells.All(sp => SpellTables.Circle(s.IsUw2, sp) > logic.NewCharacterCircle))
+                    || (brit && AbilityZones.BritanniaCast(s, ab) == null)) list.Add(ab);
             }
             return list;
+        }
+
+        /// <summary>The level of the start t's solves begin at (its start zone's first level), or -1.</summary>
+        public static int StartLevel(TimelineResult t)
+        {
+            return t == null || t.Set == null ? -1 : t.Set.LevelsOf(t.Set.StartZone).DefaultIfEmpty(-1).First();
+        }
+
+        /// <summary>Whether a solve never got out of UW2's Britannia (levels 1 to 8): every zone it reached lies there.</summary>
+        static bool StaysInBritannia(GameSession s, TimelineResult t, TimelineSolve sv)
+        {
+            return sv.ZoneSphere.Keys.All(z => t.Set.LevelsOf(z).All(l => AbilityZones.InBritannia(s, l)));
         }
 
         /// <summary>The spell an object for the ability holds: the lowest circle's of those giving it (Levitate rather than Fly), or -1.</summary>
@@ -79,19 +101,22 @@ namespace UwEditor.Core.Randomizer
         /// <summary>
         /// The abilities a start needs as made objects, or an empty list: the solve from t's start
         /// zone with the tokens assumed (sv, already made, or null to make it) misses the goal and
-        /// never leaves the start's free area, and with the objects made for some withheld abilities
-        /// it reaches the goal. The abilities tried are those the ways out of the reached part and
+        /// never leaves the start's free area (or, from a start in UW2's Britannia, never leaves
+        /// Britannia), and with the objects made for some withheld abilities it reaches the goal. The abilities tried are those the ways out of the reached part and
         /// the warps ask for; one alone if one does it (in the order of Abilities.Names), else all of
         /// them, then each left out in turn when the goal is reached without it.
         /// </summary>
         public static List<string> Needed(GameSession s, TimelineResult t, AbilityOptions logic, IEnumerable<string> assumed, TimelineSolve sv = null)
         {
             var none = new List<string>();
-            var withheld = Withheld(s, logic);
+            int startLevel = StartLevel(t);
+            var withheld = Withheld(s, logic, startLevel);
             if (withheld.Count == 0) return none;
             var held = (assumed ?? Enumerable.Empty<string>()).ToList();
             if (sv == null) sv = t.Engine.Run(Timeline.SolverFor(t, logic, held), logic, "made abilities: none", null);
-            if (sv.GoalReached || sv.FreeArea == null || sv.FreeAreaLeft >= 0) return none;
+            if (sv.GoalReached) return none;
+            bool sealedIn = sv.FreeArea != null && sv.FreeAreaLeft < 0;
+            if (!sealedIn && !(AbilityZones.InBritannia(s, startLevel) && StaysInBritannia(s, t, sv))) return none;
             // the abilities the ways out ask for
             var asked = new HashSet<string>();
             Action<string> note = tok =>
@@ -121,11 +146,14 @@ namespace UwEditor.Core.Randomizer
             return keep;
         }
 
-        /// <summary>Why a start gets the object made for an ability, in words (the log).</summary>
-        public static string Why(GameSession s, AbilityOptions logic, string ability)
+        /// <summary>Why a start gets the object made for an ability, in words (the log); startLevel: where the start lies (UW2's Britannia has a rule of its own).</summary>
+        public static string Why(GameSession s, AbilityOptions logic, string ability, int startLevel = -1)
         {
             int sp = SpellFor(s, ability);
             int c = sp < 0 ? 0 : SpellTables.Circle(s.IsUw2, sp);
+            if (AbilityZones.InBritannia(s, startLevel) && AbilityZones.BritanniaCast(s, ability) == null)
+                return string.Format("the start lies in Britannia (level {0}) and is left only with {1}, and no spell above circle 3 is cast from runes on levels 1 to 8, at any character level ({2} is circle {3}; combat/RUNES.C player_cast); a scroll or wand still works there",
+                    startLevel, ability.Replace('_', ' '), sp < 0 ? ability : SpellTables.Name(s, sp), c);
             return string.Format("the start's free area is left only with {0}, and a new character cannot cast {1} from runes (circle {2}, which asks for level {3}; the logic counts rune casting up to circle {4} until the start's free area is left)",
                 ability.Replace('_', ' '), sp < 0 ? ability : SpellTables.Name(s, sp), c, 2 * c - 1, logic.NewCharacterCircle);
         }

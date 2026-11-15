@@ -278,7 +278,11 @@ up. An owner field has a list of races to choose from. Each race is named after 
 creatures, from OBJECTS.DAT's race byte. A creature's
 **Attitude**, **Goal** and **Saved goal** have lists too (▾), and the value's meaning shows
 beside the number (8: mill about near home). The **Link** of a creature or a container has
-a **+** that adds an object to its inventory or contents.
+a **+** that adds an object to its inventory or contents. A closed door has **Spiked** and
+**Strength**, the two parts of its owner field: a spike holds the door against creatures (you
+open it, which pulls the spike out), and hits wear its strength down instead of breaking it;
+at strength 0 it breaks like any door. Ticking Spiked gives strength 31, as a spike does in
+the game.
 
 The panel's **OBJECT** and **TILE** headings fold their sections away when clicked, and
 unfold them on a second click; the editor remembers which are folded.
@@ -2161,7 +2165,7 @@ All of it is in the **Randomizer** menu:
 - **Key item scatter ▸ Zones** (UW1 only) holds the zoning. Its **Zone graph…** and **Autozone…**
   buttons open the zone graph and the **Automatic zones** the logic is built from.
 - **Key item scatter ▸ Apply** is the randomizer that moves the key items so the game stays
-  beatable.
+  beatable (both games, from the game's own start or another).
 - **Item property shuffle**.
 - **Swap ▸ Swap items** and **Swap ▸ Swap monsters**.
 - **Named challenges**.
@@ -2275,11 +2279,15 @@ trigger is set off from the square beyond that edge and from no other, even when
 room lies nearer. The sewers' rooms around the oubliette (level 5 (12, 17) to (21, 23)),
 the lurker's pool of level 3 (38, 20), a bedroom of Killorn Keep (level 17 (24, 47)) and
 Nystul's hidden room under the castle (level 2 (11, 42), entered by the wall at the end of
-the passage at level 1 (37, 40)) are reached this way.
+the passage at level 1 (37, 40)) are reached this way. The walkthrough says "Walk into the
+wall at L1 (37, 39): it teleports you to level 2" for such a teleport, whose move trigger lies
+in the rock.
 
 **Bishop's force field (UW2).** A fact carries the way through the force field before
 Bishop's cell (level 16 (31, 33)): fraznium gauntlets or the fraznium circlet. Altara's
-dagger asks for Bishop or Mystell met, as her conversation does.
+dagger asks for Bishop or Mystell met, as her conversation does. Bishop asks for a pair of
+gauntlets to leave and keeps it (conversation 6); the link carries a mark of kind a, so the
+walkthrough warns at the step: give him a pair only with a second pair or the circlet.
 
 **A stream jumped over (UW2).** Water with a current is not walked into against the
 current, but a stream is jumped over at its own level as a gap is: the jump from one bank
@@ -2287,7 +2295,11 @@ to the other clears it (the squares the schedule opens on level 26, (33, 33) to 
 
 **Talorus (UW2).** The way to the key gem in the middle of the lava lake of level 34: the
 Historian sends the Avatar to the island once the new Ductosnore is made (quest 38), and the
-brass plate at (30, 33) lays a bridge north to the shore, one way. The new Ductosnore is
+brass plate at (30, 33) lays a bridge north to the shore, one way. He does it only once
+(conversation 156 sets quest 39): the link is marked `"once"`. The solve takes what lies on
+the island on arrival and walks out over the bridge; after that the island counts only by
+another way (lava protection from the shore), and the walkthrough warns at the step. A way
+taken once is never part of a way there, nor of the return check. The new Ductosnore is
 made as the game makes it: Bliy Skup Ductosnore killed (a fight, taken as won), the
 Delgnizator (level 34 (31, 20)) and the two crystals the chamber takes, E0Y2 among the
 debris north of the lava (level 34 (30, 42)) and the controller crystal in the Futurian's
@@ -2302,7 +2314,8 @@ password or the forged delivery voucher (level 9 (31, 33)) shown to the gate gua
 the door on Borne's floor (level 14 (29, 32)) for the password told to the guard there. The
 password comes from Borne at the first meeting or from the goblin armorer (levels 14 and
 13), both inside the gate, so in the shipped game it matters for the door on level 14 and
-for a key shuffle. The guards' bribe is gold, which is not counted. The castle's jail is no
+for a key shuffle. The guards' bribe is gold, which is not counted (the password and the
+voucher are the ways the logic takes). The castle's jail is no
 such door: Lord British opens the Avatar's cell (level 1 (42, 38)) only in a talk he holds
 with one the castle guards have jailed (quest 112), so a start in a cell stays shut.
 
@@ -2322,10 +2335,13 @@ the bridge to the Ice Caverns' control island, level 25 (53, 16) and (54, 16), w
 lever at (53, 15) steps between 14 and 10). Oscillators that plain triggers run are left
 as they stand.
 
-**Doors that can be bashed (UW2).** In UW1 an object with id bit 13 set is indestructible.
-In UW2 that bit is a door's direction and takes nothing from it: a locked door is bashed
-unless its kind cannot be broken or it keeps a strength in its owner field (worn down, never
-broken).
+**Doors that can be bashed.** In UW1 an object with id bit 13 set is indestructible.
+In UW2 that bit is a door's direction and takes nothing from it. In both games a locked door is
+bashed unless its kind cannot be broken or it is spiked with strength left (hits wear the
+strength down, it never breaks). A spiked door that is not locked is free: the player opens it,
+only creatures are kept out. No shipped door is spiked. In the walkthrough a bash through a
+tough door (toughness class 1 or 2, which takes half or a quarter of each blow) adds "charge
+each blow".
 
 **A pit with its way out (UW2).** Where a pit's square has a low switch that throws the
 player straight up and a higher switch that fills the pit (the Academy, level 46 (41, 52)),
@@ -2761,7 +2777,8 @@ Items trade places whole (item, quality, flags, quantity or link, owner, enchant
 key keeps its lock number. With **Place anywhere** (on at first), the places on the floor are
 first moved to random squares the logic reaches, so items do not end up where items lay. An item placed inside a locked chest needs what opens the chest.
 Items NPCs hand over in conversation, trap templates, objects a trap or trigger names, the
-moonstone and Tyball's orb stay where they are, but still count in the logic. The **Vow of
+moonstone and Tyball's orb stay where they are, but still count in the logic. (UW2 has its own
+list: see **On Ultima Underworld 2** under Apply.) The **Vow of
 poverty** and **Starvation** challenges spare only the 20 coins beside Shak and the meat
 beside Zak, and those stay where they are too.
 
@@ -2770,9 +2787,10 @@ The spoiler log names each place by the zones of the hand-made zoning (the zone 
 
 #### 7a. A random starting position
 
-The key item shuffle can start the game somewhere else (UW1; the **Start** row of the Apply
-window). The options are the game's own square, a random square (level 1 only, or any level),
-or a square given by hand (or the square selected in the main window).
+The key item shuffle can start the game somewhere else (both games, UW2 since 0.1.49; the
+**Start** row of the Apply window). The options are the game's own square, a random square
+(UW1: level 1 only, or any level; UW2: the castle, levels 1 to 5, or any of the nine worlds), or
+a square given by hand (or the square selected in the main window).
 
 - **Which squares.** An open square of a zoned level, not on the map's edge, its floor
   neither water nor lava (and in UW2 not an ice slope, which slides the player away at
@@ -2863,10 +2881,79 @@ or a square given by hand (or the square selected in the main window).
   under "Made anew" and says that a player who does reach the giver in time gets a second one.
   Tried on UW1 with a test fact only. On UW2 the case comes up for Dupre's key from most
   starts (the solve steps into level 3's sewers, which moves the plot to 1, before Lord
-  British's speech lets Dupre speak), but no way needs key 28, so no key is made.
+  British's speech lets Dupre speak), but no way needs key 28, so no key is made. On UW2 a
+  start elsewhere judges the gifts by the solve with every moving item held (the unshuffled
+  solve from there misses most givers only because their keys lie elsewhere), and a gift whose
+  token something that moves also gives is not made (Charles's key 2: the key of level 3).
 
-Not yet played in the game. `StartPicker` and `StartTeleport` work on UW2 too, but the key
-shuffle itself still refuses UW2.
+**On Ultima Underworld 2** (0.1.49):
+
+- **The start filter** solves with every moving item held, as on UW1 (before, the unshuffled
+  game's solve stood in). Viable: 22 of the castle's 25 zones (2,516 of 2,563 squares; were 20)
+  and 195 of the 252 zones of the nine worlds (16,810 of 18,031 squares; were 159). Of the 57
+  rejected, 45 are small pockets the solve does not get out of even with every item held (1 to
+  8 zones reached: Fissif's cell, the listener's area under the castle, rooms and ledges of
+  levels 16 to 18, 25, 26, 33, 34, 46, 49 to 52, 57, 65, 67, 69 and 72) and 12 are the Prison Tower's floors 10 to 16 (next bullet).
+  Solving every zone takes about 2 minutes, the castle's 5 s; only the zones drawn are solved.
+- **The castle plot in the game's order.** A set variable trap writes its value whatever the plot
+  stands at, and the three that set the plot (level 3's sewers to 1, level 9's landing to 2,
+  level 14 to 3) go off once. Steps that add one (the listener killed with Altara's dagger, key
+  gems 3 and 5 picked up, Zoranthus met, gem 4 fused) are lost when a set comes after them, and
+  Miranda moves the plot only when it stands at exactly 3, 7 or 11. From the game's own start the
+  castle's gem keeps all this in order (Killorn Keep and the Ice Caverns from plot 4, Talorus,
+  the Academy and the Pits from 8); from a start elsewhere nothing does. So the logic now counts
+  the set to 3 only once the sets to 1 and 2 have gone off, the listener and gem 3 only after
+  Miranda's step at 3, and Zoranthus, gem 4 fused, gem 5 and Zoranthus's bottle only after her
+  step at 7, the game's own order. A start from which the solve reaches level 14's trigger
+  (28, 35) before the other two sets is rejected ("the castle plot's trap that sets it to 3 …"):
+  the player could not help walking onto it. The walkthrough of such a run lists the steps that
+  must wait for their turn ("Do not do any of steps …"). The game's own start is unchanged (41
+  spheres, 334 zones, every plot step in the same sphere).
+- **Britannia.** No spell above circle 3 is cast from runes on levels 1 to 8, at any character
+  level (see **Where magic fails**), so a start there withholds those abilities whatever **New
+  character casts up to circle** says: a sealed start in Britannia left only by Levitate or
+  Gate Travel gets its wand or scroll. None of the shipped castle starts needs one.
+- **Made objects** are UW2's own: a wand (item 0x9B) or a scroll (0x137), quality 40, link 0x200
+  + the spell, flags 4, enchanted, a quantity, as the game's wand of Light (level 67 #899, link
+  0x200 + 5) and scroll of Portal (level 57 #477, 0x200 + 54). The logic reads the wand as
+  `perm:` and the scroll as `once:`. Eight zones get one, all a wand of Levitate (a room of level
+  51 at (28, 37), ledges and areas of levels 65 and 72). The Academy's levels without mana need
+  nothing special: a wand or scroll works there.
+- **Squares.** The rules above (no water, lava, ice slope, trigger, door or barrier square)
+  cover the Void's floors and the Ice Caverns' currents and slopes; the Academy's test levels
+  are left to the solve, which counts no rune spell there; the Prison Tower's cells and floors
+  are rejected by the solve or the plot's order. The Pits' arenas lie in level 57's big zone.
+- **Lord British's speech** comes when the Avatar first meets him, wherever the start.
+- **How often a start fills.** A sample (every castle zone and 30 zones of the other worlds
+  drawn at random, 2 seeds each, no retries): of the 42 viable zones among them, 84 of 84 runs
+  fill, about 33 s a run; 12 runs move a place into reach.
+- **A start in a world the gem keeps shut.** Every world's arrival area has a teleport back to
+  the gem cavern under the castle, but the gem opens a world only through the facet it shows
+  (the first 1, 3, 6 or 8 by the castle plot: below 4, 8, 13) or once that world's key gem is
+  fused (event/WORLDEV.C black_gem_trip, black_gem_rotate). Britannia and the Prison Tower are
+  open from the start (below plot 4 the gem shows only the tower's facet, every other turn). From
+  a start in any other world the player can leave at once but cannot come back until then.
+  Since 0.1.50 the logic knows it (the fill, the check, the start filter and the walkthrough
+  alike): it first takes all the world gives without leaving it, then leaves for the castle (or,
+  with no way to the castle, for the world a way out leads to, which is taken the same way when
+  it is shut too: from the Pits' room at level 59 (53, 41) through the Void), and from then on
+  the world's zones count again only by a way that holds: the gem's facet at its plot, or the
+  same facet once the world's key gem is treated by Nystul and fused (a Pits start: key gem 7,
+  Dorstag's, so the Pits open again soon). What lies in the world behind something only found
+  outside waits for that. The walkthrough finishes the world first and marks the step that
+  leaves it: ">>> Leave the Pits of Carnage now: every step the logic needs from it is done. You
+  cannot come back until the castle plot at 8 or this world's key gem (7) fused; …". A player who
+  leaves sooner and misses something has himself to blame; the log's start lines, the
+  walkthrough's head and the window's summary still say so: "You start in Talorus, which the
+  blackrock gem does not open until the castle plot reaches 8 (…). You can leave for the castle
+  at once, but you cannot come back until then. …". The start filter's counts are unchanged by
+  it (castle 22 of 25 zones, the nine worlds 195 of 252): every viable start finds an order.
+- **Things of Opening.** A locked door's pick also counts the Open spell's sources (a scroll, the
+  cudgel of Entry), so on UW2 these now move as key items: before, the fill held them all the
+  time as filler and then put them anywhere, and a start whose way out is a locked door (level 3
+  at (33, 16), behind the door to key 2) failed every check. UW1's list is unchanged.
+
+Not yet played in the game.
 
 #### 8. The options at a glance
 
@@ -3101,6 +3188,16 @@ only the doors that need picking, when lock picking is off. Three more options:
   default options the gem then comes at sphere 16 instead of 14; the game still ends). The
   walkthrough warns not to kill Blog or Dorstag before the handover.
 
+**Facts that follow their object.** A flag fact names the object whose place gives its token.
+When the game checks that thing by its kind and not by where it lies, the fact can say so with
+`match` (the item, and its quality or link where the game tells such objects apart by them):
+UW2's key gems 2, 4 and 6, the four flasks of basilisk oil, the Skup Chamber's two crystals and
+the delivery voucher. The token is then given where an object of that kind lies now: the one the
+fact names if it is still there, else one of its kind no other such fact has taken (not one in a
+trap, and not one a creature that talks carries). So the key item scatter can move these things,
+and the zones of a shuffled game still find them. With none of its kind left, the fact gives
+nothing and the report says so.
+
 **Creatures the logic must spare.** A fact of kind `spare` names creatures whose deaths no
 solve may need: UW2's two brain creatures on level 18, which hold Killorn Keep up (killing
 both makes it fall). Nothing they carry counts (each holds two eyeballs), nor anything a fact
@@ -3125,7 +3222,18 @@ counts a source of kind b or c only while its `when` does not hold yet, as the s
 when it is reached; one with no `when` never counts. The solve takes each step of the plot as
 soon as it can, so a window met in its order can be met by the player too. The key item
 shuffle never puts a key item in a place of kind b or c (filler may go there). UW1's facts
-carry no such marks; for UW2 see `docs/UW2-RANDOMIZER-NEXT-STEPS.md`, 2.1.
+carry no such marks; for UW2 see `docs/UW2-RANDOMIZER-NEXT-STEPS.md`, 2.1. A link may carry
+a mark of kind a too (Bishop's force field), and a link the game allows only once is marked
+`"once": true` (the Historian's teleport; see Talorus above).
+
+**What a creature carries (UW2).** UW2's levels are read without UW1's rule that what a named,
+friendly creature carries needs `option:kill_npcs`. A fact of kind `carried` (a creature by
+`level` and `object`, and `requires`) adds a requirement to everything that creature carries,
+in its pack or in a container it carries. Janar (level 12) hands over his key ring, with keys 4
+and 6, for the codeword Borne gives (`npc:borne | option:kill_npcs`); Borne and the goblin guards
+of levels 10 and 14 never give their keys (`option:kill_npcs`). Merzan's potion of Iron Flesh
+costs a hundred gold coins with no Charm: a count fact (`gold_100`, the coins in the zones
+reached) stands for it.
 
 The pole and the Telekinesis spell (Ort Por Ylem) count the same: a lever out of the hand's
 reach needs `item:pole | spell:telekinesis | spell:levitate`. A lever is only used from its
@@ -3619,9 +3727,9 @@ How it works:
 ### Apply
 
 **Randomizer ▸ Key item scatter ▸ Apply…** (the key item shuffle) moves the key items to new
-places so that the game can still be finished with the logic you choose. It works on Ultima Underworld 1 only, because
-the facts and the solver it uses are UW1's. It reads the levels as they are in the editor,
-with unsaved edits and with any Named challenges or swaps already applied.
+places so that the game can still be finished with the logic you choose. It works on both
+games (see **On Ultima Underworld 2** below). It reads the levels as they are in the editor, with unsaved
+edits and with any Named challenges or swaps already applied.
 
 **What moves.** Tick the categories:
 
@@ -3637,6 +3745,10 @@ with unsaved edits and with any Named challenges or swaps already applied.
 - **Plot items** lying in the levels: the halves of the sword, the orb rocks, Garamon's
   bones, the flutes and the like.
 
+UW2 has four of these: **Keys**, **Runestones and the rune bag**, **Ability items** (scrolls,
+wands, potions, lock picks, enchanted things the logic counts) and **Plot items** (key gems,
+basilisk oil, crystals, eggshells, dream plants …). See **On Ultima Underworld 2** below.
+
 **Place anywhere** (on at first) turns the places on the floor into random squares of their
 level instead of where items lay:
 - open floor, slopes and the open half of a diagonal tile, at the floor's height there;
@@ -3651,7 +3763,8 @@ Places in containers and creatures' inventories stay those places. The log says 
 moved, and gives each item's old square with "a random square" for its new one. Off, items
 trade the places where items lay, as before.
 
-**Spoiler log in the map notes** (off at first) writes the log into the game's own map notes
+**Spoiler log in the map notes** (off at first; Ultima Underworld 1 only, greyed out on UW2,
+whose eighty levels leave no pages past the last) writes the log into the game's own map notes
 at **Apply** (Underworld only; `LEV.ARK` in `DATA`, so a new game has them, and a mod made
 from the game carries them):
 - **page 9**, the Ethereal Void's map, keeps its own notes and gets a warning that the next
@@ -3701,10 +3814,13 @@ Fixed objects the game marks as pickable (urns, campfires, fountains, cauldrons)
 step, so **Undo apply** takes them back too:
 - **A full torch (quality 63) and the map beside the start.** The start is the square the
   solver uses: the new-game square in `UW.EXE`, or the game's own with **Consider the current
-  starting square in the editor** off.
+  starting square in the editor** off, or the random or given start.
   - Apply looks on the start and the eight squares around it, on the floor and inside
     containers there. The shipped game has a sack at (33, 3) holding a torch (quality 40) and
-    the map.
+    the map. Ultima Underworld 2 gives the same: a sack in the Avatar's bedroom at level 1
+    (20, 49), beside the start, with a torch (quality 40) and the map (UW2's item 0x13A), and a
+    dagger, thread, a leather vest and boots by it. The kit is that torch and map, nothing more;
+    with the game's own start they are already there and the torch is filled up.
   - A torch found there is filled up to 63 (the most a light holds).
   - A missing torch, or a missing map, is put on the floor of the first open square beside
     the start.
@@ -3735,6 +3851,41 @@ by an NPC with a conversation, a create trap's template, objects a trap or trigg
 objects that hold other objects or a trigger, the orbs, the moonstone (Gate Travel goes to
 it), and the coins and food beside Shak and Zak.
 
+**On Ultima Underworld 2.** The goal is the end of the game: the castle's plot at 16, Nystul's
+ceremony with the horn. The game starts from its own square, or from a random start (the castle,
+or any world) or a given one, as in **A random starting position** under How the randomizer's
+logic works. What moves and what stays, and why:
+- **Key gems 2, 4 and 6** (level 18 (56, 52), the island of level 34, level 49 (23, 41))
+  move. The game takes any blackrock gem of the right kind (item 0x118 to 0x11F), wherever it
+  was found, so the facts that give them follow the gem by its kind (a fact's **match**): the
+  check and any later solve of the shuffled levels find the gem where it went.
+- **Key gems that stay:** gem 1 (Borne carries it), gems 3 and 5 (picking them up sets off a
+  trigger), gem 7 (Dorstag carries it; Blog's copy is a create trap's template) and gem 8
+  (the facts give it on the Void's platform, and the second gem 8 on level 65).
+- **Basilisk oil** (the four flasks the facts name), the **Skup Chamber's two crystals**
+  (taken by their quality, 2 and 6) and the **delivery voucher** (taken by its link) move the
+  same way: the game checks them by kind, not by where they lay. The crystals still have to
+  be laid on their squares in Talorus; the player carries them there.
+- **Moving freely:** the keys lying in the levels, the runestones and the rune bag, the lock
+  picks, the scrolls, potions, wands and worn things the logic counts, the amethyst rods,
+  black eggshells and dream plants (Altara and the dream take any of their kind).
+- **Staying:** the Sceptre of the Deadly Seeker and the Delgnizator (each holds an object or
+  a trigger), the horn (Praecor Loth carries it), the Void's bottle (a mobile record),
+  everything creatures carry with creature inventories off, the Academy's telekinesis wand
+  (the game puts it back on level 43 whenever the player leaves the level), and the plot items
+  the logic asks nothing of: the Void's and Talorus's artifacts and spheres, the eyeballs and
+  the like stay where they are, since a puzzle the logic does not model may look for them.
+- **Made items:** the gifts the facts name (Dupre's key, Charles's key, Altara's dagger and
+  rod) stay gifts. From the game's own start the solve gets each in time, so nothing is made.
+  From a start elsewhere a gift is made when the solve with every moving item held misses it
+  and nothing that moves gives its token (Charles's key 2 is also the key of level 3, which
+  moves, so it is never made), and a sealed start gets the wand or scroll its way out needs.
+- **Places:** besides the places that may be lost (Altara, Kintara and Mors Gotha with what
+  they carry), what creatures the logic must spare carry, and objects in or named by traps,
+  no key item goes inside a container a trap names, or on a square a trap turns to rock (a
+  tile that becomes solid removes what lies on it). Place anywhere leaves those squares out
+  too.
+
 **Zones.** Apply uses the Zones window's zoning, with its unsaved changes; the row at the top
 says which file and how many zones. The zones come from it as described in **How the
 randomizer's logic works** (Zones from a zoning). With no zoning yet (nothing painted), Apply
@@ -3746,8 +3897,8 @@ are being made, Apply asks before replacing it. **Zones window…** opens that w
 
 **The logic** rows are the same as in the Automatic zones window, with one more:
 **Require breaking the orb (level 7)**. With it on, finishing also needs Tyball's orb broken
-with an orb rock. (The row **The Pits' key gem only by Blog's way** is for UW2, which the
-shuffle does not run on yet.) The goal is reaching level 9, through the ritual in the Slasher's chamber,
+with an orb rock. (The row **The Pits' key gem only by Blog's way** is for UW2.) On UW1 the goal
+is reaching level 9, through the ritual in the Slasher's chamber,
 or a square that ends the game (see the Zones window's **Mark as goal**). Stepping on such a
 square plays the ending at once, so it needs only this option's orb, not what level 9's goal
 needs.

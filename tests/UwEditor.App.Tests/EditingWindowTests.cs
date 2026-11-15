@@ -481,6 +481,45 @@ namespace UwEditor.App.Tests
         }
 
         [AvaloniaFact]
+        public void A_closed_door_shows_spiked_and_strength_and_ticking_spiked_writes_the_owner_as_the_spike_does()
+        {
+            if (Uw1 == null) return;
+            var w = OpenQuiet(Uw1);
+            var vm = w.ViewModel;
+            // not a door: no rows
+            vm.Select(942, -1, -1, true);
+            Ui.Pump();
+            Assert.DoesNotContain(vm.ObjectRows, r => r.Name == "Spiked" || r.Name == "Strength");
+            // the locked door at L1 (9, 19)
+            int door = vm.Level.TileObjects(9, 19).First(o => DoorSpikes.IsClosedDoor(o.Item)).Index;
+            vm.Select(door, -1, -1, true);
+            Ui.Pump();
+            var spiked = vm.ObjectRows.Single(r => r.Name == "Spiked");
+            var strength = vm.ObjectRows.Single(r => r.Name == "Strength");
+            Assert.True(spiked.IsFlag && !spiked.IsChecked);
+            Assert.True(strength.IsNumber && strength.HasSteppers);
+            Assert.Equal(31, strength.Maximum);
+            Assert.Contains("never breaks", spiked.Tip);
+            // ticking the box: owner 0x3F (spiked, strength 31), as the spike does
+            var view = w.GetLogicalDescendants().OfType<PropertyRowView>().First(v => (v.DataContext as PropertyRow)?.Name == "Spiked");
+            Ui.Click(w, view.GetLogicalDescendants().OfType<CheckBox>().First());
+            vm.FlushRefresh();
+            Assert.Equal(DoorSpikes.SpikedOwner, vm.Level.Objects[door].Owner);
+            Assert.Equal("31", vm.ObjectRows.Single(r => r.Name == "Strength").Value);
+            Assert.True(vm.ObjectRows.Single(r => r.Name == "Spiked").IsChecked);
+            vm.EditField(vm.ObjectRows.Single(r => r.Name == "Strength"), "4");
+            vm.FlushRefresh();
+            Assert.Equal(9, vm.Level.Objects[door].Owner);
+            // undo takes back each edit
+            w.Undo();
+            Assert.Equal(DoorSpikes.SpikedOwner, vm.Level.Objects[door].Owner);
+            w.Undo();
+            Assert.Equal(0, vm.Level.Objects[door].Owner);
+            Assert.Equal("0", vm.ObjectRows.Single(r => r.Name == "Spiked").Value);
+            w.Close();
+        }
+
+        [AvaloniaFact]
         public void The_light_levels_follow_the_game_and_the_colour_scheme_switches()
         {
             if (Uw1 == null) return;

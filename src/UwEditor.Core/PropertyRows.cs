@@ -95,6 +95,17 @@ namespace UwEditor.Core
             }
             if (o.Item == 0x10F && o.IsQuantity) Add(rows, "Lock number", (o.Link & 0x1FF).ToString(), "", "Keys whose owner field is this number open it.");
             Add(rows, "Kind of item", KindName(ItemCategories.Of(o.Item, level.Session.Kind)), "", "The class of the item id (include/items.h).");
+            // a closed door's owner field: the spike and the strength it keeps (Editing.DoorSpikes)
+            if (Editing.DoorSpikes.IsClosedDoor(o.Item) && !o.Free)
+                foreach (var f in new[] { Editing.DoorSpikes.Spiked, Editing.DoorSpikes.Strength })
+                {
+                    int v = f.Get(o.Record);
+                    rows.Add(new PropertyRow
+                    {
+                        Field = f, Target = "object", TargetIndex = o.Index, Name = f.Name, Value = v.ToString(), Hex = "", Certainty = "",
+                        Tip = f.Description + "\nSource: " + f.Source + "\nThe owner field's " + (f.Bits == 1 ? "bit 0" : "bits 1-5") + " (owner now " + o.Owner + ").",
+                    });
+                }
             if (o.TileX >= 0)
                 Add(rows, "Position", string.Format("{0:0.###}, {1:0.###}, h {2:0.###}", o.WorldX, o.WorldY, o.WorldZ), "", "In tiles: x east, y north, height (a floor step is 0.25).");
             rows.Add(new PropertyRow { Name = "Record", IsHeader = true, Value = "", Hex = "", Tip = "" });

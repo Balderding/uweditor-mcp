@@ -156,13 +156,19 @@ namespace UwEditor.Core.Tests
         public void UW2_locked_in_starts_are_rejected_and_the_facets_accepted()
         {
             var p = Uw2(); if (p == null) return;
-            Assert.True(p.StandIn);
-            foreach (var sq in new[] { (1, 38, 38), (16, 33, 33), (18, 27, 28) })
-            {
-                var c = p.Check(sq.Item1, sq.Item2, sq.Item3);
-                Assert.False(c.Viable, sq + " " + c.Reason);
-                Assert.StartsWith("the solve from here misses the goal", c.Reason);
-            }
+            Assert.False(p.StandIn);
+            // since 0.1.49 the filter holds every moving item (no stand-in): Fissif's cell still misses the goal (nothing opens it), the
+            // top of the Prison Tower is now rejected for the castle plot's order (level 14's trigger before the sewers'), and the round
+            // room of level 18 still misses the goal (3 zones: its key 9 does not move)
+            var fissif = p.Check(1, 38, 38);
+            Assert.False(fissif.Viable);
+            Assert.StartsWith("the solve from here misses the goal", fissif.Reason);
+            var top = p.Check(16, 33, 33);
+            Assert.False(top.Viable);
+            Assert.StartsWith("the castle plot's trap that sets it to 3", top.Reason);
+            var round = p.Check(18, 27, 28);
+            Assert.False(round.Viable);
+            Assert.StartsWith("the solve from here misses the goal", round.Reason);
             var cell = p.Check(1, 42, 38);
             Assert.False(cell.Viable);
             Assert.StartsWith("a trigger", cell.Reason);
@@ -171,10 +177,10 @@ namespace UwEditor.Core.Tests
             Assert.StartsWith("a trigger", facet.Reason);
             var ok = p.CheckZone(facet.Zone);
             Assert.True(ok.Viable, ok.Reason);
-            Assert.True(ok.StandIn);
+            Assert.False(ok.StandIn);
             var pits = p.Check(57, 59, 20);
             Assert.True(pits.Viable, pits.Reason);
-            Assert.Contains("unshuffled", pits.Reason);
+            Assert.Contains("with every moving item held", pits.Reason);
             // the castle scope keeps to slots 1 to 5
             for (int seed = 1; seed <= 6; seed++)
             {

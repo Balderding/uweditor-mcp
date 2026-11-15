@@ -21,8 +21,10 @@ namespace UwEditor.Core.Randomizer
     /// checkLock, combat/DAMAGE.C damage_object): a door with no lock, or an unlocked one, is free;
     /// a locked one opens with its key (the lock's link &amp; 0x1FF; 0 = no key fits), by picking when
     /// its difficulty z (the lock's Z) is below 15 (3z skill; z 14 needs 31), or by bashing when the
-    /// door can be broken (COMOBJ quality class below 3 and not tenacious: id bit 13 in UW1; in UW2,
-    /// where that bit is a door's direction, a door that keeps a strength in its owner field). Open doors are free.
+    /// door can be broken (COMOBJ quality class below 3, not id bit 13 in UW1, where that bit makes any
+    /// object indestructible (in UW2 it is a door's direction), and in both games not spiked with a strength
+    /// left in its owner field: Editing.DoorSpikes). Open doors are free; so is a spiked door that is not
+    /// locked, which the player opens (only creatures are kept out by the spike).
     /// </summary>
     public static class ZoneDoors
     {
@@ -72,21 +74,25 @@ namespace UwEditor.Core.Randomizer
             foreach (int c in door.Children) if (m.Objects[c].Item == 0x10F) lockObj = m.Objects[c];
             bool portcullis = (door.Item & 7) == 6;
             if (portcullis) why.Add("portcullis: a lever or button somewhere may open it too");
-            if (lockObj == null) { why.Add("no lock"); notes = string.Join("; ", why); return "free"; }
+            // a spike stops creatures, not the player: he opens a spiked door that is not locked (UseRect), so it only matters to bashing
+            bool spiked = DoorSpikes.Holds(door);
+            string spike = "spiked (strength " + (door.Owner >> 1) + "): hits wear it down, it never breaks";
+            if (lockObj == null) { why.Add("no lock"); if (spiked) why.Add(spike); notes = string.Join("; ", why); return "free"; }
             bool locked = ((lockObj.Record[1] >> 1) & 1) != 0;
-            if (!locked) { why.Add("its lock is open"); notes = string.Join("; ", why); return "free"; }
+            if (!locked) { why.Add("its lock is open"); if (spiked) why.Add(spike); notes = string.Join("; ", why); return "free"; }
             int key = lockObj.Link & 0x1FF;
             int z = lockObj.Z;
             int qclass = (Races.ComObjByte(s, door.Item, 6) >> 2) & 3;
-            // UW1: any object with id bit 13 set is indestructible. UW2 excepts doors (combat/DAMAGE.C damage_object: the bit is
-            // a door's direction there); a UW2 door whose owner has bit 0 set keeps a strength in the rest of the owner and is
-            // worn down but never broken
-            bool tenacious = s.IsUw2 ? (door.Owner & 1) != 0 && door.Owner >> 1 > 0 : (door.Record[1] & 0x20) != 0;
-            bool breakable = qclass < 3 && !tenacious;
+            // combat/DAMAGE.C damage_object's first test: UW1 takes no damage on any object with id bit 13 set; UW2 excepts doors
+            // (the bit is a door's direction there). Both games: a closed door whose owner has bit 0 set (a spike) keeps a strength
+            // in the rest of the owner and is worn down but never broken while that strength is above 0
+            bool bit13 = !s.IsUw2 && (door.Record[1] & 0x20) != 0;
+            bool breakable = qclass < 3 && !bit13 && !spiked;
             var alts = new List<string>();
             if (key > 0) { alts.Add("key:" + key); why.Add("key " + key); } else why.Add("no key fits");
             if (z < 15) { alts.Add("pick:" + z); why.Add("pick difficulty " + z + (z == 14 ? " (skill 31)" : " (skill " + 3 * z + ")")); } else why.Add("cannot be picked");
-            if (breakable) { alts.Add("bash"); why.Add("breakable (quality class " + qclass + ")"); } else why.Add(tenacious ? "indestructible (tenacious)" : "unbreakable (quality class 3)");
+            if (breakable) { alts.Add("bash"); why.Add("breakable (quality class " + qclass + ")"); }
+            else why.Add(qclass >= 3 ? "unbreakable (quality class 3)" : bit13 ? "indestructible (tenacious)" : spike);
             if (alts.Count == 0)
             {
                 why.Add("only a lever, a trap or a conversation opens it");

@@ -102,52 +102,76 @@ namespace UwEditor.Core.Tests
         }
 
         /// <summary>
-        /// The sweep: a square of every viable UW1 zone (any level), each shuffled with a few seeds
-        /// and no retries; reports the share that fill and why the others fail. Off unless
-        /// UW_START_SWEEP=1 (about 40 minutes with 3 seeds).
+        /// The sweep: a square of every viable zone (any level), each shuffled with a few seeds and no
+        /// retries; reports the share that fill and why the others fail. Off unless UW_START_SWEEP=1
+        /// (UW1: about 40 minutes with 3 seeds). UW_START_SWEEP_GAME=UW2 takes UW2, where a run takes
+        /// some 20 s: a sample instead, every castle zone and UW_START_SWEEP_SAMPLE (30) zones of the
+        /// other worlds drawn at random, 2 seeds by default. Each run's line is written to the report
+        /// as it ends, so a sweep cut short keeps what it did.
         /// </summary>
         [Fact]
         public void Sweep_every_viable_zone()
         {
             if (Environment.GetEnvironmentVariable("UW_START_SWEEP") != "1") return;
-            var s = Session(); if (s == null) return;
-            int seeds = int.TryParse(Environment.GetEnvironmentVariable("UW_START_SWEEP_SEEDS"), out int n) && n > 0 ? n : 3;
+            bool uw2 = Environment.GetEnvironmentVariable("UW_START_SWEEP_GAME") == "UW2";
+            string g = GameData.Game(uw2 ? "UW2" : "UW");
+            if (g == null) return;
+            var s = GameSession.Open(g);
+            int seeds = int.TryParse(Environment.GetEnvironmentVariable("UW_START_SWEEP_SEEDS"), out int n) && n > 0 ? n : uw2 ? 2 : 3;
+            int sample = int.TryParse(Environment.GetEnvironmentVariable("UW_START_SWEEP_SAMPLE"), out int k) && k >= 0 ? k : 30;
             string report = Environment.GetEnvironmentVariable("UW_START_SWEEP_REPORT");
-            if (string.IsNullOrEmpty(report)) report = Path.Combine(Path.GetTempPath(), "uw-start-sweep.txt");
+            if (string.IsNullOrEmpty(report)) report = Path.Combine(Path.GetTempPath(), uw2 ? "uw2-start-sweep.txt" : "uw-start-sweep.txt");
+            var started = DateTime.Now;
+            File.WriteAllText(report, string.Format("{0} random start sweep, started {1:yyyy-MM-dd HH:mm}\n", uw2 ? "UW2" : "UW1", started));
+            Action<string> write = line => { File.AppendAllText(report, line + "\n"); };
             var p = StartPicker.For(s, l => s.LoadLevel(l));
-            var verdicts = p.Sweep(StartScope.AnyLevel);
-            var lines = new List<string>();
+            var snapshot = KeyShuffle.Snapshot(s, null);
+            // UW1 every viable zone; UW2 every castle zone and a sample of the other worlds' (drawn the same way each time)
+            var zones = new List<int>();
+            if (!uw2) zones.AddRange(p.Sweep(StartScope.AnyLevel).Keys);
+            else
+            {
+                var castle = p.Candidates(StartScope.FirstLevels).Select(c => c.Zone).Distinct().OrderBy(z => z).ToList();
+                var others = p.Candidates(StartScope.AnyLevel).Select(c => c.Zone).Distinct().Where(z => !castle.Contains(z)).OrderBy(z => z).ToList();
+                var rng = new Random(2026);
+                for (int i = others.Count - 1; i > 0; i--) { int j = rng.Next(i + 1); var t = others[i]; others[i] = others[j]; others[j] = t; }
+                zones.AddRange(castle);
+                zones.AddRange(others.Take(sample));
+            }
+            var verdicts = zones.ToDictionary(z => z, z => p.CheckZone(z));
             int runs = 0, filled = 0, zonesAll = 0, zonesNone = 0;
             var reasons = new Dictionary<string, int>();
-            var started = DateTime.Now;
-            foreach (var kv in verdicts.Where(v => v.Value.Viable))
+            foreach (var kv in verdicts)
             {
                 var squares = p.Candidates(StartScope.AnyLevel).Where(c => c.Zone == kv.Key).ToList();
                 var sq = squares[squares.Count / 2];
+                if (!kv.Value.Viable) { write(string.Format("{0} at L{1} ({2}, {3}): not viable ({4})", SolveResult.ZoneName(p.T.Set, kv.Key), sq.Level, sq.X, sq.Y, kv.Value.Reason)); continue; }
                 int ok = 0;
                 for (int seed = 1; seed <= seeds; seed++)
                 {
-                    var r = KeyShuffle.Run(s, null, new KeyShuffleOptions { Seed = seed, Retries = 0, Start = StartChoice.Given, StartAt = new StartPoint { Level = sq.Level, X = sq.X + 0.5, Y = sq.Y + 0.5 } });
+                    var t0 = DateTime.Now;
+                    var r = KeyShuffle.RunOn(s, snapshot, new KeyShuffleOptions { Seed = seed, Retries = 0, Start = StartChoice.Given, StartAt = new StartPoint { Level = sq.Level, X = sq.X + 0.5, Y = sq.Y + 0.5 } });
                     runs++;
-                    if (r.Success) { ok++; filled++; continue; }
+                    string extra = string.Join("", r.Objects.Where(o => o.Made != null && r.Moves.Any(m => m.Item == o)).Select(o => "; made " + o.Name + " (" + o.Made.Id + ")"))
+                        + (r.MovedIntoReach.Count > 0 ? "; " + r.MovedIntoReach.Count + " place(s) moved into reach" : "") + string.Format("; {0:0} s", (DateTime.Now - t0).TotalSeconds);
+                    if (r.Success) { ok++; filled++; write(string.Format("  L{0} ({1}, {2}) seed {3}: filled{4}", sq.Level, sq.X, sq.Y, seed, extra)); continue; }
                     string why = r.Refused ?? (r.Failures.Count > 0 ? r.Failures[0] : "?");
                     why = System.Text.RegularExpressions.Regex.Replace(why, @"^seed -?\d+: ", "");
                     string key = why.StartsWith("no place left") ? "no place left that the logic reaches for an item" : why.Split('(')[0].Trim();
                     int c; reasons.TryGetValue(key, out c); reasons[key] = c + 1;
-                    lines.Add(string.Format("  L{0} ({1}, {2}) seed {3}: {4}", sq.Level, sq.X, sq.Y, seed, why));
+                    write(string.Format("  L{0} ({1}, {2}) seed {3}: {4}{5}", sq.Level, sq.X, sq.Y, seed, why, extra));
                 }
                 if (ok == seeds) zonesAll++;
                 if (ok == 0) zonesNone++;
-                lines.Add(string.Format("{0} at L{1} ({2}, {3}): {4} of {5} seeds fill", SolveResult.ZoneName(p.T.Set, kv.Key), sq.Level, sq.X, sq.Y, ok, seeds));
+                write(string.Format("{0} at L{1} ({2}, {3}): {4} of {5} seeds fill", SolveResult.ZoneName(p.T.Set, kv.Key), sq.Level, sq.X, sq.Y, ok, seeds));
             }
             var head = new List<string>
             {
-                string.Format("UW1 random start sweep: {0} viable zones of {1} (any level), {2} seeds each, {3} runs, {4} filled ({5:0.0} %); {6} zones filled with every seed, {7} with none; {8:0} minutes.",
-                    verdicts.Count(v => v.Value.Viable), verdicts.Count, seeds, runs, filled, runs == 0 ? 0 : filled * 100.0 / runs, zonesAll, zonesNone, (DateTime.Now - started).TotalMinutes),
+                string.Format("{0} random start sweep: {1} viable zones of {2} looked at (any level), {3} seeds each, {4} runs, {5} filled ({6:0.0} %); {7} zones filled with every seed, {8} with none; {9:0} minutes.",
+                    uw2 ? "UW2" : "UW1", verdicts.Count(v => v.Value.Viable), verdicts.Count, seeds, runs, filled, runs == 0 ? 0 : filled * 100.0 / runs, zonesAll, zonesNone, (DateTime.Now - started).TotalMinutes),
                 "Failures: " + string.Join("; ", reasons.OrderByDescending(x => x.Value).Select(x => x.Value + " x " + x.Key)),
             };
-            File.WriteAllLines(report, head.Concat(lines));
-            foreach (var l in head) output.WriteLine(l);
+            foreach (var l in head) { write(l); output.WriteLine(l); }
             Assert.True(runs > 0);
         }
     }

@@ -36,6 +36,8 @@ namespace UwEditor.Core.Randomizer
         public string Confidence = "certain";   // certain, todo
         public int Level = 0;           // optional anchor: level and tile of the passage, 0 = none
         public int X = -1, Y = -1;
+        /// <summary>The way can be taken only once (a facts link marked "once": the Historian's teleport): the timeline solve does not cross it again, nor the return check or the walkthrough's routes.</summary>
+        public bool Once;
         /// <summary>A link drawn by hand in a zoning the solver was given (not saved): it holds in every state of the world.</summary>
         public bool Hand;
 

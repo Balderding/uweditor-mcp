@@ -38,6 +38,8 @@ namespace UwEditor.Core.Randomizer
         public readonly List<int> Zones = new List<int>();
         /// <summary>What not to do, for a source the game may take away (the facts' mayBeLost: Placement.Lost), or "".</summary>
         public string Warning = "";
+        /// <summary>A line shown before the step, or "": UW2's "Leave the world now" on the step that leaves a shut start world (TimelineSolve.SealedLeft).</summary>
+        public string Note = "";
     }
 
     /// <summary>
@@ -117,12 +119,36 @@ namespace UwEditor.Core.Randomizer
                 if (st.Sphere != sphere && st.Kind != "goal") { sphere = st.Sphere; l.Add("  -- sphere " + sphere + " --"); }
                 if (st.OnTheWay.Count > 0)
                     l.Add(string.Format("       on the way (ways that need nothing): {0}", string.Join(", ", st.OnTheWay.Take(12)) + (st.OnTheWay.Count > 12 ? ", and " + (st.OnTheWay.Count - 12) + " more" : "")));
+                if (st.Note.Length > 0) l.Add("  >>> " + st.Note);
                 foreach (var r in st.Route) l.Add("       " + r);
                 l.Add(string.Format("  {0,3}. {1}", st.Number, st.Text));
                 if (st.Why.Length > 0) l.Add("       Why: " + st.Why);
                 if (st.Warning.Length > 0) l.Add("       Beware: " + st.Warning);
             }
             return l;
+        }
+
+        /// <summary>
+        /// What a bash through a link's door adds to "bash it open": a door of toughness class 1 or
+        /// 2 takes half or a quarter of each blow (combat/DAMAGE.C damage_object shifts the damage
+        /// right by COMOBJ byte 6 bits 2-3), so a weak character needs well charged blows. Class 0,
+        /// or no breakable closed door on the link's square or beside it, adds nothing.
+        /// </summary>
+        public static string BashNote(LevelModel m, ZoneLink k)
+        {
+            if (m == null || k == null || k.X < 0 || k.Y < 0) return "";
+            foreach (var d in new[] { (0, 0), (1, 0), (-1, 0), (0, 1), (0, -1) })
+            {
+                int x = k.X + d.Item1, y = k.Y + d.Item2;
+                if (x < 0 || y < 0 || x > 63 || y > 63) continue;
+                foreach (var o in m.TileObjects(x, y))
+                {
+                    if (!Editing.DoorSpikes.IsClosedDoor(o.Item) || !ZoneDoors.Requirement(m.Session, m, o, out _).Split('|').Any(a => a.Trim() == "bash")) continue;
+                    int qclass = (Editing.Races.ComObjByte(m.Session, o.Item, 6) >> 2) & 3;
+                    return qclass == 2 ? "; charge each blow, the door takes only a quarter of it, so it may take a while" : qclass == 1 ? "; charge each blow, the door takes only half of it, so it may take a while" : "";
+                }
+            }
+            return "";
         }
 
         // ---------------------------------------------------------------- building
@@ -445,7 +471,7 @@ namespace UwEditor.Core.Randomizer
                 switch (head)
                 {
                     case "bash":
-                        p.Text = "bash it open (bashing is allowed)";
+                        p.Text = "bash it open (bashing is allowed" + BashNote(at) + ")";
                         p.Option = "bashing";
                         return p;
                     case "pick":
@@ -533,6 +559,21 @@ namespace UwEditor.Core.Randomizer
                         else problems.Add(leaf + " holds, but nothing before gives it");
                         return p;
                 }
+            }
+
+            /// <summary>Whether a link's square is solid rock in the level as shipped: a teleport's trigger set off by walking into the wall.</summary>
+            bool InWall(ZoneLink k)
+            {
+                if (k == null || k.Level < 1 || k.X < 0 || k.Y < 0 || k.X > 63 || k.Y > 63 || !(k.Notes ?? "").StartsWith("trigger #")) return false;
+                var m = Model(k.Level);
+                return m != null && m.Tiles[k.X, k.Y] != null && m.Tiles[k.X, k.Y].IsSolid;
+            }
+
+            /// <summary>The bash note (Walkthrough.BashNote) for event at's link.</summary>
+            string BashNote(int at)
+            {
+                var k = at >= 0 && at < ev.Count ? ev[at].Link : null;
+                return k != null && k.Level > 0 ? Walkthrough.BashNote(Model(k.Level), k) : "";
             }
 
             bool PickBySkill(int z, int at)
@@ -646,7 +687,9 @@ namespace UwEditor.Core.Randomizer
                 var m = Placed.Match(p.Notes ?? "");
                 if (m.Success) return new[] { int.Parse(m.Groups[3].Value), int.Parse(m.Groups[4].Value), int.Parse(m.Groups[5].Value) };
                 var f = FactOf(p);
-                var at = f?.TopSpot;
+                FactSpot moved;
+                // a fact that follows its object (match): the object it found in these levels
+                var at = f != null && f.Match != null ? (t.Abilities.FactObjects.TryGetValue(f.Id, out moved) ? moved : null) : f?.TopSpot;
                 if (at == null) return null;
                 if (at.HasTile) return new[] { at.Level, at.X, at.Y };
                 if (at.HasObject)
@@ -794,7 +837,11 @@ namespace UwEditor.Core.Randomizer
                     string notes = (k.Notes ?? "").Trim();
                     switch (k.Kind)
                     {
-                        case "stairs": st.Text = "Take the stairs" + at + " to level " + (toLevels.Count > 0 ? toLevels[0].ToString() : "?") + ", into " + into + "."; break;
+                        case "stairs":
+                            // a teleport whose move trigger lies in a wall is gone through by walking into the wall (UW2 level 1 (37, 39), into Nystul's room)
+                            if (InWall(k)) st.Text = "Walk into the wall" + at + ": it teleports you to level " + (toLevels.Count > 0 ? toLevels[0].ToString() : "?") + ", into " + into + ".";
+                            else st.Text = "Take the stairs" + at + " to level " + (toLevels.Count > 0 ? toLevels[0].ToString() : "?") + ", into " + into + ".";
+                            break;
                         case "teleport": st.Text = "Step on the teleport" + at + ", to " + into + "."; break;
                         case "door": st.Text = "Go through the door" + at + " into " + into + "."; break;
                         case "portcullis": st.Text = "Go through the portcullis" + at + " into " + into + "."; break;
@@ -819,6 +866,13 @@ namespace UwEditor.Core.Randomizer
                     }
                     string lead = e.From >= 0 ? "From " + ZoneText(e.From) + zoneRef(e.From) + "." : null;
                     st.Why = WhyOf(x, stepOf, st, self, lead) + spent;
+                    st.Warning = LinkWarning(k);
+                    var leave = sv.Leaves.FirstOrDefault(x => x.Event == i);
+                    if (leave != null)
+                    {
+                        string world = KeyShuffle.Uw2WorldName(leave.Levels.Min());
+                        st.Note = "Leave " + world + " now: every step the logic needs from it is done. You cannot come back until " + leave.Opens + "; the steps there after this one wait for that.";
+                    }
                     return;
                 }
                 if (e.Kind == "flag")
@@ -867,6 +921,9 @@ namespace UwEditor.Core.Randomizer
                     else if (head == "flag") { what = (e.Token.EndsWith("_dead") ? "Kill " : "Deal with ") + who + " at " + place + rest + " (" + e.Token + ")"; fight = pm.Groups[2].Value.Length > 0 && Model(sp != null ? sp[0] : 0) is LevelModel fm && int.TryParse(pm.Groups[1].Value, out int fo) && fo < fm.Objects.Length && fm.Objects[fo].IsCritter; }
                     else what = "Take " + thing + " at " + place + rest + " (" + e.Token + ")";
                 }
+                // a fact that follows its object (match): the thing where it lies now, not the notes, which say where it lay in the shipped game
+                else if (f2 != null && f2.Match != null && t.Abilities.FactObjects.TryGetValue(f2.Id, out FactSpot fo2) && Model(fo2.Level) is LevelModel om && fo2.Object >= 0 && fo2.Object < om.Objects.Length)
+                    what = "Take " + Article(om.Objects[fo2.Object].Name, true) + " at " + place + " (" + e.Token + ")";
                 else if (f2 != null)
                     what = (place.Length > 0 ? "At " + place + ": " : "") + FirstSentence(f2.Notes).TrimEnd('.') + " (" + e.Token + ")";
                 else if (e.Token.StartsWith("cast:"))
@@ -879,6 +936,25 @@ namespace UwEditor.Core.Randomizer
                 bool anywhere = e.Zone == zs.StartZone && (e.Token.StartsWith("cast:") || f2 != null && sp == null || p != null && (p.Source ?? "") == "facts");
                 st.Why = WhyOf(x, stepOf, st, self, anywhere ? null : zoneLead) + spent + (fight ? " A fight: the logic takes it as won, whatever the creature." : "");
                 st.Warning = LostWarning(p);
+            }
+
+            /// <summary>
+            /// The warning for a way of the facts that may be lost: one taken only once (ZoneLink.Once,
+            /// the Historian's teleport) or with a mayBeLost of kind a (Bishop and the gauntlets); "".
+            /// </summary>
+            string LinkWarning(ZoneLink k)
+            {
+                string notes = (k?.Notes ?? "").Trim();
+                if (!notes.StartsWith("facts: ")) return "";
+                string id = notes.Substring(7);
+                int sp = id.IndexOf(' ');
+                if (sp > 0) id = id.Substring(0, sp);
+                var f = t.Facts.Facts.FirstOrDefault(y => y.Id == id && y.Kind == "link");
+                if (f == null) return "";
+                string why = (f.LostWhy ?? "").Trim().TrimEnd('.');
+                if (f.Lost == "a" && why.Length > 0) return "this may be lost for good: " + why + ".";
+                if (f.Once || k.Once) return "this way can be taken only once: take what lies where it leads before you leave.";
+                return "";
             }
 
             /// <summary>
@@ -1100,7 +1176,8 @@ namespace UwEditor.Core.Randomizer
                     if (!outOf.TryGetValue(a, out l)) outOf[a] = l = new List<KeyValuePair<ZoneLink, int>>();
                     l.Add(new KeyValuePair<ZoneLink, int>(k, z));
                 };
-                foreach (var k in links) { way(k.From, k.To, k); if (k.TwoWay) way(k.To, k.From, k); }
+                // a way the game allows only once is the step that takes it, never a stretch of a way there
+                foreach (var k in links) { if (k.Once) continue; way(k.From, k.To, k); if (k.TwoWay) way(k.To, k.From, k); }
                 var prev = new Dictionary<int, KeyValuePair<ZoneLink, int>>();
                 var seen = new HashSet<int> { from };
                 var queue = new Queue<int>();

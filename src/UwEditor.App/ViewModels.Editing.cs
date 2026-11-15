@@ -247,7 +247,7 @@ namespace UwEditor.App
             int v;
             if (!TryParse(text, out v)) { EditStatus = "'" + text + "' is not a number."; ReselectFresh(); return; }
             bool ok = row.Target == "object"
-                ? Edit(e => e.SetObjectField(row.TargetIndex, row.Field, v), string.Format("{0} of #{1} set to {2}.", row.Name, row.TargetIndex, v))
+                ? Edit(e => { if (UwEditor.Core.Editing.DoorSpikes.IsField(row.Field)) UwEditor.Core.Editing.DoorSpikes.Set(e, row.TargetIndex, row.Field, v); else e.SetObjectField(row.TargetIndex, row.Field, v); }, string.Format("{0} of #{1} set to {2}.", row.Name, row.TargetIndex, v))
                 : Edit(e => e.SetTileField(row.TargetIndex % 64, row.TargetIndex / 64, row.Field.Name, v), string.Format("{0} of tile ({1}, {2}) set to {3}.", row.Name, row.TargetIndex % 64, row.TargetIndex / 64, v));
             if (!ok) ReselectFresh();   // show the value as it is
         }

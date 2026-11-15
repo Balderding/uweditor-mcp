@@ -7,12 +7,20 @@ using UwEditor.Core.Editing;
 namespace UwEditor.Core.Randomizer
 {
     /// <summary>
-    /// Helps for a shuffled game (UW1), chosen in the Apply window: a full torch and the map
-    /// beside the start, and every level's map explored.
+    /// Helps for a shuffled game, chosen in the Apply window: a full torch and the map beside the
+    /// start, and every level's map explored. Both games give a new character a torch and the map
+    /// in a sack beside the start: UW1's at level 1 (33, 3), UW2's in the Avatar's bedroom at level 1
+    /// (20, 49), sack #575 holding the torch #1012 (quality 40) and the map #834 (item 0x13A, UW2's
+    /// map: 0x13B is a dead plant there), with a dagger and thread, a leather vest and boots beside it.
+    /// The kit is that torch and map, nothing the game does not give.
     /// </summary>
     public static class StartAids
     {
-        public const int Torch = 0x91, LitTorch = 0x95, Map = 0x13B, FullTorch = 63;
+        /// <summary>The torch, the lit torch and UW1's map (UW2's is <see cref="Uw2Map"/>: <see cref="MapOf"/>).</summary>
+        public const int Torch = 0x91, LitTorch = 0x95, Map = 0x13B, Uw2Map = 0x13A, FullTorch = 63;
+
+        /// <summary>The game's map item: UW1 0x13B, UW2 0x13A.</summary>
+        public static int MapOf(GameSession s) { return s != null && s.IsUw2 ? Uw2Map : Map; }
 
         /// <summary>The start square and the eight around it, the start first.</summary>
         static IEnumerable<(int X, int Y)> Around(int sx, int sy)
@@ -58,12 +66,12 @@ namespace UwEditor.Core.Randomizer
         /// A torch of quality 63 and the map beside the start square (on the start or the eight
         /// squares around it, on the floor or in a container there): a torch found there is
         /// filled up, a missing one or a missing map is added on the floor beside the start
-        /// (the map as the shipped one: quality 40, link 0x200). Returns what was done.
+        /// (the map as the shipped one: quality 40, link 0x200; UW2's item 0x13A). Returns what was done.
         /// </summary>
         public static List<string> PutKit(GameSession s, LevelEdits edits, StartPoint start)
         {
             var said = new List<string>();
-            if (s.IsUw2) { said.Add("The torch and the map are for Ultima Underworld 1 only."); return said; }
+            int mapItem = MapOf(s);
             if (start == null) { said.Add("The torch and the map were not placed: no start square is known."); return said; }
             int level = start.Level, sx = (int)start.X, sy = (int)start.Y;
             var e = edits.For(level);
@@ -84,11 +92,11 @@ namespace UwEditor.Core.Randomizer
                 int i = e.AddObject(new ObjectSpec { Item = Torch, Quality = FullTorch, IsQuantity = true, Link = 1 }, kx, ky);
                 said.Add(string.Format("A torch of quality 63 (#{0}) was put on level {1} ({2}, {3}), beside the start.", i, level, kx, ky));
             }
-            var map = Near(e.Model, sx, sy).FirstOrDefault(o => o.Item == Map);
+            var map = Near(e.Model, sx, sy).FirstOrDefault(o => o.Item == mapItem);
             if (map != null) said.Add(string.Format("The map (#{0}) already lies beside the start.", map.Index));
             else
             {
-                int i = e.AddObject(new ObjectSpec { Item = Map, Quality = 40, IsQuantity = true, Link = 0x200 }, kx, ky);
+                int i = e.AddObject(new ObjectSpec { Item = mapItem, Quality = 40, IsQuantity = true, Link = 0x200 }, kx, ky);
                 said.Add(string.Format("A map (#{0}) was put on level {1} ({2}, {3}), beside the start.", i, level, kx, ky));
             }
             return said;

@@ -105,6 +105,33 @@ namespace UwEditor.Core.Randomizer
         public SolverOptions Options;
         /// <summary>The zone the goal was reached in (the goal zone, or the zone of the end of the game), or 0.</summary>
         public int GoalAt;
+        /// <summary>
+        /// UW2, a start in a world the blackrock gem keeps shut (Engine.Run): each shut world the
+        /// solve stood in and left, in order (the start's first). Empty when the start is not in one.
+        /// The solve takes first all that can be had without leaving the world, then leaves it (for
+        /// the castle when it can, else for the world a way out leads to, which is then taken the same
+        /// way when it is shut too) and comes back only by a way that holds (the gem's facet once the
+        /// plot or the world's fused key gem opens it).
+        /// </summary>
+        public readonly List<WorldLeave> Leaves = new List<WorldLeave>();
+        /// <summary>The levels of the start's shut world, or null when the start is not in one.</summary>
+        public HashSet<int> SealedLevels { get { return Leaves.Count > 0 ? Leaves[0].Levels : sealedStart; } }
+        internal HashSet<int> sealedStart;
+        /// <summary>The sphere in which the solve left the start's shut world (-1: it did not).</summary>
+        public int SealedLeft { get { return Leaves.Count > 0 ? Leaves[0].Sphere : -1; } }
+    }
+
+    /// <summary>A shut world of UW2 the timeline solve left (TimelineSolve.Leaves).</summary>
+    public sealed class WorldLeave
+    {
+        /// <summary>The world's levels.</summary>
+        public HashSet<int> Levels;
+        /// <summary>The sphere of the leaving and its zone event (an index into TimelineSolve.Events).</summary>
+        public int Sphere, Event;
+        /// <summary>The zone the player came out in.</summary>
+        public int To;
+        /// <summary>What opens the world again, in words ("the castle plot at 8 or this world's key gem (7) fused").</summary>
+        public string Opens = "";
     }
 
     /// <summary>
@@ -263,6 +290,56 @@ namespace UwEditor.Core.Randomizer
             if (!src.StartsWith("facts: ")) return false;
             var f = byId(src.Substring(7));
             return f != null && (f.Kind == "craft" || (f.Kind == "free" && f.TopSpot == null));
+        }
+
+        static readonly System.Text.RegularExpressions.Regex PlotSetToken = new System.Text.RegularExpressions.Regex(@"^plotset:(\d+)$");
+
+        /// <summary>
+        /// UW2: whether a solve can set the castle plot out of the game's order. Each of the plot's set
+        /// traps (levels 3, 9 and 14: 1, 2, 3) writes its value whatever the plot stands at
+        /// (event/TRIGGER.C set_numbered_variable) and its triggers are used once (they lack flag 10),
+        /// so the plot ends at the value of the last to go off. The logic counts the highest set only
+        /// once every lower one is held (StateRules), but a trigger goes off when the player walks onto
+        /// it: when the solve first reaches the highest set's trigger (its flag) in a sphere before the
+        /// one in which a lower set is held, the player may set the plot to 3 and later see a lower trap
+        /// set it back, with level 14's trigger gone (from the gem room, the Prison Tower before the
+        /// castle's sewers). Then a phrase saying so; null when the order holds (always from the game's
+        /// own start, where the way to the gem runs through the sewers), and for UW1. Reached in the
+        /// same sphere counts as in order: the walkthrough takes the lower one first.
+        /// </summary>
+        public static string PlotOrderProblem(TimelineResult res, TimelineSolve sv)
+        {
+            if (res == null || sv == null || res.Set == null) return null;
+            var sets = new List<KeyValuePair<int, Placement>>();
+            foreach (var p in res.Set.Placements)
+            {
+                if (p.Source != "state") continue;
+                var mm = PlotSetToken.Match(p.Grants ?? "");
+                if (mm.Success) sets.Add(new KeyValuePair<int, Placement>(int.Parse(mm.Groups[1].Value), p));
+            }
+            if (sets.Count < 2) return null;
+            var top = sets.OrderBy(x => x.Key).Last();
+            var r = Requirement.TryParse(top.Value.Requires ?? "", out _);
+            if (r == null) return null;
+            var toks = new List<string>();
+            r.Tokens(toks);
+            int first = int.MaxValue;
+            string which = null;
+            foreach (var tok in toks.Select(Requirement.Normalize).Where(x => x.StartsWith("flag:")))
+            {
+                int sp;
+                if (sv.TokenSphere.TryGetValue(tok, out sp) && sp < first) { first = sp; which = tok; }
+            }
+            if (first == int.MaxValue) return null;
+            foreach (var low in sets.Where(x => x.Key < top.Key).OrderBy(x => x.Key))
+            {
+                int below;
+                if (!sv.TokenSphere.TryGetValue("plotset:" + low.Key, out below)) below = int.MaxValue;
+                if (first < below)
+                    return string.Format("the castle plot's trap that sets it to {0} ({1}) can be set off in sphere {2}, {3}: the plot would end at {4} (a set trap writes its value whatever the plot stands at, and its triggers are used once)",
+                        top.Key, which, first, below == int.MaxValue ? "and the one that sets it to " + low.Key + " never is" : "before the one that sets it to " + low.Key + " (sphere " + below + ")", low.Key);
+            }
+            return null;
         }
 
         /// <summary>One timeline solve with the given logic options (the zones and the facts as built).</summary>
@@ -635,7 +712,9 @@ namespace UwEditor.Core.Randomizer
                     if (src.StartsWith("facts: "))
                     {
                         var f = res.Facts.Facts.FirstOrDefault(x => x.Id == src.Substring(7));
-                        var at = f?.TopSpot;
+                        FactSpot moved;
+                        // a fact that follows its object (match): the object it found in these levels
+                        var at = f != null && f.Match != null ? (b.FactObjects.TryGetValue(f.Id, out moved) ? moved : null) : f?.TopSpot;
                         if (at == null) continue;
                         int[] t = Tile(at, lm);
                         if (t != null) spot[p] = t;
@@ -785,7 +864,7 @@ namespace UwEditor.Core.Randomizer
                     // a spell is cast where the way starts (AbilityZones.CastAt): a two-way link whose ends differ becomes a link each way
                     string fwd = CastAt(f.Requires, ta), back = f.TwoWay ? CastAt(f.Requires, tz) : fwd;
                     string kind = f.LinkKind.Length > 0 ? f.LinkKind : "other", conf = f.Confidence == "todo" ? "todo" : "certain";
-                    res.FactLinks.Add(new ZoneLink { Id = 9000 + res.FactLinks.Count, From = a, To = z, Kind = kind, Requires = fwd, TwoWay = f.TwoWay && fwd == back, Notes = "facts: " + f.Id, Level = f.From.Level, X = f.From.X, Y = f.From.Y, Confidence = conf });
+                    res.FactLinks.Add(new ZoneLink { Id = 9000 + res.FactLinks.Count, From = a, To = z, Kind = kind, Requires = fwd, TwoWay = f.TwoWay && fwd == back, Notes = "facts: " + f.Id, Level = f.From.Level, X = f.From.X, Y = f.From.Y, Confidence = conf, Once = f.Once });
                     if (f.TwoWay && fwd != back)
                         res.FactLinks.Add(new ZoneLink { Id = 9000 + res.FactLinks.Count, From = z, To = a, Kind = kind, Requires = back, Notes = "facts: " + f.Id + " (back)", Level = f.To.Level, X = f.To.X, Y = f.To.Y, Confidence = conf });
                     if (f.Replace) { cuts.Add(a + ">" + z); cuts.Add(z + ">" + a); }
@@ -1235,7 +1314,78 @@ namespace UwEditor.Core.Randomizer
                         if (string.IsNullOrWhiteSpace(f.Otherwise)) continue;
                         req = f.Otherwise;
                     }
-                    list.Add(new ZoneLink { Id = k.Id, From = k.From, To = k.To, Kind = k.Kind, Requires = req, TwoWay = k.TwoWay, Notes = k.Notes, Level = k.Level, X = k.X, Y = k.Y, Confidence = k.Confidence });
+                    list.Add(new ZoneLink { Id = k.Id, From = k.From, To = k.To, Kind = k.Kind, Requires = req, TwoWay = k.TwoWay, Notes = k.Notes, Level = k.Level, X = k.X, Y = k.Y, Confidence = k.Confidence, Once = k.Once });
+                }
+                return list;
+            }
+
+            /// <summary>The links of a run: the world's (LinksOf) and, once the player has left a shut start world, the gem's facets into it with its fused key gem.</summary>
+            List<ZoneLink> RunLinks(Dictionary<int, LevelState> cur, SolverOptions so, List<ZoneLink> extra)
+            {
+                var list = LinksOf(cur, so);
+                if (extra != null) list.AddRange(extra);
+                return list;
+            }
+
+            readonly Dictionary<int, int> zoneLevel = new Dictionary<int, int>();
+
+            /// <summary>The level a zone lies on (its first, for a zone over several), a zone split off by a change too; 0 when not known.</summary>
+            int ZoneLevel(int z)
+            {
+                int l;
+                if (zoneLevel.TryGetValue(z, out l)) return l;
+                l = 0;
+                if (z >= FreshZoneIds) { foreach (var kv in freshIds) if (kv.Value == z) { int.TryParse(kv.Key.Split('|')[0], out l); break; } }
+                else if (z > ZoneSet.Unassigned) { var ls = zs.LevelsOf(z); l = ls.Count > 0 ? ls[0] : 0; }
+                if (l > 0 || z < FreshZoneIds) zoneLevel[z] = l;
+                return l;
+            }
+
+            /// <summary>
+            /// UW2: the levels of the world a start zone lies in when the blackrock gem keeps that world
+            /// shut at the start, else null (UW1, the castle, the Prison Tower: the gem shows its facet
+            /// below plot 4, every other turn). The facet of each world and the plot that lets the gem
+            /// show it are StateRules.GemWorlds (event/WORLDEV.C black_gem_trip, black_gem_rotate); a
+            /// fused key gem opens its facet for good, gem n lighting facet n - 1 with gems 6 and 7
+            /// swapped (obj/USEITEMS.C UseKeyGem: the Pits are facet 5 and gem 7, the Tomb facet 6 and
+            /// gem 6).
+            /// </summary>
+            HashSet<int> SealedWorld(int start, out int gem, out string opens)
+            {
+                gem = 0; opens = "";
+                if (s == null || !s.IsUw2 || b.Nav == null || b.Auto == null) return null;
+                int level = ZoneLevel(start);
+                if (level <= 8 || level > 72) return null;
+                int world = (level - 1) / 8;
+                for (int f = 0; f < StateRules.GemWorlds.Length; f++)
+                {
+                    var w = StateRules.GemWorlds[f];
+                    if ((w[0] - 1) / 8 != world) continue;
+                    if (w[3] <= 0) return null;
+                    gem = f == 5 ? 7 : f == 6 ? 6 : f + 1;
+                    opens = string.Format("the castle plot at {0} or this world's key gem ({1}) fused", w[3], gem);
+                    var set = new HashSet<int>();
+                    for (int l = world * 8 + 1; l <= world * 8 + 8; l++) set.Add(l);
+                    return set;
+                }
+                return null;
+            }
+
+            /// <summary>
+            /// The blackrock gem's facets into a shut start world (links whose notes name the gem and
+            /// that lead onto its levels) again, with the world's own key gem treated by Nystul and fused
+            /// in place of the castle plot (the facts' gems_fused: item:key_gem_N &amp; npc:nystul).
+            /// </summary>
+            List<ZoneLink> FusedGemLinks(List<ZoneLink> links, HashSet<int> levels, int gem)
+            {
+                var list = new List<ZoneLink>();
+                if (gem <= 0) return list;
+                var plot = new Regex(@"\bplot:\d+\b");
+                foreach (var k in links)
+                {
+                    if (!(k.Notes ?? "").StartsWith("the blackrock gem") || !levels.Contains(ZoneLevel(k.To)) || !plot.IsMatch(k.Requires ?? "")) continue;
+                    string req = plot.Replace(k.Requires, "(item:key_gem_" + gem + " & npc:nystul)");
+                    list.Add(new ZoneLink { Id = k.Id, From = k.From, To = k.To, Kind = k.Kind, Requires = req, TwoWay = false, Notes = k.Notes + ", lit by its fused key gem " + gem, Level = k.Level, X = k.X, Y = k.Y, Confidence = k.Confidence });
                 }
                 return list;
             }
@@ -1347,12 +1497,73 @@ namespace UwEditor.Core.Randomizer
                 foreach (var p in Placements) Abilities.CircleOf(s, p);
                 bool early = so.AbilitySources && so.Magic && so.NewCharacterCircle < int.MaxValue && Placements.Any(p => p.Circle > so.NewCharacterCircle);
                 if (early) sv.FreeArea = FreeArea(start, links, so);
+                // UW2: a start in a world the blackrock gem keeps shut. First all that can be had without leaving that world (no way
+                // out of its levels is taken), then the player leaves for the castle, and the world's zones count again only once a way
+                // back into them holds (the gem's facet at the castle plot that shows it, or with the world's key gem fused)
+                int sealedGem;
+                string sealedOpens;
+                var sealedLevels = SealedWorld(start, out sealedGem, out sealedOpens);
+                bool sealedPhase = sealedLevels != null, leaveNow = false;
+                List<ZoneLink> fusedLinks = null;
+                sv.sealedStart = sealedLevels;
+                // ways the game allows only once (ZoneLink.Once): crossed, they are gone; the zone they led to is taken in on arrival,
+                // walked out of in the next round, and then counts only by another way (zone -> the sphere it was come to by such a way)
+                var onceUsedLinks = new HashSet<string>();
+                var onceVisit = new Dictionary<int, int>();
+                Func<ZoneLink, string> onceKey = k => k.Notes + "|" + k.From + ">" + k.To;
                 const int MaxRounds = 400;
                 for (int round = 0; round <= MaxRounds; round++)
                 {
                     if (round == MaxRounds) { sv.Warnings.Add("Stopped after " + MaxRounds + " rounds: the solve is not complete."); break; }
                     bool any = false, more = false;
-                    if (round > 0)
+                    if (round > 0 && leaveNow)
+                    {
+                        // the shut world is done: leave it by a way out that holds (to the castle when one does, else to the zone of
+                        // another world the first such way leads to), and stand there alone
+                        leaveNow = false;
+                        sphere = new TimelineSphere { Index = sv.Spheres.Count };
+                        ZoneLink exit = null;
+                        int exitFrom = -1, exitTo = -1, x0 = sv.OnceSpent.Count;
+                        bool exitCastle = false;
+                        foreach (var k in links.OrderBy(k => k.To).ThenBy(k => k.From))
+                        {
+                            if (k.Confidence == "todo" && !so.TrustTodoLinks) continue;
+                            if (k.Once && onceUsedLinks.Contains(onceKey(k))) continue;
+                            foreach (bool rev in new[] { false, true })
+                            {
+                                if (rev && !k.TwoWay) continue;
+                                int a = rev ? k.To : k.From, z = rev ? k.From : k.To;
+                                int zl = ZoneLevel(z);
+                                if (!ctx.Reach.Contains(a) || zl < 1 || sealedLevels.Contains(zl)) continue;
+                                bool castle = zl <= 8;
+                                if (exit != null && ((exitCastle && !castle) || (exitCastle == castle && z >= exitTo))) continue;
+                                if (!Req(k.Requires).Eval(ctx)) continue;
+                                exit = k; exitFrom = a; exitTo = z; exitCastle = castle;
+                            }
+                        }
+                        if (exit == null) { sv.Warnings.Add("The solve stands in " + KeyShuffle.Uw2WorldName(sealedLevels.Min()) + ", which the blackrock gem keeps shut, and no way out of it holds with what that world gives."); break; }
+                        holds(Req(exit.Requires));
+                        if (exit.Once) onceUsedLinks.Add(onceKey(exit));
+                        ctx.Reach = new HashSet<int> { exitTo };
+                        onceVisit.Clear();
+                        if (!sv.ZoneSphere.ContainsKey(exitTo)) { sv.ZoneSphere[exitTo] = sphere.Index; sphere.Zones.Add(exitTo); }
+                        if (!sv.FirstLink.ContainsKey(exitTo)) sv.FirstLink[exitTo] = exit;
+                        var lev = new TimelineEvent { Sphere = sphere.Index, Kind = "zone", Zone = exitTo, From = exitFrom, Link = exit, Requires = exit.Requires ?? "" };
+                        spentSince(lev, x0);
+                        List<string> was0;
+                        if (exit.Level > 0 && applied.TryGetValue(exit.Level, out was0)) lev.Changes.AddRange(was0);
+                        sv.Leaves.Add(new WorldLeave { Levels = sealedLevels, Sphere = sphere.Index, Event = sv.Events.Count, To = exitTo, Opens = sealedOpens });
+                        sv.Events.Add(lev);
+                        if (early && !sv.FreeArea.Contains(exitTo)) { early = false; sv.FreeAreaLeft = sphere.Index; }
+                        // the world's own key gem, treated by Nystul and fused, opens its facet for good (event/WORLDEV.C black_gem_trip, obj/USEITEMS.C UseKeyGem)
+                        fusedLinks = (fusedLinks ?? new List<ZoneLink>()).Concat(FusedGemLinks(links, sealedLevels, sealedGem)).ToList();
+                        // come out in another shut world (the Void from the Pits, the Academy from the Void): that one is taken the same way
+                        sealedLevels = SealedWorld(exitTo, out sealedGem, out sealedOpens);
+                        sealedPhase = sealedLevels != null;
+                        links = RunLinks(cur, so, fusedLinks);
+                        any = true;
+                    }
+                    else if (round > 0)
                     {
                         sphere = new TimelineSphere { Index = sv.Spheres.Count };
                         var newly = new List<int>();
@@ -1362,9 +1573,14 @@ namespace UwEditor.Core.Randomizer
                             bool fwd = ctx.Reach.Contains(k.From) && !ctx.Reach.Contains(k.To) && !newly.Contains(k.To);
                             bool back = k.TwoWay && ctx.Reach.Contains(k.To) && !ctx.Reach.Contains(k.From) && !newly.Contains(k.From);
                             if (!fwd && !back) continue;
+                            // the shut world's first part: no way out of its levels
+                            if (sealedPhase && !sealedLevels.Contains(ZoneLevel(fwd ? k.To : k.From))) continue;
+                            if (k.Once && onceUsedLinks.Contains(onceKey(k))) continue;
                             int n0 = sv.OnceSpent.Count;
                             if (!holds(Req(k.Requires))) continue;
                             int z = fwd ? k.To : k.From;
+                            if (k.Once) { onceUsedLinks.Add(onceKey(k)); onceVisit[z] = sphere.Index; }
+                            else onceVisit.Remove(z);
                             newly.Add(z);
                             if (!sv.FirstLink.ContainsKey(z))
                             {
@@ -1380,6 +1596,7 @@ namespace UwEditor.Core.Randomizer
                         {
                             int z = warpTo[f];
                             if (z <= ZoneSet.Unassigned || ctx.Reach.Contains(z) || newly.Contains(z) || !WarpHolds(f, ctx, cur)) continue;
+                            if (sealedPhase && !sealedLevels.Contains(ZoneLevel(z))) continue;
                             // a warp made with a scroll or a potion uses it up, as a way does
                             int w0 = sv.OnceSpent.Count;
                             string wreq = WarpRequires(f, ctx);
@@ -1395,6 +1612,16 @@ namespace UwEditor.Core.Randomizer
                         }
                         // a zone reached again after a change cut it off keeps the sphere it first came in
                         foreach (int z in newly) { ctx.Reach.Add(z); if (!sv.ZoneSphere.ContainsKey(z)) { sv.ZoneSphere[z] = sphere.Index; sphere.Zones.Add(z); } }
+                        // a zone come to by a way taken once, in the round before: walked out of now; with no other way into it that holds, it
+                        // leaves the reach (what it holds was taken on arrival) until another way leads in
+                        foreach (var kv in onceVisit.Where(v => v.Value < sphere.Index).ToList())
+                        {
+                            onceVisit.Remove(kv.Key);
+                            int t = kv.Key;
+                            bool other = links.Any(k => !k.Once && (k.Confidence != "todo" || so.TrustTodoLinks) &&
+                                ((k.To == t && k.From != t && ctx.Reach.Contains(k.From)) || (k.TwoWay && k.From == t && k.To != t && ctx.Reach.Contains(k.To))) && Req(k.Requires).Eval(ctx));
+                            if (!other) ctx.Reach.Remove(t);
+                        }
                         if (early && newly.Any(z => !sv.FreeArea.Contains(z))) { early = false; sv.FreeAreaLeft = sphere.Index; }
                         any = newly.Count > 0;
                     }
@@ -1453,7 +1680,7 @@ namespace UwEditor.Core.Randomizer
                             sphere.Applied.AddRange(kv.Value);
                             sv.Applied.AddRange(kv.Value);
                         }
-                        if (toApply.Count > 0) links = LinksOf(cur, so);
+                        if (toApply.Count > 0) links = RunLinks(cur, so, fusedLinks);
                         if (stood.Count > 0) StillReached(sv, ctx, cur, links, stood, sphere, stoodZones, linksBefore, curBefore);
                         toApply.Clear();
                         stood.Clear();
@@ -1525,6 +1752,8 @@ namespace UwEditor.Core.Randomizer
                     if (round > 0 && !any && sphere.Tokens.Count == 0 && sphere.SetOff.Count == 0)
                     {
                         if (more) continue;     // only another use of a single-use source came: try the ways again
+                        // all of the shut world that can be had from inside it is had: leave it in the next round
+                        if (sealedPhase) { sealedPhase = false; leaveNow = true; continue; }
                         break;
                     }
                     foreach (var kv in onceHave) { int u; onceUsed.TryGetValue(kv.Key, out u); sphere.OnceLeft[kv.Key] = kv.Value - u; }
@@ -1697,7 +1926,8 @@ namespace UwEditor.Core.Randomizer
                         if (!outOf.TryGetValue(a, out l)) outOf[a] = l = new List<KeyValuePair<int, ZoneLink>>();
                         l.Add(new KeyValuePair<int, ZoneLink>(z, k));
                     };
-                    foreach (var k in links) { way(k.From, k.To, k); if (k.TwoWay) way(k.To, k.From, k); }
+                    // a way taken only once is not a way back (ZoneLink.Once)
+                    foreach (var k in links) { if (k.Once) continue; way(k.From, k.To, k); if (k.TwoWay) way(k.To, k.From, k); }
                     var waiting = new List<KeyValuePair<int, ZoneLink>>();
                     var queue = new Queue<int>(now);
                     while (true)
@@ -1799,6 +2029,7 @@ namespace UwEditor.Core.Randomizer
                             }
                             foreach (var k in links)
                             {
+                                if (k.Once) continue;       // a way taken only once does not take him back
                                 bool fwd = ctx.Reach.Contains(k.From) && !ctx.Reach.Contains(k.To);
                                 bool rev = k.TwoWay && ctx.Reach.Contains(k.To) && !ctx.Reach.Contains(k.From);
                                 if ((fwd || rev) && Req(k.Requires).Eval(ctx)) { ctx.Reach.Add(fwd ? k.To : k.From); any = true; }
@@ -1814,18 +2045,26 @@ namespace UwEditor.Core.Randomizer
                 // every zone reached but the start (and the doorways), and what the walk back found
                 var walks = new List<Tuple<int, int, Tuple<bool, HashSet<int>>>>();
                 var home0 = new HashSet<int> { start };
+                // a shut start world left for the castle (Run): a zone reached after the leaving is back at the castle zone it came out
+                // in; the zones of the world's first part are back at the start, as for any start
+                // (after several shut worlds, the zone he came out in from the last one left before it was reached)
+                Func<int, bool> later = sp => sv.Leaves.Count > 0 && sp >= sv.Leaves[0].Sphere;
+                Func<int, HashSet<int>> homeOf = sp => { var lv = sv.Leaves.LastOrDefault(x => x.Sphere <= sp); return lv == null ? home0 : new HashSet<int> { lv.To }; };
+                var outs = new HashSet<int>(sv.Leaves.Select(x => x.To));
                 foreach (var kv in sv.ZoneSphere.OrderBy(x => x.Value).ThenBy(x => x.Key))
                 {
-                    if (kv.Key == start || doorways.Contains(kv.Key)) continue;
-                    walks.Add(Tuple.Create(kv.Key, kv.Value, walk(kv.Key, kv.Value, home0)));
+                    if (kv.Key == start || doorways.Contains(kv.Key) || outs.Contains(kv.Key)) continue;
+                    walks.Add(Tuple.Create(kv.Key, kv.Value, walk(kv.Key, kv.Value, homeOf(kv.Value))));
                 }
-                // a start other than the game's own that the player leaves for good: back to where he came out counts as back (ReRoot)
-                var exits = walks.Any(w => w.Item3 != null && !w.Item3.Item1) ? ReRoot(sv, start, walks.ToDictionary(w => w.Item1, w => w.Item2), new HashSet<int>(walks.Where(w => w.Item3 != null && w.Item3.Item1).Select(w => w.Item1)), walk) : null;
+                // a start other than the game's own that the player leaves for good: back to where he came out counts as back (ReRoot);
+                // of a shut start world, only over the world's first part
+                var first = walks.Where(w => !later(w.Item2)).ToList();
+                var exits = first.Any(w => w.Item3 != null && !w.Item3.Item1) ? ReRoot(sv, start, first.ToDictionary(w => w.Item1, w => w.Item2), new HashSet<int>(first.Where(w => w.Item3 != null && w.Item3.Item1).Select(w => w.Item1)), walk) : null;
                 if (exits != null)
                 {
                     sv.ReturnTo.AddRange(exits.OrderBy(x => x));
                     var home = new HashSet<int>(exits) { start };
-                    walks = walks.Select(w => exits.Contains(w.Item1) ? Tuple.Create(w.Item1, w.Item2, Tuple.Create(true, new HashSet<int>())) : Tuple.Create(w.Item1, w.Item2, walk(w.Item1, w.Item2, home))).ToList();
+                    walks = walks.Select(w => later(w.Item2) ? w : exits.Contains(w.Item1) ? Tuple.Create(w.Item1, w.Item2, Tuple.Create(true, new HashSet<int>())) : Tuple.Create(w.Item1, w.Item2, walk(w.Item1, w.Item2, home))).ToList();
                 }
                 foreach (var w in walks)
                 {

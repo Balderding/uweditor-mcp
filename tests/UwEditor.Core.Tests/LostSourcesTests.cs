@@ -126,8 +126,6 @@ namespace UwEditor.Core.Tests
             var p2 = new ShuffleObject { Level = 1, Index = away.Index };
             KeyShuffle.MarkLost(p2, uw1, m1, away);
             Assert.True(KeyShuffle.KeyPlaceAllowed(p2));
-            // the shuffle itself still refuses UW2
-            Assert.NotNull(KeyShuffle.Run(s, null, new KeyShuffleOptions()).Refused);
         }
 
         [Fact]
@@ -167,7 +165,10 @@ namespace UwEditor.Core.Tests
             Assert.Contains(w.Steps, st => st.Event?.Token == "flag:line_2" && st.Warning.Contains("brain creatures"));
             Assert.Contains(w.Steps, st => st.Event?.Token == "item:pearl_tipped_rod" && st.Warning.Contains("(gone at plot:14)"));
             Assert.Contains(w.Lines(), x => x.Trim().StartsWith("Beware: "));
-            Assert.All(w.Steps.Where(st => st.Event?.Placement == null), st => Assert.Equal("", st.Warning));
+            // no warning but on a placement, or (0.1.50) on a way of the facts that carries a mark: the Historian's teleport, taken once
+            Func<WalkStep, bool> markedLink = st => st.Event?.Link != null && (st.Event.Link.Notes == "facts: talorus_historian_island" || st.Event.Link.Notes == "facts: bishop_force_field");
+            Assert.All(w.Steps.Where(st => st.Event?.Placement == null && !markedLink(st)), st => Assert.Equal("", st.Warning));
+            Assert.Contains(w.Steps, st => markedLink(st) && st.Warning.StartsWith("this may be lost for good: the Historian sends the Avatar to the island only once"));
         }
 
         /// <summary>The tokens held so far, for a window's requirement (plot:N).</summary>

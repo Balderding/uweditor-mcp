@@ -540,15 +540,5 @@ namespace UwEditor.Core.Tests
             }
             finally { try { Directory.Delete(tmp, true); } catch (Exception) { } }
         }
-
-        [Fact]
-        public void Uw2_is_refused()
-        {
-            string g = GameData.Game("UW2"); if (g == null) return;
-            var s = GameSession.Open(g);
-            var r = KeyShuffle.Run(s, null, new KeyShuffleOptions());
-            Assert.False(r.Success);
-            Assert.NotNull(r.Refused);
-        }
     }
 }
