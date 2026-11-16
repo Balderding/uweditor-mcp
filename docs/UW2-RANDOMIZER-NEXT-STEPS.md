@@ -6,7 +6,9 @@ at 0.1.41 the Pits' gem by Blog (2.3), the brain creatures' rule (2.1) and timed
 at 0.1.44 where magic works: Britannia's circle rule and the no-magic squares (end of 3);
 at 0.1.47 the key item scatter on UW2 from the game's own start (4.1); at 0.1.49 random and
 given starts on UW2 (end of 3, 4.1); at 0.1.50 a start in a shut world, links taken once or
-marked, what the Prison Tower's goblins carry, Merzan's gold (2.1, 2.6, end of 3).
+marked, what the Prison Tower's goblins carry, Merzan's gold (2.1, 2.6, end of 3); at 0.1.51 what every
+creature carries, locked chests and create traps on UW2 (2.1), the walkthrough kept out of one-way
+pockets, a wider sweep of random starts, settings files to play (end of 3, 4.1).
 
 ## Where it stands
 
@@ -153,10 +155,50 @@ Ordered by how much a shuffle could be hurt by the gap.
    (#251, #255) and 14 (#254) never hand over their keys: `option:kill_npcs` (Garg let out kills
    them, not modelled). The default solve changes: keys 4 and 6 come at sphere 11 (Janar, after
    Borne) instead of 9 and 6, key 27 is no longer reached (nothing needs it), the solve still
-   ends at plot 16 with 334 zones; the pure fighter too (257 zones). Left for later: the other
-   NPC-carried things (the runes of Altara, Zaria and the liches, the horn, which comes by a
-   fight, Fissif's lock picks, the create trap templates and locked containers) are still free on
-   UW2; a review creature by creature, or UW1's rule with trade facts for what is given.
+   ends at plot 16 with 334 zones; the pure fighter too (257 zones).
+
+   **The rest, creature by creature (0.1.51).** Every placement of a thing a creature carries was
+   listed and each creature's conversation read. A carried fact may now name `only` some of the
+   things (and what lies in them); one without `only` covers the rest of that creature's things.
+   Barter (conv/BARTER.C: the NPC's slots come from its inventory) is a way the logic does not
+   count, so what an NPC only barters needs killing it.
+
+   | Creature | What it carries | Ruling | Evidence |
+   |---|---|---|---|
+   | Praecor Loth, L52 #250 | the horn #947 | `npc:praecor_loth \| option:kill_npcs` | conversation 32: told the truth, he gives the horn (`take_from_npc(273)`, quest 7) |
+   | Altara, L17 #243 | Quas, Corp, An | `(plotstep:listener & item:rune_bag) \| option:kill_npcs` | conversation 45: with quest 11 (the listener dead, WORLDEV.C case 0x91) and a rune bag held (`find_inv(143)`) she gives her barter slots (`give_all_stuff`) |
+   | Altara | the dagger #971, the black pearl | `option:kill_npcs` (the dagger also by the flag fact `altara_dagger`) | the fact gives the dagger in her talk |
+   | the goblin armorer, L13 #255 | ten coins #995, gauntlets #996 | `npc:goblin_armorer \| option:kill_npcs` | conversation 5: gold for the idea (`take_from_npc(160)`), a pair lent at a later meeting (`take_from_npc(51)`) |
+   | the goblin armorer | Ylem, Sanct, Rel | `option:kill_npcs` | barters only |
+   | Borne, L14 #253 | gauntlets #988 | `npc:borne \| option:kill_npcs` | conversation 3: given with the password at the first meeting |
+   | Zaria, L57 #253 | Bet, Des, In, Nox | `option:kill_npcs` | conversation 98: no gift, no barter |
+   | Prinx, L65 #242 | scroll of Fly #807 | `item:two_eyeballs \| option:kill_npcs` (a new count fact, two eyeballs) | conversation 81: two eyeballs, then `take_from_npc(311)` |
+   | Fissif, L1 #237 | three lock picks | `option:kill_npcs` | conversation 128: barters picks only; this Fissif is also a create trap's template (below) |
+   | a guard of Killorn, L17 #231 | a lock pick | `option:kill_npcs` | conversation 40: barters only |
+   | Morphius, Lord Umbria, Lethe, L52 | Nox, Flam, Flam, a lock pick | free | conversations 29 to 31: each attacks whoever insists on passing to Praecor Loth; the fight is the way, and fights are taken as won |
+   | Sentinel 868, L25 #230 (an ice golem) | key 8 | free | conversation 74: attacks whoever insists on passing the dam's door |
+   | Dorstag, L57 #252 | a blackrock gem | free | as 2.3: he may be fought anywhere |
+   | creatures with no conversation (a haunt with key 3, a despoiler with key 25, the liche of level 59, the brain creatures of level 68) | | free | fought |
+
+   UW1's other two corrections (`ChainPlacements`) now run on UW2 as well, only its NPC rule
+   stays UW1's: a thing in a locked container needs the lock's key or a pick (`ContainerLock`;
+   UW2's obj/OBJUSE.C checkLock reads the lock as UW1's does): level 3's chest at (34, 16) (key 2,
+   the moonstone, Nox, a scroll of Telekinesis: key 3 or a pick of 3), level 3 (60, 45) (Ex, pick
+   of 5), level 58 (15, 56) (Rel, Jux, Grav, pick of 3), and eyeballs in chests of levels 1 and 17
+   (pick of 14). A create trap's template and what it holds need the trap's flag: Fissif's lock
+   picks (trap #845, set off only by a scheduled trigger the schedules are not read for), Blog's
+   copy of the Pits' gem (as before, `key_gem_7_blog` gives the key gem), level 50's dream plants
+   (trap #974 at sphere 0; trap #939 has no trigger, and its plant now counts for nothing), Mors
+   Gotha's template in Killorn (her token `npc:mors_gotha` now comes at plot 14, sphere 30, as the
+   game has it).
+
+   The default solve: the same 334 zones, 41 spheres, plot 16, no cut-off. What moved: the Ex rune
+   from sphere 3 to 15 (its chest is locked; the next Ex lies on level 51), so Open from 5 to 15;
+   key 3 from 7 to 16 (the area of level 3 at (28, 14), where the haunt with key 3 and the locked
+   chest are, lies behind the door at (27, 19): key 2 or Open), and with it key 2 from the chest, the
+   moonstone, Nox and the Telekinesis scroll; Altara's runes from 12 to 13 (after the listener);
+   eyeballs from 0 to 15. The horn stays at 39, after `npc:praecor_loth`. The pure fighter: 257
+   zones, 42 spheres, plot 16. `Uw2CarriedTests`.
 2. **Doors that only a conversation opens.** Modelled at 0.1.38 with a new fact kind,
    `door` (an "or" beside a door's lock). The Prison Tower's gate, level 10 (30, 34), opens
    for the gate guards' word (`prison_gate_guard`): the password, or the forged delivery
@@ -532,6 +574,31 @@ put by hand):
     Lord British's speech when first met; from a start in another world, the walkthrough's order of
     the plot steps holds (Miranda at 3, 7 and 11 moves the plot each time); a made wand of
     Levitate works.
+
+- **A wider sweep (0.1.51), leaning on the shut worlds.** Every castle zone (25, of which 22 can be
+  a start) and 49 zones of levels 17 to 72: the 8 zones whose start gets a made object and 6 drawn
+  at random from each world (Killorn, the Ice Caverns, Talorus, the Academy, the Tomb, the Pits,
+  the Void; the start filter passes 172 zones there). 2 seeds each, up to 3 retries, the logic of
+  2.1 (what creatures carry). 142 runs: 142 fill, 141 on the first attempt (the other, level 46
+  (49, 43) seed 2, on the second); 34 s a run on average, 79 s at most. Every check reaches plot 16
+  with no cut-off. All 98 runs from a shut world leave it (72 for the castle, the others first for
+  another world: from the Void into the Academy); none stays sealed. Made objects in 16 runs, the 8
+  zones of the start filter, each with a wand of Levitate beside the start and, every time,
+  Altara's dagger and rod too (the solve from those starts reaches Killorn only after plot 14: a
+  gift is made from its fact alone, though a jewelled dagger also lies on level 51 (22, 9) and the
+  game takes any). A place moved into reach in 22 runs. No castle start gets a made object.
+  The game's own start, seeds 1 to 20 (retries 20): 20 fill, all on the first attempt, 18 to 53 s.
+  Walkthroughs with NO WAY FOUND: own-start seeds 2, 4 and 5 and 13 of the 142 sweep runs at first.
+  Two causes were fixed in the walkthrough: the solve took the sceptre from the Void's pocket at
+  level 65 (44, 52) (one way from the Pits until lava protection; the goal does not need it, the
+  Void's own bottle does as well), so the walkthrough now follows the solve that takes nothing
+  from inside a trap (`TimelineSolve.Safe`) and puts off a pocket's entry until the step that needs
+  it; and a step whose way in starts in a zone left behind by a one-way teleport now takes another
+  way straight into the zone it leads to. Left: 5 runs from three starts, the same before 0.1.51:
+  level 46 (49, 43) and level 43 (33, 43) (the Academy: the teleport at level 46 (60, 39) to the room
+  at (53, 31) is one way, and the walkthrough goes on to level 41 before the room's stairs to level
+  47), level 65 (37, 27) (a Void start that enters the pocket at (44, 52) inside its first part).
+  The fill is not wrong there: the order the steps are listed in is.
 
 ## 4. Randomizer features to try on UW2
 

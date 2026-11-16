@@ -2926,7 +2926,10 @@ a square given by hand (or the square selected in the main window).
 - **Lord British's speech** comes when the Avatar first meets him, wherever the start.
 - **How often a start fills.** A sample (every castle zone and 30 zones of the other worlds
   drawn at random, 2 seeds each, no retries): of the 42 viable zones among them, 84 of 84 runs
-  fill, about 33 s a run; 12 runs move a place into reach.
+  fill, about 33 s a run; 12 runs move a place into reach. A wider one at 0.1.51 (every castle
+  zone and 49 zones of the shut worlds, 2 seeds, up to 3 retries): 142 of 142 runs fill, 141 on the
+  first attempt, 34 s a run; every run from a shut world leaves it; 16 runs get made objects (a
+  wand of Levitate, and Altara's dagger and rod), none from the castle.
 - **A start in a world the gem keeps shut.** Every world's arrival area has a teleport back to
   the gem cavern under the castle, but the gem opens a world only through the facet it shows
   (the first 1, 3, 6 or 8 by the castle plot: below 4, 8, 13) or once that world's key gem is
@@ -3233,7 +3236,15 @@ in its pack or in a container it carries. Janar (level 12) hands over his key ri
 and 6, for the codeword Borne gives (`npc:borne | option:kill_npcs`); Borne and the goblin guards
 of levels 10 and 14 never give their keys (`option:kill_npcs`). Merzan's potion of Iron Flesh
 costs a hundred gold coins with no Charm: a count fact (`gold_100`, the coins in the zones
-reached) stands for it.
+reached) stands for it. Since 0.1.51 every creature that carries something the logic counts
+has its fact (the table in `docs/UW2-RANDOMIZER-NEXT-STEPS.md`, 2.1). A fact may name `only`
+some of the things (`"only": [673, 674, 761]`, Altara's runes, which she gives once the
+listener is dead to one with a rune bag); a fact without `only` covers the rest of what that
+creature carries. Barter is not counted: what an NPC only barters needs killing it. What a
+creature carries that attacks whoever insists on passing (the three guardians of Praecor Loth's
+tomb, Sentinel 868) has no fact and stays free: the fight is the way. UW1's other corrections
+run on UW2 as well: a locked container's contents need the lock's key or a pick, a create
+trap's template its trap set off.
 
 The pole and the Telekinesis spell (Ort Por Ylem) count the same: a lever out of the hand's
 reach needs `item:pole | spell:telekinesis | spell:levitate`. A lever is only used from its
@@ -3880,6 +3891,15 @@ logic works. What moves and what stays, and why:
   From a start elsewhere a gift is made when the solve with every moving item held misses it
   and nothing that moves gives its token (Charles's key 2 is also the key of level 3, which
   moves, so it is never made), and a sealed start gets the wand or scroll its way out needs.
+- **What creatures carry** (0.1.51) stays where it is, but the logic reads it creature by
+  creature from the conversations: what one hands over in a talk needs what the talk asks (the
+  horn needs Praecor Loth's talk; Altara's runes the listener dead and a rune bag; the armorer's
+  and Borne's gauntlets their talk; Prinx's scroll two eyeballs; Janar's key ring Borne's
+  codeword), what one only barters or never gives needs **Killing NPCs in logic** (Zaria's runes, the
+  armorer's, Fissif's lock picks, the guards' keys), and what a creature carries that attacks
+  whoever insists on passing (the Tomb's three guardians, Sentinel 868 at the dam) is had by the
+  fight, which the logic takes as won. A locked chest's contents need its key or a pick (level 3
+  at (34, 16): key 3), and what a create trap makes needs that trap set off, as on UW1.
 - **Places:** besides the places that may be lost (Altara, Kintara and Mors Gotha with what
   they carry), what creatures the logic must spare carry, and objects in or named by traps,
   no key item goes inside a container a trap names, or on a square a trap turns to rock (a
@@ -3964,6 +3984,14 @@ fresh solve that proved it. It is meant for checking the logic, and for a player
   a step means the logic reaches it but you cannot get there from where you stand (a one-way
   drop with no way round): the logic takes every zone once reached as reachable again, and
   this is where that fails. Such steps are also listed before the walkthrough.
+- **One-way pockets** (0.1.51). The solve may take something from inside a one-way trap when
+  the goal does not need it (UW2 seed 2: the sceptre in the Void's pocket at level 65 (44, 52),
+  entered from the Pits by a one-way teleport and left only with lava protection; the sceptre
+  only buys a second bottle). A walkthrough that went in had no way back out. When that happens
+  the walkthrough follows the solve that takes nothing from inside a trap (it reaches the goal
+  too, or the seed would have been refused) and says so at its head ("It keeps out of the
+  one-way traps …"). A pocket's entry the steps still need later (the way on into the Void) is
+  put off until the step that needs it, with "Beware: Not before this point: …".
 - **A thing that is used up** says so: "Uses up the food (step 2)", "Uses up a single-use gate
   travel (step 3)". Food handed to Zak or Marrowsuck is one piece a time, so two of them need
   two pieces of food, and a warp made with a scroll uses the scroll.
@@ -4309,6 +4337,21 @@ The item property shuffle (`uw1-item-shuffle-seed-1.json`, about 550 lines: ever
 enchantments, curves and minimums, and the ignored objects) and the named challenges
 (`uw1-challenges-seed-1.json`, the ticked challenges, Fasting's food, Ranger's weights and the
 special creatures) are complete in `docs/examples/settings`.
+
+**Files to play.** Apply's settings for a few runs worth playing through, also in
+`docs/examples/settings` (written and read back by the editor at 0.1.51; each gives the same
+shuffle when loaded again):
+
+| File | Game | What it does |
+|---|---|---|
+| `uw2-key-scatter-seed-1.json` | UW2 | the game's own start, seed 1, everything as the window starts |
+| `uw2-key-scatter-castle-seed-1.json` | UW2 | a random start in the castle: level 1 (37, 47); with the start kit |
+| `uw2-key-scatter-any-world-seed-8.json` | UW2 | a random start in any world: level 58 (52, 5), in the Pits of Carnage, which the gem keeps shut; the walkthrough leaves the Pits at step 15; with the start kit |
+| `uw2-key-scatter-sealed-l51-seed-1.json` | UW2 | a given start in a room of level 51 at (28, 37), left only by Levitate: a wand of Levitate is made beside it; Altara's dagger and rod are made too (the solve from there never meets her in time); with the start kit |
+| `uw1-key-scatter-bashed-doors-seed-1.json` | UW1 | the game's own start, seed 1, whose walkthrough bashes three doors (level 1 (21, 5) and (21, 15), level 2 (21, 38)) |
+
+No UW2 start in Britannia needs a made item: the 22 castle zones that can be a start all fill
+with none (no door in the shipped levels is spiked, either).
 
 ## Mods
 

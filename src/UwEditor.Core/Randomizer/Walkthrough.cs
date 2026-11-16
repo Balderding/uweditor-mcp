@@ -272,7 +272,7 @@ namespace UwEditor.Core.Randomizer
                 foreach (int i in order)
                 {
                     if (folded.Contains(i)) continue;
-                    var st = new WalkStep { Number = built.Count + 1, Event = ev[i], Sphere = ev[i].Sphere, Level = LevelOf(i) };
+                    var st = new WalkStep { Number = built.Count + 1, Event = ev[i], Sphere = Postponed.ContainsKey(i) ? Postponed[i] : ev[i].Sphere, Level = LevelOf(i) };
                     foreach (int p in onTheWay(Deps(i))) { st.Events.Add(ev[p]); st.OnTheWay.Add(ZoneText(ev[p].Zone)); stepOf[p] = st.Number; }
                     st.Events.Add(ev[i]);
                     stepOf[i] = st.Number;
@@ -281,6 +281,9 @@ namespace UwEditor.Core.Randomizer
                 var goal = new WalkStep { Number = built.Count + 1, Kind = "goal", Sphere = sv.Spheres.Count > 0 ? sv.Spheres.Count - 1 : 0 };
                 foreach (int p in onTheWay(folded.Where(f => !attached.Contains(f)).ToList())) { goal.Events.Add(ev[p]); goal.OnTheWay.Add(ZoneText(ev[p].Zone)); stepOf[p] = goal.Number; }
                 foreach (var kv in built) { Describe(kv.Key, kv.Value, stepOf); w.Steps.Add(kv.Key); }
+                foreach (var kv in built)
+                    if (Postponed.ContainsKey(kv.Value))
+                        kv.Key.Warning = (kv.Key.Warning.Length > 0 ? kv.Key.Warning + " " : "") + "Not before this point: when the solve first got here (sphere " + ev[kv.Value].Sphere + ") this was a one-way pocket with no way back out yet.";
                 Routes(built.Select(kv => kv.Key).ToList());
                 // the goal
                 goal.Level = goalIdx >= 0 && FirstZone.ContainsKey(sv.GoalAt) ? LevelOf(FirstZone[sv.GoalAt]) : 0;
@@ -612,11 +615,40 @@ namespace UwEditor.Core.Randomizer
             // ---- the order
 
             /// <summary>The needed events by sphere; inside a sphere each after what it needs, staying on the level of the step before where possible.</summary>
+            /// <summary>The events Order puts off to a later sphere than the solve's (a one-way trap's entry), and that sphere.</summary>
+            readonly Dictionary<int, int> Postponed = new Dictionary<int, int>();
+
             List<int> Order(HashSet<int> need)
             {
                 var order = new List<int>();
                 int lastLevel = ev.Count > 0 ? LevelOf(0) : 0;
-                foreach (var grp in need.GroupBy(i => ev[i].Sphere).OrderBy(g => g.Key))
+                // a zone first entered while it was a one-way trap (the return check's traps: a pocket of the Void entered
+                // from the Pits by a one-way teleport, left only with lava protection) is not walked into then: its entry, and
+                // what follows inside, wait for the first later step outside that needs them, when the solve can come back out
+                var wait = Postponed;
+                // (not the zones of a shut start world, or of a shut world come out in, before the solve leaves the last of them: that part is done in its own order, and
+                // put off it would come after the leaving, when the world is shut)
+                int leftAt = sv.Leaves.Count > 0 ? sv.Leaves[sv.Leaves.Count - 1].Sphere : sv.SealedLevels != null ? int.MaxValue : 0;
+                var traps = sv.Traps.Where(tr => tr.Sphere >= leftAt).ToList();
+                if (traps.Count > 0)
+                {
+                    var users = new Dictionary<int, List<int>>();
+                    foreach (int i in need) foreach (int d in Deps(i)) { List<int> l; if (!users.TryGetValue(d, out l)) users[d] = l = new List<int>(); l.Add(i); }
+                    Func<int, bool> inTrap = i => ev[i].Kind == "zone" && traps.Any(tr => (tr.Zone == ev[i].Zone && tr.Sphere == ev[i].Sphere) || (tr.Sphere <= ev[i].Sphere && tr.Inside.Contains(ev[i].Zone)));
+                    var trapped = new HashSet<int>(need.Where(i => i != 0 && inTrap(i)));
+                    // inside the trap also what is done in a trapped zone after entering it (the zone's own events lean on its entry)
+                    foreach (int i in need.OrderBy(i => i)) if (!trapped.Contains(i) && i != 0 && Deps(i).Any(trapped.Contains) && ev[i].Kind != "zone" && Deps(i).Where(d => ev[d].Kind == "zone").All(trapped.Contains)) trapped.Add(i);
+                    foreach (int i in need.OrderByDescending(i => i))
+                    {
+                        if (!trapped.Contains(i)) continue;
+                        int at = int.MaxValue;
+                        List<int> us;
+                        if (users.TryGetValue(i, out us)) foreach (int u in us) at = Math.Min(at, wait.ContainsKey(u) ? wait[u] : ev[u].Sphere);
+                        if (at != int.MaxValue && at > ev[i].Sphere) wait[i] = at;
+                    }
+                }
+                Func<int, int> sphereOf = i => wait.ContainsKey(i) ? wait[i] : ev[i].Sphere;
+                foreach (var grp in need.GroupBy(sphereOf).OrderBy(g => g.Key))
                 {
                     var left = new HashSet<int>(grp);
                     var done = new HashSet<int>(order);
@@ -1129,7 +1161,21 @@ namespace UwEditor.Core.Randomizer
                             int from0 = here;
                             int cut = Math.Max(i, held + 1);
                             var hops = Route(here, want, cut, sphere) ?? Route(here, want, cut, sphere - 1);
-                            if (hops == null)
+                            // a zone entered by a way from a zone he cannot get back to (a one-way teleport took him on): another
+                            // way straight into the zone the step leads to does as well (the Academy's level 46: the teleport at
+                            // (60, 39) to the room at (53, 31), whose own stairs lead to level 41 as the step's stairs do)
+                            List<KeyValuePair<ZoneLink, int>> into = null;
+                            if (hops == null && e.Kind == "zone" && e.Zone != here && (e.Link == null || e.Link.Kind != "reach"))
+                                into = Route(here, e.Zone, cut, sphere) ?? Route(here, e.Zone, cut, sphere - 1);
+                            if (into != null)
+                            {
+                                var texts = into.Select(HopText).ToList();
+                                if (texts.Count > 9) texts = texts.Take(4).Concat(new[] { "… " + (texts.Count - 8) + " more …" }).Concat(texts.Skip(texts.Count - 4)).ToList();
+                                st.Route.Add("by another way from " + ZoneText(here) + " (" + ZoneText(want) + ", where the step starts, is behind you): " + string.Join("; ", texts));
+                                hops = into;
+                                want = e.Zone;
+                            }
+                            else if (hops == null)
                             {
                                 st.Route.Add("NO WAY FOUND from " + ZoneText(here) + " to " + ZoneText(want) + " with what is held by then: check this.");
                                 w.NoWay.Add("Step " + st.Number + ": no way from " + ZoneText(here) + " to " + ZoneText(want) + ".");

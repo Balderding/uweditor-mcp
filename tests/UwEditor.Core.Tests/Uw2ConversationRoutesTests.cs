@@ -100,7 +100,7 @@ namespace UwEditor.Core.Tests
             Assert.Equal(0xAA, m65.Objects[844].Item);
             Assert.Equal(512 + 10, m65.Objects[m65.Objects[844].Link].Link);
             var bottle = t.Set.Placements.Single(p => p.Source == "facts: bottle_zoranthus");
-            Assert.Equal("item:sceptre_deadly_seeker", bottle.Requires);
+            Assert.Equal("item:sceptre_deadly_seeker & plotstep:miranda_7", bottle.Requires);   // since 0.1.49 after Miranda's step at 7 too
             Assert.Contains("item:sceptre_deadly_seeker", sp.Keys);
             // the Pits' gem: carried by Dorstag (whoami 0x63), whom a fight anywhere takes it from
             var m57 = s.LoadLevel(57);

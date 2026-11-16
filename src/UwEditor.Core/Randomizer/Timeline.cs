@@ -77,6 +77,8 @@ namespace UwEditor.Core.Randomizer
         /// <summary>The solve again with nothing taken from inside a trap (or -1 when not run).</summary>
         public int SafeZones = -1;
         public bool SafeGoal;
+        /// <summary>That solve itself (null when not run): a walkthrough over it never enters a one-way trap (KeyShuffle's walkthrough falls back on it).</summary>
+        public TimelineSolve Safe;
         public readonly List<string> Warnings = new List<string>();
         /// <summary>The single-use sources spent (once:X), one entry per use, in order.</summary>
         public readonly List<string> OnceSpent = new List<string>();
@@ -360,6 +362,8 @@ namespace UwEditor.Core.Randomizer
                 var safe = res.Engine.Run(so, opt, label + " (safe)", banned);
                 sv.SafeZones = BaseZonesReached(safe);
                 sv.SafeGoal = safe.GoalReached;
+                sv.Safe = safe;
+                safe.Traps.AddRange(sv.Traps);   // where the walkthrough of it must not linger (Walkthrough's order)
                 if (sv.GoalReached && !safe.GoalReached)
                 {
                     // the goal needs something from inside a trap: which traps, each tried alone

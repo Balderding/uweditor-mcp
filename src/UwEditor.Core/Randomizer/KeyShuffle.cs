@@ -1707,6 +1707,20 @@ namespace UwEditor.Core.Randomizer
             };
             try { r.Walkthrough = Walkthrough.Build(r.CheckBuild, r.Check, r.Options.Names, level); }
             catch (Exception ex) { b.AppendLine("WALKTHROUGH: it could not be made (" + ex.Message + ")."); return; }
+            // the solve takes things wherever it first reaches them, also inside a one-way trap when nothing there is needed
+            // (another source does as well: Zoranthus's bottle by the sceptre in the Void's pocket at level 65 (44, 52), or the
+            // Void's own bottle); a walkthrough that went in has no way back out (NO WAY FOUND). The solve with nothing taken
+            // from inside a trap (TimelineSolve.Safe) reaches the goal too, so the walkthrough follows that one instead.
+            bool safe = false;
+            if (r.Walkthrough.NoWay.Count > 0 && r.Check.Safe != null && r.Check.Safe.GoalReached)
+            {
+                try
+                {
+                    var alt = Walkthrough.Build(r.CheckBuild, r.Check.Safe, r.Options.Names, level);
+                    if (alt.NoWay.Count < r.Walkthrough.NoWay.Count) { r.Walkthrough = alt; safe = true; }
+                }
+                catch (Exception) { }
+            }
             var wt = r.Walkthrough;
             b.AppendLine("WALKTHROUGH (one way to finish this seed, from the solve that proved it)");
             b.AppendLine("  The steps go in the order the logic reaches things (by sphere); only what the goal needs is listed.");
@@ -1716,6 +1730,7 @@ namespace UwEditor.Core.Randomizer
             b.AppendLine("  Where a step is done in another zone than the one the step before left you in, the way there is given first");
             b.AppendLine("  (kind of way, square, [what it needs] > the zone it leads to), over ways open by then. NO WAY FOUND marks a step");
             b.AppendLine("  the logic reaches but you cannot get to from where you are: an oversight to look at.");
+            if (safe) b.AppendLine("  It keeps out of the one-way traps (" + string.Join(", ", r.Check.Traps.Select(x => SolveResult.ZoneName(r.CheckBuild.Set, x.Zone))) + "): the solve that proved the seed took something from inside one that the goal does not need, and you could not have come back out.");
             if (r.Start != null && r.StartFrom != null)
                 b.AppendLine(string.Format("  The game puts you on level {0} ({1}, {2}) as always: your first step there teleports you, once, to level {3} ({4}, {5}), where the steps begin.", r.StartFrom.Level, (int)r.StartFrom.X, (int)r.StartFrom.Y, r.Start.Level, (int)r.Start.X, (int)r.Start.Y));
             string lockedWorld = r.Start != null ? LockedWorldNote(s, r.Start.Level) : null;

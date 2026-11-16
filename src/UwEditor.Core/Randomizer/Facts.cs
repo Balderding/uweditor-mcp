@@ -134,6 +134,12 @@ namespace UwEditor.Core.Randomizer
         public readonly List<int> Objects = new List<int>();
         public readonly List<int> Triggers = new List<int>();
         public readonly List<string> Flags = new List<string>();
+        /// <summary>
+        /// carried: only these objects the creature carries (and what lies in them) take the
+        /// requirement. A carried fact with none covers everything the creature carries that no
+        /// other carried fact of the same creature names (Altara's runes apart from her dagger).
+        /// </summary>
+        public readonly List<int> Only = new List<int>();
 
         // ---- Phase D
 
@@ -484,6 +490,7 @@ namespace UwEditor.Core.Randomizer
                     if (n?["items"] is JsonArray items) foreach (var x in items) { int k = Int(x, -1); if (k >= 0) f.Items.Add(k); }
                     f.AtLeast = I(n, "atLeast", 0);
                 }
+                if (f.Kind == "carried" && n?["only"] is JsonArray only) foreach (var x in only) { int k = Int(x, -1); if (k >= 0) f.Only.Add(k); }
                 if (f.Kind == "free")
                 {
                     Ints(n, "object", "objects", f.Objects);
@@ -583,6 +590,7 @@ namespace UwEditor.Core.Randomizer
                         if (f.Level <= 0 || f.Object < 0) list.Add(f.Id + ": a carried fact names the creature by 'level' and 'object'.");
                         if (string.IsNullOrWhiteSpace(f.Requires)) list.Add(f.Id + ": a carried fact needs 'requires' (how what the creature carries is had).");
                         else req(f.Requires);
+                        if (f.Only.Contains(f.Object)) list.Add(f.Id + ": 'only' names what the creature carries, not the creature.");
                         break;
                     case "count":
                         if (f.Grants.Length == 0) list.Add(f.Id + ": no 'grants'.");

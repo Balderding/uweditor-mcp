@@ -259,7 +259,7 @@ namespace UwEditor.Core.Randomizer
             }
             res.FactObjects = FactObjects(s, wl, facts);
             AddPlacements(s, wl, zs, facts, res);
-            if (!s.IsUw2) ChainPlacements(s, wl, g, zs, facts, res);
+            ChainPlacements(s, wl, g, zs, facts, res);
             Explain(zs);
 
             // ---- the solves
@@ -885,8 +885,9 @@ namespace UwEditor.Core.Randomizer
         /// What opens the locked container an object lies in (however deep), or null: the lock
         /// (0x10F) in a container's list with its locked flag (flag 9) set opens with its key (the
         /// lock's link &amp; 0x1FF; 0: no key fits) or by picking (its Z, below 15), as checkLock reads
-        /// it (obj/USEITEMS.C UseCont, checkLock); a locked chest is not broken open. Only UW1's
-        /// fixed chests (0x15D) carry locks in the shipped levels.
+        /// it (obj/USEITEMS.C UseCont, checkLock; UW2's obj/OBJUSE.C checkLock reads the lock the same
+        /// way); a locked chest is not broken open. UW1's fixed chests (0x15D) and five UW2 containers holding things the logic counts
+        /// (levels 1, 3, 17 and 58) carry locks in the shipped levels.
         /// </summary>
         public static string ContainerLock(LevelModel m, ObjectInfo o)
         {
@@ -917,10 +918,12 @@ namespace UwEditor.Core.Randomizer
         /// <summary>
         /// The facts' kind "carried": every placement of an object a named creature carries (in
         /// its inventory, or in a container it carries) also needs the fact's requirement. UW2 reads
-        /// no NPC's inventory as needing anything (ChainPlacements, UW1's rule, does not run there);
-        /// this covers the creatures the facts name: Janar's key ring, which he hands over for
-        /// Borne's codeword (conversation 17), and the keys the Prison Tower's goblins carry and do
-        /// not give.
+        /// no NPC's inventory as needing anything (ChainPlacements runs there without UW1's NPC
+        /// rule); the facts name the creatures one by one, from their conversations: what one hands
+        /// over in a talk needs what the talk asks, what one never gives needs option:kill_npcs, and
+        /// what a creature that fights the Avatar carries (the Tomb's guardians, Sentinel 868) is
+        /// left free. A fact with "only" covers those objects; one without, the rest of what the
+        /// creature carries.
         /// </summary>
         static void Carried(ZoneSet zs, Func<int, LevelModel> level, FactSet facts)
         {
@@ -933,17 +936,27 @@ namespace UwEditor.Core.Randomizer
                 var mm = PlacedObject.Match(p.Notes ?? "");
                 if (!mm.Success) continue;
                 int l = int.Parse(mm.Groups[2].Value), i = int.Parse(mm.Groups[1].Value);
-                foreach (var f in list.Where(x => x.Level == l))
+                var here = list.Where(x => x.Level == l).ToList();
+                if (here.Count == 0) continue;
+                LevelModel m;
+                if (!models.TryGetValue(l, out m)) { try { m = level(l); } catch (Exception) { m = null; } models[l] = m; }
+                if (m == null || i < 0 || i >= m.Objects.Length) continue;
+                // the object and what holds it, inwards out
+                var chain = new List<int> { i };
+                for (int at = m.Objects[i].Parent, guard = 0; at >= 0 && at < m.Objects.Length && guard < 16; at = m.Objects[at].Parent, guard++) chain.Add(at);
+                foreach (var who in here.Select(x => x.Object).Distinct().ToList())
                 {
-                    LevelModel m;
-                    if (!models.TryGetValue(l, out m)) { try { m = level(l); } catch (Exception) { m = null; } models[l] = m; }
-                    if (m == null || i < 0 || i >= m.Objects.Length || f.Object >= m.Objects.Length) continue;
-                    int at = m.Objects[i].Parent, guard = 0;
-                    while (at >= 0 && at != f.Object && guard++ < 16) at = m.Objects[at].Parent;
-                    if (at != f.Object) continue;
-                    string r = f.Requires.Trim();
-                    p.Requires = ZoneLink.JoinAnd(new[] { p.Requires, r });
-                    p.Notes = (p.Notes ?? "") + "; carried by #" + f.Object + " " + m.Objects[f.Object].Name + " (" + f.Id + ": " + r + ")";
+                    int k = chain.IndexOf(who);
+                    if (k <= 0) continue;
+                    var inside = chain.Take(k);
+                    var mine = here.Where(x => x.Object == who).ToList();
+                    var named = mine.Where(x => x.Only.Any(o => inside.Contains(o))).ToList();
+                    foreach (var f in named.Count > 0 ? named : mine.Where(x => x.Only.Count == 0).ToList())
+                    {
+                        string r = f.Requires.Trim();
+                        p.Requires = ZoneLink.JoinAnd(new[] { p.Requires, r });
+                        p.Notes = (p.Notes ?? "") + "; carried by #" + who + " " + m.Objects[who].Name + " (" + f.Id + ": " + r + ")";
+                    }
                 }
             }
         }
@@ -954,7 +967,10 @@ namespace UwEditor.Core.Randomizer
         /// <item>an item that a non-hostile creature with a name (an NPC: whoami, block 7) carries is
         /// not simply there to take: it needs option:kill_npcs (killing it once its zone is
         /// reached), or what a trade fact for its token says (the quest that gets it), or either;
-        /// a hostile creature is fought anyway, so what it carries stays free;</item>
+        /// a hostile creature is fought anyway, so what it carries stays free (UW1 only: on UW2 the
+        /// facts' kind "carried" says it creature by creature, see Carried);</item>
+        /// <item>an item in a locked container needs what opens the lock (ContainerLock), in both
+        /// games (UW2 since 0.1.51: level 3's chest at (34, 16) with key 2, level 58's at (15, 56));</item>
         /// <item>an item kept in a create trap (its template) is only there once a chain the player
         /// sets off creates it: it needs that mechanism's flag (event/TRIGGER.C TRAP_CREATE);</item>
         /// <item>the facts' kind "free" with flags grants each flag in the zone of its place (or at
@@ -982,6 +998,7 @@ namespace UwEditor.Core.Randomizer
                     int guard = 0;
                     while (!h.IsCritter && h.Parent >= 0 && guard++ < 16) h = m.Objects[h.Parent];
                     if (!h.IsCritter || h.Record == null || h.Record.Length < 0x1B) continue;
+                    if (s.IsUw2) continue;   // UW2: the facts' kind "carried" names the creatures one by one (Carried)
                     string npc = ObjectTexts.NpcName(s, h);
                     int attitude = UltimateEditor.Uw1.Uw1Schemas.MobileObject["Attitude"].Get(h.Record) & 3;   // 0 hostile (include/object.h OBJ_ATTITUDE)
                     if (npc != null && attitude != 0) npcHeld[slot.Level + ":" + o.Index] = npc;

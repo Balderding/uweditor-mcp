@@ -1085,6 +1085,121 @@
       "notes": "The goblin guard of level 14 (30, 33) carries key 6; he opens the door at (29, 32) for the password (prison_l14_guard) and gives no key.",
       "source": "conversation 9 (goblin guard): gronk_door(29, 32, 0), no key given; level 14 objects #254, #951",
       "confidence": "probable"
+    },
+    {
+      "id": "carried_borne_gauntlets",
+      "kind": "carried",
+      "level": 14,
+      "object": 253,
+      "only": [988],
+      "requires": "npc:borne | option:kill_npcs",
+      "notes": "Borne hands over his pair of fraznium gauntlets (#988) with the password at the first meeting, to one who plays along as Lorca Batan; the rest of what he carries needs killing him (carried_borne).",
+      "source": "conversation 3 (Borne): func_0C84, 'These gauntlets shall get thee through the forcefield', take_from_npc(51); level 14 object #988",
+      "confidence": "probable"
+    },
+    {
+      "id": "carried_goblin_armorer_gifts",
+      "kind": "carried",
+      "level": 13,
+      "object": 255,
+      "only": [995, 996],
+      "requires": "npc:goblin_armorer | option:kill_npcs",
+      "notes": "The goblin armorer (level 13 (28, 34)) pays ten gold coins (#995) for the idea of coated gauntlets when asked what he gives, and at a later meeting lends a pair of fraznium gauntlets (#996) to one who gave him the idea.",
+      "source": "conversation 5 (goblin armorer): func_0C81 'I have here 10 gold pieces', take_from_npc(160); func_0D7E 'you are welcome to take this one', take_from_npc(51) (global35, set by the idea); level 13 objects #255, #995, #996",
+      "confidence": "probable"
+    },
+    {
+      "id": "carried_goblin_armorer",
+      "kind": "carried",
+      "level": 13,
+      "object": 255,
+      "requires": "option:kill_npcs",
+      "notes": "The goblin armorer's runes (Ylem #931, Sanct #932, Rel #956) are never given in his talk. He barters, which could get them for goods he values; barter is not counted, so they need killing him.",
+      "source": "conversation 5 (goblin armorer): setup_to_barter, do_offer, do_demand (a refused demand: attack); no take_from_npc of a rune; level 13 objects #931, #932, #956",
+      "confidence": "probable"
+    },
+    {
+      "id": "carried_altara_runes",
+      "kind": "carried",
+      "level": 17,
+      "object": 243,
+      "only": [673, 674, 761],
+      "requires": "(plotstep:listener & item:rune_bag) | option:kill_npcs",
+      "notes": "Altara (level 17 (18, 52)) gives her runes (Quas #673, Corp #674, An #761: the barter slots, give_all_stuff) once the listener is dead (quest 11), to one who carries a rune bag. Her other things (the dagger #971, which altara_dagger gives, and the black pearl) need killing her (carried_altara).",
+      "source": "conversation 45 (Altara): func_13BF get_quest(11) -> func_162B, find_inv(143, 1), 'Wilt thou take these with thee, @GS8, as my gift?', func_1E36 setup_to_barter, give_all_stuff(); event/WORLDEV.C case 0x91: SET_QUEST(11, 1); level 17 objects #243, #673, #674, #761",
+      "confidence": "probable"
+    },
+    {
+      "id": "carried_altara",
+      "kind": "carried",
+      "level": 17,
+      "object": 243,
+      "requires": "option:kill_npcs",
+      "notes": "What else Altara carries: the jewelled dagger #971 (the flag fact altara_dagger gives it in her talk) and the black pearl #969.",
+      "source": "level 17 objects #243, #969, #971",
+      "confidence": "probable"
+    },
+    {
+      "id": "carried_praecor_loth",
+      "kind": "carried",
+      "level": 52,
+      "object": 250,
+      "requires": "npc:praecor_loth | option:kill_npcs",
+      "notes": "Praecor Loth's ghost (level 52 (30, 5)) hands over his horn (#947) when the Avatar tells him the truth of his death and agrees to bear it (quest 7). His three guardians (Morphius, Lord Umbria, Lethe) attack whoever insists on passing: what they carry is had by that fight and stays free.",
+      "source": "conversation 32 (Praecor Loth): func_0821, take_from_npc(273), set_quest(7, 1); conversations 29, 30, 31 (Lethe, Morphius, Lord Umbria): 'I must pass' -> attack (npc_goal 5, npc_gtarg 1); level 52 objects #250, #947",
+      "confidence": "probable"
+    },
+    {
+      "id": "carried_zaria",
+      "kind": "carried",
+      "level": 57,
+      "object": 253,
+      "requires": "option:kill_npcs",
+      "notes": "Zaria (level 57 (8, 17)), who sends fighters into the Pits' arenas, carries runes (Bet, Des, In, Nox) and never gives or barters them.",
+      "source": "conversation 98 (Zaria): teleport_player to the arenas, no take_from_npc, no setup_to_barter; level 57 objects #253, #589 to #592",
+      "confidence": "probable"
+    },
+    {
+      "id": "two_eyeballs",
+      "kind": "count",
+      "grants": "item:two_eyeballs",
+      "items": [
+        "0x110"
+      ],
+      "atLeast": 2,
+      "notes": "Two eyeballs (item 272), Prinx's price for his scroll: every eyeball in the zones reached counts.",
+      "source": "conversation 81 (Prinx): find_barter(272), count_inv, give_ptr_npc; at two, take_from_npc(311)",
+      "confidence": "certain"
+    },
+    {
+      "id": "carried_prinx",
+      "kind": "carried",
+      "level": 65,
+      "object": 242,
+      "requires": "item:two_eyeballs | option:kill_npcs",
+      "notes": "Prinx (level 65 (10, 56)) gives his scroll (#807, Fly) for two eyeballs, then vanishes.",
+      "source": "conversation 81 (Prinx): func_05AC, global34 == 2: take_from_npc(311), remove_talker(); level 65 objects #242, #807",
+      "confidence": "probable"
+    },
+    {
+      "id": "carried_fissif",
+      "kind": "carried",
+      "level": 1,
+      "object": 237,
+      "requires": "option:kill_npcs",
+      "notes": "Fissif's lock picks (#555, #721, #722): he barters them (and makes new ones when he has none), barter is not counted. This Fissif is also the template of create object trap #845, made only by the schedule (scheduled trigger #844 at (37, 38)).",
+      "source": "conversation 128 (Fissif): func_0F9A do_inv_create(257), setup_to_barter; no take_from_npc of a pick; level 1 objects #237, #845",
+      "confidence": "probable"
+    },
+    {
+      "id": "carried_guard_l17_231",
+      "kind": "carried",
+      "level": 17,
+      "object": 231,
+      "requires": "option:kill_npcs",
+      "notes": "A guard of Killorn Keep (level 17 (22, 45)) carries a lock pick (#567); he barters but gives nothing in his talk.",
+      "source": "conversation 40 (guard): setup_to_barter, do_offer, do_demand; level 17 objects #231, #567",
+      "confidence": "probable"
     }
   ]
 }

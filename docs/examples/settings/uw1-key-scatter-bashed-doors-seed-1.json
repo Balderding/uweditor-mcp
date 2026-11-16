@@ -1,0 +1,62 @@
+{
+  "format": "uw-randomizer-settings",
+  "version": 1,
+  "editor": "0.1.51",
+  "game": "UW1",
+  "tool": "key-scatter",
+  "seed": 1,
+  "levels": "69fbf5e2",
+  "inputs": {
+    "zoning": "automatic zones"
+  },
+  "options": {
+    "retries": 20,
+    "logic": {
+      "magic": true,
+      "newCharacterCircle": 1,
+      "singleUseItems": false,
+      "singleUseOnly": null,
+      "lockPicking": false,
+      "pickSkill": 30,
+      "pickRetry": true,
+      "searchSkill": 0,
+      "searchRetry": true,
+      "damageTrapWalls": false,
+      "ringNeedsLava": true,
+      "killNpcs": false,
+      "requireOrb": false,
+      "avoidLost": true,
+      "pitsGemByBlog": false
+    },
+    "nav": {
+      "tickLength": 16,
+      "jumpMargin": 2,
+      "portal": false,
+      "gapJumps": true,
+      "diagonalJumps": false,
+      "cutAtLevelChanges": true,
+      "foldEmptyDeadEnds": true,
+      "shippedStart": false
+    },
+    "move": [
+      "keys",
+      "infinity",
+      "talismans",
+      "runes",
+      "abilities",
+      "ingredients",
+      "plot"
+    ],
+    "creatureInventories": false,
+    "filler": false,
+    "extra": [],
+    "startKit": false,
+    "exploreMaps": false,
+    "anywhere": true,
+    "spoilerNotes": false,
+    "start": "own",
+    "startScope": "firstLevels",
+    "startAt": null,
+    "placesInReach": null
+  }
+}
