@@ -80,6 +80,8 @@ namespace UwEditor.App
         public ObservableCollection<TreeNode> Tree { get; } = new ObservableCollection<TreeNode>();
         public ObservableCollection<PropertyRow> ObjectRows { get; } = new ObservableCollection<PropertyRow>();
         public ObservableCollection<PropertyRow> TileRows { get; } = new ObservableCollection<PropertyRow>();
+        /// <summary>The objects (and tiles, x + 64 y) selected together with the one shown, from the window: a field they do not share shows as mixed.</summary>
+        public Func<IReadOnlyCollection<int>> AlsoSelectedObjects, AlsoSelectedTiles;
         public ObservableCollection<string> Recent { get; } = new ObservableCollection<string>();
 
         /// <summary>The level to show changed (null when none).</summary>
@@ -447,7 +449,10 @@ namespace UwEditor.App
                 ObjectTitle = o.Name;
                 ObjectSubtitle = string.Format("#{0} · item 0x{1:X3} · {2}", o.Index, o.Item, o.IsMobile ? "mobile" : "static");
                 ObjectLook = ObjectLook.Of(o);
-                SetRows(ObjectRows, PropertyRows.ForObject(level, o));
+                var rows = PropertyRows.ForObject(level, o);
+                var with = AlsoSelectedObjects?.Invoke();
+                if (with != null && with.Count > 1 && with.Contains(obj)) PropertyRows.MarkMixed(rows.Where(r => r.Target == "object" && r.TargetIndex == obj), with.Where(i => i != obj && i > 0 && i < level.Objects.Length).Select(i => level.Objects[i].Record));
+                SetRows(ObjectRows, rows);
                 var pics = session.Graphics.ObjectPictures;
                 ObjectThumb = o.Item < pics.Count && pics[o.Item] != null ? ToBitmap(pics[o.Item]) : null;
             }
@@ -463,7 +468,10 @@ namespace UwEditor.App
             {
                 var t = level.Tiles[tx, ty];
                 TileTitle = string.Format("({0}, {1}) · {2} · height {3}", tx, ty, TileInfo.TypeName(t.Type), t.Height);
-                SetRows(TileRows, PropertyRows.ForTile(level, t));
+                var trows = PropertyRows.ForTile(level, t);
+                var withTiles = AlsoSelectedTiles?.Invoke();
+                if (withTiles != null && withTiles.Count > 1 && withTiles.Contains(tx + 64 * ty)) PropertyRows.MarkMixed(trows, withTiles.Where(k => k != tx + 64 * ty).Select(k => level.Tiles[k % 64, k / 64].Record));
+                SetRows(TileRows, trows);
                 var g = session.Graphics;
                 var wt = g.WallTexture(level.WallTextureNumber(t.WallIndex));
                 var ft = g.FloorTexture(level.FloorTextureNumber(t.FloorIndex));

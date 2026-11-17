@@ -37,6 +37,11 @@
         <MenuItem Header="_Paste" InputGesture="Ctrl+V" Click="OnPaste" IsEnabled="{Binding HasGame}" />
         <MenuItem Header="D_uplicate" InputGesture="Ctrl+D" Click="OnDuplicate" IsEnabled="{Binding HasObject}" />
         <Separator />
+        <MenuItem Header="Copy t_iles with what is on them" InputGesture="Ctrl+Alt+C" Click="OnCopyTiles" IsEnabled="{Binding HasGame}" />
+        <MenuItem Header="Paste ti_les" InputGesture="Ctrl+Alt+V" Click="OnPasteTiles" IsEnabled="{Binding HasGame}" />
+        <MenuItem Header="Tur_n the copied tiles a quarter" InputGesture="Ctrl+Alt+R" Click="OnTurnTiles" IsEnabled="{Binding HasGame}" />
+        <MenuItem Header="_Mirror the copied tiles" InputGesture="Ctrl+Alt+M" Click="OnMirrorTiles" IsEnabled="{Binding HasGame}" />
+        <Separator />
         <MenuItem Header="_Add an object…" InputGesture="Insert" Click="OnAddObject" IsEnabled="{Binding HasGame}" />
         <MenuItem Header="_Delete the object" InputGesture="Delete" Click="OnDeleteObject" IsEnabled="{Binding HasObject}" />
         <Separator />
@@ -388,6 +393,17 @@
                         ToolTip.Tip="Select the object one step forward in the chain: the trigger a lever holds, the trap a trigger fires, the trap or trigger that comes after a trap. When there are several, choose one from the list." />
               </WrapPanel>
               <TextBlock x:Name="ChainTextBlock" Classes="muted" Text="{Binding ChainText}" TextWrapping="Wrap" FontSize="12" />
+            </StackPanel>
+            <StackPanel IsVisible="{Binding HasLinks}" Margin="0,8,0,0" Spacing="2">
+              <TextBlock Classes="muted" Text="Linked from, and acts on (click to go there)" FontSize="12" />
+              <ItemsControl x:Name="LinksList" ItemsSource="{Binding Links}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Button Content="{Binding Text}" Click="OnLinkEntry" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="6,2" Margin="0,1" FontSize="12"
+                            ToolTip.Tip="Go to this object, or to this square." />
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
             </StackPanel>
             <ItemsControl ItemsSource="{Binding ObjectRows}" Margin="0,8,0,0">
               <ItemsControl.ItemTemplate>

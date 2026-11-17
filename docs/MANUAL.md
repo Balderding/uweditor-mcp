@@ -358,6 +358,46 @@ Ultima Underworld keeps it but does not use it.
   one), keeping their places relative to each other and their heights above the floor; it
   works on any level of the same game. Copying a creature that has a conversation makes a
   second creature with the same conversation; the status line points this out.
+- **Texts follow their objects.** A book, scroll, gravestone, writing or text trap that is
+  pasted, duplicated or added, and whose text another object also reads, gets a string of
+  its own with the same text, so changing one never changes the other. Deleting the last
+  object that reads a text empties its string, which the next new text then takes. Undo and
+  Redo of the step put the strings back with the level. When no string of the kind is free
+  (books and scrolls: block 3 strings 1-511; gravestones: block 8 strings 1-63; writings:
+  block 8 strings 64-351; text traps: block 9), the copy shares the original's text and the
+  status line says so. **Edit its text…** in the right-click menu changes one object's
+  text: where others read the same string, the object gets its own. The panel shows the
+  text as edited, before the strings are saved.
+- **Copy tiles with what is on them** (Edit menu, Ctrl+Alt+C) copies the selected tiles (a
+  Ctrl+drag rectangle, Ctrl+clicked tiles, or the one selected): each tile's type, height,
+  textures and flags, the objects on it with what they hold, the links between those
+  objects and the target squares of their triggers. **Paste tiles** (Ctrl+Alt+V) puts the
+  copy with its south-west corner on the tile under the mouse (or the selected one), as one
+  undo step; an orange outline shows where it would land until then (Esc hides it).
+  - Each copied tile replaces the tile there, and what lay on it is removed. Tiles not
+    copied inside the rectangle are left as they are; tiles off the map are left out.
+  - **Turn the copied tiles a quarter** (Ctrl+Alt+R) and **Mirror the copied tiles**
+    (Ctrl+Alt+M) change the copy before it is pasted: slopes and diagonals turn with it,
+    and so do the fine places and headings of the objects. Traps and triggers keep their
+    fine place and heading, which are settings.
+  - A trigger whose target square was copied points at the pasted square, and a trigger
+    whose trap was copied runs the copy. A link to an object outside the copy is kept on
+    the same level and cleared on another.
+  - On another level the textures go by their numbers: where that level's list has the
+    texture, the tile uses that slot; where it has not, the slot number is kept and the
+    status line counts them (Level ▸ Level textures changes the list).
+  - The copy is kept while the editor runs, also after another game is opened. Tiles pasted
+    into the other game come without their objects.
+- **A value typed once goes to all.** With several objects selected, the panel shows the one
+  clicked last; a field the others do not share shows no value and "mixed". A value typed
+  into a row (or a checkbox ticked) is set on every selected object as one undo step. Those
+  the field does not fit (a creature's field on an item) or that refuse the value are left
+  as they were, and the status line counts them. The tile's rows work the same way on
+  several selected tiles.
+- **Select similar** (right-click an object) selects every object of the level with the same
+  item, of the same kind (weapons, food, creatures and so on) or with the same owner; on a
+  tile, **Select the tiles with this floor texture** or **wall texture** selects every open
+  tile using that slot. Then delete, drag, copy, or type a value for all.
 - **Drag** a selected object to move it (and the others selected with it) to another tile or
   to another place in its own tile. While dragging, the object is drawn where it would land,
   a small yellow square marks the eighth of the tile under the mouse, and the status line
@@ -378,11 +418,27 @@ Ultima Underworld keeps it but does not use it.
   hidden behind another. Once selected, it can be dragged from anywhere on its tile, even
   where another object is in front of it.
 
+**Linking.** Right-click a trigger or a trap and choose **Link it to an object that stays
+where it lies**, then click the object; a line follows the mouse from the trigger until you
+click, and Esc cancels. The trigger's or trap's link is set to that object, which stays on
+its own tile as in the shipped levels, and a trigger's (or a delete object trap's) target
+square becomes the object's square. When the trigger already ran something and the new
+object is a trap that leads nowhere yet, the old one comes after it, so the chain grows. A
+lever, switch, button or pull chain links through the use trigger it holds; one is made
+inside it when it has none. A trigger that holds its traps inside it is refused until they
+are dragged out. It is one undo step.
+
+**Linked from, and acts on.** Under the chain buttons the panel lists what leads to the
+selected object and where it acts: the objects whose link names it, the triggers whose
+chains run it, the object that holds it, the triggers whose target square is its square, and
+the squares it acts on itself. Click a line to go to that object or square.
+
 **The right-click menu** opens on a right click without dragging. On an object it offers
 copy, cut, duplicate, paste inside, add an object inside (to its inventory, for a creature),
-delete, choose a trap's target, go to a teleport's target, **Make it run a trap** (then click
-the trap: it joins the trigger's chain), **Put inside** (then click the container), frame it
-and select its tile. On a tile it offers the objects on it, add an object here, paste here,
+delete, choose a trap's target, go to a teleport's target, **Link it to an object that stays
+where it lies** (see below), **Take its link off**, **Make it run a trap it holds** (then click
+the trap: it moves inside the trigger), **Put inside** (then click the container), frame it,
+select its tile, **Select similar**, and for an object that carries a text, **Edit its text…**. On a tile it offers the objects on it, add an object here, paste here,
 use it as the brush template, fill from here, paint the selection, select the tiles walkable
 from here, play-test from here, and move the new-game start or the player there.
 
@@ -741,6 +797,16 @@ conversation says. The window has four tabs:
   games gives back the same bytes.
 - **Who talks:** the creatures in the levels that use the slot (whoami, or the generic
   slot for whoami 0). Double-click one to go to it in the main window.
+**New…** gives an empty slot of CNV.ARK a conversation. Pick the slot (1-255: a creature
+talks through it when its conversation number, whoami, is the slot's) and, if you like, the
+name the creature talks under (STRINGS.PAK block 7, string slot + 16). The new conversation
+is a short template, a greeting, one answer and a goodbye, to change on the Dialogue tab; its
+built-in functions are those of a shipped conversation, and its strings go in the slot's own
+block. Saving also adds the slot's record of private globals. **Delete** takes the shown
+conversation out of CNV.ARK when you save; it tells first how many creatures in the levels
+talk through it, since they then have nothing to say. Its strings stay in their block.
+Closing without saving keeps a deleted conversation.
+
 **Save** (Ctrl+S) writes CNV.ARK and STRINGS.PAK in `DATA`, with only the changed blocks
 rewritten (text typed and not applied is applied first). UW2's blocks are compressed again.
 The old files are kept as `CNV.ARK.BKP` and `STRINGS.PAK.BKP`. When the window closes, its
@@ -4451,6 +4517,8 @@ the files themselves, so it can be shared without the game's data:
 | Anywhere | Ctrl+S | save the levels (and a moved player) |
 | Anywhere | Ctrl+Z, Ctrl+Y | undo, redo |
 | Anywhere | Ctrl+C, Ctrl+X, Ctrl+V, Ctrl+D | copy, cut, paste, duplicate the selected objects |
+| Anywhere | Ctrl+Alt+C, Ctrl+Alt+V | copy the selected tiles with what is on them, paste them under the mouse |
+| Anywhere | Ctrl+Alt+R, Ctrl+Alt+M | turn the copied tiles a quarter clockwise, mirror them |
 | Anywhere | Ctrl+H | undo history |
 | Anywhere | F5 | play-test from the selected tile |
 | View | Tab | the 2D map, and back |

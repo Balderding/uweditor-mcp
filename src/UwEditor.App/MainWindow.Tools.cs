@@ -72,10 +72,19 @@ namespace UwEditor.App
                 try { shared = Conversations()?.Strings; } catch (Exception) { shared = null; }
                 try { strings = StringsEditor.Open(vm.Session, shared); }
                 catch (Exception ex) { _ = MessageWindow.Show(this, "No strings", ex.Message); return null; }
-                strings.Saved += () => { vm.Session.ReloadStrings(); vm.RefreshNames(); };
+                strings.Saved += () => { vm.Session.ReloadStrings(); vm.RefreshNames(); ShowLiveTexts(); };
                 strings.Changed += NoteEdit;
+                ShowLiveTexts();
             }
             return strings;
+        }
+
+        /// <summary>The properties panel reads an object's text from the strings as edited, not only as saved.</summary>
+        void ShowLiveTexts()
+        {
+            var st = strings;
+            if (st == null || vm.Session == null || st.Session != vm.Session) return;
+            vm.Session.Strings.Live = (b, i) => { var l = st.Pak.Get(b); return i >= 0 && i < l.Count ? l[i] : null; };
         }
 
         public KeysWindow ShowKeys()

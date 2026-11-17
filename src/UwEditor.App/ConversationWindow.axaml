@@ -18,6 +18,10 @@
           <Button x:Name="GraphButton" Content="Graph…" Click="OnGraph" IsEnabled="{Binding HasSelection}"
                   ToolTip.Tip="Show this conversation's flow as a graph: what the NPC says, the menus, and where each answer leads." />
           <Button x:Name="GlobalsButton" Content="Global variables…" Click="OnGlobals" ToolTip.Tip="Show the quest flags, game variables and private globals that conversations read and write (Ctrl+G)." />
+          <Button x:Name="NewConversationButton" Content="New…" Click="OnNewConversation"
+                  ToolTip.Tip="Give an empty slot of CNV.ARK a conversation, from a template: a greeting, one answer and a goodbye." />
+          <Button x:Name="DeleteConversationButton" Content="Delete" Click="OnDeleteConversation" IsEnabled="{Binding HasSelection}"
+                  ToolTip.Tip="Take this conversation out of CNV.ARK (when you save). Creatures with its number then have nothing to say." />
           <Button x:Name="RevertButton" Content="Revert conversation" Click="OnRevert" IsEnabled="{Binding HasSelection}"
                   ToolTip.Tip="Discard this conversation's unsaved changes to its script and its strings." />
           <Button x:Name="SaveButton" Content="Save" Click="OnSave" MinWidth="80" HorizontalContentAlignment="Center"

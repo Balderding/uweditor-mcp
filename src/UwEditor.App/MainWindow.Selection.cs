@@ -42,8 +42,18 @@ namespace UwEditor.App
             View.DragEnded += OnDragEnded;
             View.RectChanged += OnRectChanged;
             View.RectSelected += OnRectSelected;
-            View.Hovered += h => { if (h.Hit && h.Tile >= 0) { hoverTileX = h.Tile % 64; hoverTileY = h.Tile / 64; } };
+            View.Hovered += h =>
+            {
+                if (!h.Hit || h.Tile < 0) return;
+                bool moved = hoverTileX != h.Tile % 64 || hoverTileY != h.Tile / 64;
+                hoverTileX = h.Tile % 64; hoverTileY = h.Tile / 64;
+                hoverPoint = h.Point;
+                if (moved && tileClipShown) UpdateMarkers();       // the copied tiles' outline follows the mouse
+                if (objectPick != null && objectPick.Kind == "linkto") UpdateMarkers();      // and the link's line
+            };
             vm.LevelChanged += l => { ClearMulti(false); };
+            vm.AlsoSelectedObjects = () => selObjects;
+            vm.AlsoSelectedTiles = () => selTiles;
         }
 
         /// <summary>The objects the commands act on: the ones selected together, else the selected one.</summary>
@@ -65,6 +75,7 @@ namespace UwEditor.App
         {
             foreach (int o in objects ?? Enumerable.Empty<int>()) selObjects.Add(o);
             foreach (int t in tiles ?? Enumerable.Empty<int>()) selTiles.Add(t);
+            if (vm.SelectedObject >= 0 || vm.SelectedTileX >= 0) vm.Select(vm.SelectedObject, vm.SelectedTileX, vm.SelectedTileY, false);    // the panel marks what they do not share
             SayMulti();
             UpdateMarkers();
         }
@@ -100,7 +111,7 @@ namespace UwEditor.App
             var parts = new List<string>();
             if (selObjects.Count > 0) parts.Add(selObjects.Count + " object" + (selObjects.Count == 1 ? "" : "s"));
             if (selTiles.Count > 0) parts.Add(selTiles.Count + " tile" + (selTiles.Count == 1 ? "" : "s"));
-            vm.EditStatus = parts.Count == 0 ? "" : "Selected: " + string.Join(" and ", parts) + ". Ctrl+click adds or removes, Esc clears, and the Paint tool's Paint selection paints the tiles.";
+            vm.EditStatus = parts.Count == 0 ? "" : "Selected: " + string.Join(" and ", parts) + ". Ctrl+click adds or removes, Esc clears; a value typed in the panel goes to all of them, and the Paint tool's Paint selection paints the tiles.";
         }
 
         /// <summary>Selects tiles and their objects: every open tile whose middle lies in the rectangle (view coordinates).</summary>
@@ -206,8 +217,10 @@ namespace UwEditor.App
             }
             List<int> made = null;
             string what = clip.Describe(vm.Session.Names);
-            if (!vm.Edit(ed => made = ed.Paste(clip, x, y, container), "Pasted " + what + (container >= 0 ? " inside #" + container : string.Format(" on ({0}, {1})", x, y)) + "."))
-                return new List<int>();
+            bool pasted = false;
+            WithTexts(() => pasted = vm.Edit(ed => made = ed.Paste(clip, x, y, container), "Pasted " + what + (container >= 0 ? " inside #" + container : string.Format(" on ({0}, {1})", x, y)) + "."),
+                () => pasted ? OwnTextsFor(made) : null, null);
+            if (!pasted) return new List<int>();
             if (clip.HasTalker) vm.EditStatus += " A creature with a conversation was copied. The game knows talkers by their conversation number, so two creatures now share it.";
             vm.FlushRefresh();
             selObjects.Clear(); selTiles.Clear();
@@ -244,22 +257,28 @@ namespace UwEditor.App
             // the outermost first; an object inside another one deleted goes with it
             var set = new HashSet<int>(objs);
             var tops = objs.Where(i => { for (int up = level.Objects[i].Parent, g = 0; up >= 0 && g < 1024; up = level.Objects[up].Parent, g++) if (set.Contains(up)) return false; return true; }).ToList();
-            e.BeginBatch(label ?? "Delete " + tops.Count + " objects");
             int done = 0;
-            try
+            var texts = TextsUnder(tops);
+            List<TextSlot> freed = null;
+            WithTexts(() =>
             {
-                foreach (int i in tops)
+                e.BeginBatch(label ?? "Delete " + tops.Count + " objects");
+                try
                 {
-                    var o = e.Model.Objects[i];
-                    if (o.Free) continue;
-                    try { e.DeleteObject(i); done++; } catch (Exception ex) { vm.EditStatus = ex.Message; }
+                    foreach (int i in tops)
+                    {
+                        var o = e.Model.Objects[i];
+                        if (o.Free) continue;
+                        try { e.DeleteObject(i); done++; } catch (Exception ex) { vm.EditStatus = ex.Message; }
+                    }
                 }
-            }
-            finally { e.EndBatch(); }
+                finally { e.EndBatch(); }
+            }, null, () => { vm.EditStatus = ""; return freed = FreeTexts(texts); });
+            string freedNote = vm.EditStatus;
             vm.FlushRefresh();
             selObjects.Clear();
             vm.Select(-1, vm.SelectedTileX, vm.SelectedTileY, true);
-            vm.EditStatus = "Deleted " + done + " object" + (done == 1 ? "" : "s") + " (one undo step).";
+            vm.EditStatus = "Deleted " + done + " object" + (done == 1 ? "" : "s") + " (one undo step)." + freedNote;
             UpdateMarkers();
         }
 
@@ -461,11 +480,19 @@ namespace UwEditor.App
                 {
                     if (vm.HasTargetSquare) items.Add(Item("Choose the _target in the view", StartPickTarget, editable));
                     if (vm.IsTeleportSelected) items.Add(Item("_Go to the teleport's target", () => GoToTeleportTarget()));
-                    items.Add(Item("Make it _run a trap: click the trap…", () => StartLinkPick(o.Index), editable));
+                    items.Add(Item("_Link it to an object that stays where it lies: click it…", () => StartLinkToPick(o.Index), editable));
+                    if (o.Link > 0 && (o.IsQuantity || o.Children.Count == 0)) items.Add(Item("Take its lin_k off", () => { if (vm.Edit(ed => ed.Unlink(o.Index), "#" + o.Index + " " + o.Name + " links to nothing now.")) { vm.FlushRefresh(); vm.Select(o.Index, -1, -1, true); } }, editable));
+                    items.Add(Item("Make it _run a trap it holds: click the trap… (the trap moves inside it)", () => StartLinkPick(o.Index), editable));
                 }
-                else items.Add(Item("Put _inside: click the container…", () => StartInsidePick(), editable));
+                else
+                {
+                    if (Triggers.IsControl(o.Item)) items.Add(Item("_Link it to a trap through its use trigger: click the trap…", () => StartLinkToPick(o.Index), editable));
+                    items.Add(Item("Put _inside: click the container…", () => StartInsidePick(), editable));
+                }
                 items.Add(Item("_Frame it", Frame, true, "F"));
                 if (o.OnTile && tx >= 0) items.Add(Item("Select its _tile", () => { ClearMulti(); vm.Select(-1, tx, ty, true); UpdateMarkers(); }));
+                items.Add(SimilarMenu(o));
+                foreach (var extra in TextItems(o)) items.Add(extra);
                 foreach (var extra in ExtraObjectItems(o)) items.Add(extra);
             }
             if (tx >= 0)
@@ -477,6 +504,12 @@ namespace UwEditor.App
                 if (here != null) items.Add(here);
                 items.Add(Item("Add an _object here…", () => { ClearMulti(); vm.Select(-1, tx, ty, true); _ = AddObject(tx, ty, true); }, editable && !t.IsSolid, "Insert"));
                 if (clip != null) items.Add(Item("_Paste here", () => PasteClip(tx, ty, -1), editable && !t.IsSolid, "Ctrl+V"));
+                if (!t.IsSolid)
+                {
+                    items.Add(Item("Select the tiles with this _floor texture", () => SelectSimilarTiles(tx, ty, false)));
+                    items.Add(Item("Select the tiles with this _wall texture", () => SelectSimilarTiles(tx, ty, true)));
+                }
+                foreach (var extra in TileClipItems(tx, ty)) items.Add(extra);
                 foreach (var extra in ExtraTileItems(tx, ty)) items.Add(extra);
                 items.Add(Item("Move the new-game _start here", () => { vm.Select(-1, tx, ty, true); MoveMarker("start", level.Level, tx, ty); }, !t.IsSolid && level.Level == 1 && vm.Session.ExePath != null));
                 if (vm.Session.IsSave) items.Add(Item("Move the _player here", () => { vm.Select(-1, tx, ty, true); MoveMarker("player", level.Level, tx, ty); }, !t.IsSolid));
@@ -515,6 +548,60 @@ namespace UwEditor.App
             return menu;
         }
 
+        // ---- select similar
+
+        MenuItem SimilarMenu(ObjectInfo o)
+        {
+            var menu = new MenuItem { Header = "_Select similar" };
+            menu.Items.Add(Item("The same _item (" + o.Name + ")", () => SelectSimilar(o.Index, "item")));
+            menu.Items.Add(Item("The same _kind", () => SelectSimilar(o.Index, "kind")));
+            menu.Items.Add(Item("The same _owner (" + o.Owner + ")", () => SelectSimilar(o.Index, "owner")));
+            return menu;
+        }
+
+        /// <summary>
+        /// Selects every object of the level like this one: by "item" (the same item id), "kind"
+        /// (the same kinds of thing: weapons, food, creatures, traps and so on) or "owner" (the
+        /// same owner field). Returns how many are selected.
+        /// </summary>
+        public int SelectSimilar(int index, string by)
+        {
+            var level = vm.Level;
+            if (level == null || index <= 0 || index >= level.Objects.Length) return 0;
+            var o = level.Objects[index];
+            var kind = ItemCategories.Of(o.Item, level.Session.Kind);
+            Func<ObjectInfo, bool> like = x =>
+                by == "item" ? x.Item == o.Item
+                : by == "owner" ? x.Owner == o.Owner && x.IsTrapOrTrigger == o.IsTrapOrTrigger && x.IsCritter == o.IsCritter
+                : kind != ItemCategory.None ? ItemCategories.Of(x.Item, level.Session.Kind) == kind : x.Item >> 4 == o.Item >> 4;
+            selObjects.Clear(); selTiles.Clear();
+            foreach (var x in level.Objects) if (!x.Free && x.Index > 1 && x.TileX >= 0 && like(x)) selObjects.Add(x.Index);
+            selObjects.Add(index);
+            vm.Select(index, -1, -1, true);
+            vm.EditStatus = string.Format("Selected {0} object{1} with the same {2} as #{3} {4}. Delete, drag or copy them, or type a value in the panel to set it on all.", selObjects.Count, selObjects.Count == 1 ? "" : "s", by, index, o.Name);
+            UpdateMarkers();
+            return selObjects.Count;
+        }
+
+        /// <summary>Selects every open tile of the level with the same floor (or wall) texture slot as this one. Returns how many.</summary>
+        public int SelectSimilarTiles(int tx, int ty, bool wall)
+        {
+            var level = vm.Level;
+            if (level == null) return 0;
+            var t = level.Tiles[tx, ty];
+            selObjects.Clear(); selTiles.Clear();
+            for (int y = 0; y < 64; y++)
+                for (int x = 0; x < 64; x++)
+                {
+                    var k = level.Tiles[x, y];
+                    if (!k.IsSolid && (wall ? k.WallIndex == t.WallIndex : k.FloorIndex == t.FloorIndex)) selTiles.Add(x + 64 * y);
+                }
+            vm.Select(-1, tx, ty, true);
+            vm.EditStatus = string.Format("Selected {0} tile{1} with {2} texture slot {3}. Type a value in the panel to set it on all, or paint them with the Paint tool's Paint selection.", selTiles.Count, selTiles.Count == 1 ? "" : "s", wall ? "wall" : "floor", wall ? t.WallIndex : t.FloorIndex);
+            UpdateMarkers();
+            return selTiles.Count;
+        }
+
         // ---- picks started from the menu: a trap for a trigger, a container for the selection
 
         /// <summary>What the next click in the view chooses: "link" (a trap for trigger Index) or "inside" (a container for the chosen objects).</summary>
@@ -525,6 +612,60 @@ namespace UwEditor.App
         {
             objectPick = new ObjectPick { Kind = "link", Index = trigger };
             vm.EditStatus = "Click the trap that #" + trigger + " should run (Esc cancels). The trap joins its chain.";
+        }
+
+        /// <summary>The next click links the trigger, trap or lever to the object clicked, which stays where it lies; a line follows the mouse meanwhile.</summary>
+        void StartLinkToPick(int from)
+        {
+            objectPick = new ObjectPick { Kind = "linkto", Index = from };
+            vm.EditStatus = "Click the object that #" + from + " " + vm.Level.Objects[from].Name + " should link to (Esc cancels). It stays where it lies; a trigger's target square becomes its square.";
+            UpdateMarkers();
+        }
+
+        /// <summary>Links a trigger, trap or lever to an object that stays where it lies (LevelEditor.LinkObjects). True when linked.</summary>
+        public bool LinkTo(int from, int to)
+        {
+            if (vm.Level == null || vm.Editor == null) return false;
+            var a = vm.Level.Objects[from]; var b = vm.Level.Objects[to];
+            int src = -1;
+            if (!vm.Edit(ed => src = ed.LinkObjects(from, to))) return false;
+            vm.FlushRefresh();
+            vm.Select(src, -1, -1, true);
+            vm.EditStatus = src == from
+                ? string.Format("#{0} {1} now links to #{2} {3}, which stays at ({4}, {5}).", from, a.Name, to, b.Name, b.TileX, b.TileY)
+                : string.Format("#{0} {1} now runs #{2} {3} through its use trigger #{4}.", from, a.Name, to, b.Name, src);
+            UpdateMarkers();
+            return true;
+        }
+
+        /// <summary>While a link is being chosen: a line from the object to the point under the mouse.</summary>
+        void AddLinkBand(List<float> lines)
+        {
+            if (objectPick == null || objectPick.Kind != "linkto" || vm.Level == null || !hoverPoint.HasValue) return;
+            var o = vm.Level.Objects[objectPick.Index];
+            if (o.TileX < 0) return;
+            LevelScene.Line(lines, new Vector3((float)o.WorldX, (float)o.WorldZ + 0.15f, (float)o.WorldY), hoverPoint.Value + new Vector3(0, 0.05f, 0), new Vector4(0.3f, 1f, 0.9f, 1f));
+        }
+
+        /// <summary>The point under the mouse in the view, for the link line.</summary>
+        Vector3? hoverPoint;
+
+        void OnLinkEntry(object sender, RoutedEventArgs e)
+        {
+            var entry = (sender as Control)?.DataContext as LinkEntry;
+            if (entry != null) GoToLink(entry);
+        }
+
+        /// <summary>Goes to a line of the panel's links: the object, or the square (on its level).</summary>
+        public void GoToLink(LinkEntry entry)
+        {
+            if (entry.Object >= 0) { GoToObject(entry.Level, entry.Object); return; }
+            if (vm.Level == null || vm.Level.Level != entry.Level) vm.LoadLevel(entry.Level);
+            if (vm.Level == null || entry.X < 0) return;
+            ClearMulti();
+            vm.Select(-1, entry.X, entry.Y, true);
+            Frame();
+            UpdateMarkers();
         }
 
         void StartInsidePick()
@@ -540,7 +681,8 @@ namespace UwEditor.App
             var p = objectPick;
             objectPick = null;
             var e = vm.Editor;
-            if (!hit.Hit || hit.Object < 0 || e == null) { vm.EditStatus = "Cancelled: no object there."; return true; }
+            if (!hit.Hit || hit.Object < 0 || e == null) { vm.EditStatus = "Cancelled: no object there."; UpdateMarkers(); return true; }
+            if (p.Kind == "linkto") { LinkTo(p.Index, hit.Object); UpdateMarkers(); return true; }
             if (p.Kind == "link")
             {
                 var trap = vm.Level.Objects[hit.Object];

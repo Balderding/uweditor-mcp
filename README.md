@@ -121,6 +121,10 @@ Each level keeps its own undo history (Ctrl+Z, Ctrl+Y, and Ctrl+H for the list o
 - **Make this slot a level** and **Clear the level** create or empty levels; **Level
   textures** changes the textures a level uses.
 
+Whole rooms move too: copy a rectangle of tiles with everything on it, turn or mirror the
+copy, and paste it on any level. Select every object like this one and set a value on all of
+them at once, link a trigger to its trap with a click, and give a new book its own text.
+
 ## Finding anything
 
 ![Find in all levels: every sword in UW1, where it lies and who carries it](docs/images/find.png)

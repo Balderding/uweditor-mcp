@@ -14,7 +14,7 @@ namespace UwEditor.Core.Editing
     /// from 0x7300; static: at 0x7C04, from 0x74FC), a new mobile joining the active list (bytes
     /// from 0x7AFC, count at 0x7C00), at the head of its tile's list.
     /// </summary>
-    public sealed class LevelEditor
+    public sealed partial class LevelEditor
     {
         public GameSession Session { get; private set; }
         public int Level { get; private set; }

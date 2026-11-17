@@ -137,6 +137,24 @@ namespace UwEditor.Core
             return rows;
         }
 
+        /// <summary>
+        /// For several objects (or tiles) selected together: a row whose field does not hold the
+        /// same value in all of them shows no value ("mixed"), so that typing one sets them all.
+        /// records are the others' records; one too short for the field (a static object, for a
+        /// creature's field) is left out.
+        /// </summary>
+        public static void MarkMixed(IEnumerable<PropertyRow> rows, IEnumerable<byte[]> records)
+        {
+            var recs = records.Where(r => r != null).ToList();
+            foreach (var row in rows)
+            {
+                if (row.Field == null || row.IsHeader) continue;
+                int v;
+                if (!int.TryParse(row.Value, out v)) continue;
+                if (recs.Any(r => r.Length >= row.Field.Offset + row.Field.ByteSpan && row.Field.Get(r) != v)) { row.Value = ""; row.Hex = "mixed"; }
+            }
+        }
+
         public static List<PropertyRow> ForTile(LevelModel level, TileInfo t)
         {
             var rows = new List<PropertyRow>();

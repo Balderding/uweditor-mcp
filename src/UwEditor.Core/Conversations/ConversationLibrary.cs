@@ -214,6 +214,94 @@ namespace UwEditor.Core.Conversations
             return done;
         }
 
+        // ---- adding and deleting conversations
+
+        /// <summary>The slots of CNV.ARK that hold no conversation and that a creature's conversation number can name (1-255).</summary>
+        public List<int> EmptySlots()
+        {
+            var list = new List<int>();
+            for (int s = 1; s < Math.Min(Archive.Count, 256); s++) if (!Archive.Has(s)) list.Add(s);
+            return list;
+        }
+
+        /// <summary>
+        /// The STRINGS.PAK block a slot's conversation keeps its strings in: the shipped ones
+        /// all sit at one offset from their slot (0x0E00 + slot in UW1), which a new one follows.
+        /// </summary>
+        public int StringBlockFor(int slot)
+        {
+            var offsets = Archive.Slots().Where(s => s < 0x100).Select(s => Archive.Read(s)).Where(c => c != null).GroupBy(c => c.StringBlock - c.Slot).OrderByDescending(g => g.Count()).FirstOrDefault();
+            return (offsets != null ? offsets.Key : 0x0E00) + slot;
+        }
+
+        /// <summary>The source a new conversation is compiled from: a greeting, one answer, a goodbye.</summary>
+        public static string TemplateSource(string greeting, string answer, string farewell)
+        {
+            return string.Join("\n", new[]
+            {
+                "main() {",
+                "    say " + Decompiler.Quote(greeting) + ";",
+                "    menu {",
+                "        " + Decompiler.Quote(answer) + ":",
+                "            say " + Decompiler.Quote(farewell) + ";",
+                "    }",
+                "}",
+                "",
+            });
+        }
+
+        /// <summary>
+        /// Gives an empty slot a conversation, compiled from the template (a greeting, one
+        /// answer and a goodbye, to be changed on the Dialogue tab): its imports are those of a
+        /// shipped conversation, its strings go in the slot's own block, and name (when given)
+        /// becomes the name the slot talks under (block 7 string slot + 16). Kept until Save,
+        /// which also adds the slot's record of private globals. Returns the new conversation.
+        /// </summary>
+        public Conversation AddConversation(int slot, string name = null, string greeting = "Greetings.", string answer = "Farewell.", string farewell = "Fare thee well.")
+        {
+            if (slot < 1 || slot >= Math.Min(Archive.Count, 256)) throw new ArgumentOutOfRangeException("slot", "A creature's conversation number is 1-" + (Math.Min(Archive.Count, 256) - 1) + ".");
+            if (Archive.Has(slot)) throw new InvalidOperationException("Slot " + slot + " already has a conversation.");
+            int donorSlot = Archive.Slots().Where(s => s < 0x100).DefaultIfEmpty(-1).First();
+            if (donorSlot < 0) throw new InvalidOperationException("CNV.ARK has no conversation to take the built-in functions' list from.");
+            var c = Archive.Read(donorSlot);
+            c.Slot = slot;
+            c.StringBlock = StringBlockFor(slot);
+            c.Code = new ushort[0];
+            var before = Snapshot(slot);
+            bool hadBlock = Strings.Has(c.StringBlock);
+            try
+            {
+                var r = ConversationCompiler.Compile(c, ShownStringsOf(c), Kind, Names.Resolve(c), TemplateSource(greeting, answer, farewell), new CompileOptions { CompileAll = true, Accents = Accents });
+                if (!r.Ok) throw new InvalidOperationException("The template did not compile: " + string.Join("; ", r.Errors.Take(3).Select(e => e.ToString())));
+                Apply(r);
+                if (!string.IsNullOrWhiteSpace(name))
+                {
+                    var names7 = Strings.Get(7);
+                    while (names7.Count <= slot + 16) names7.Add("");
+                    names7[slot + 16] = Accents.ToGame(name.Trim());
+                    Strings.Set(7, names7);
+                }
+            }
+            catch
+            {
+                Archive.Revert(slot);
+                if (!hadBlock) Strings.Revert(c.StringBlock);
+                throw;
+            }
+            return Archive.Read(slot);
+        }
+
+        /// <summary>
+        /// Takes a slot's conversation out of CNV.ARK (until Save). Its strings stay in their
+        /// block, and creatures with that conversation number then have nothing to say: FindUsers
+        /// tells which they are.
+        /// </summary>
+        public void DeleteConversation(int slot)
+        {
+            if (!Archive.Has(slot)) throw new InvalidOperationException("Slot " + slot + " has no conversation.");
+            Archive.Write(slot, null);
+        }
+
         /// <summary>Every creature in LEV.ARK, by the slot it talks through (whoami, or 0x100 + item &amp; 0x3F for whoami 0).</summary>
         public Dictionary<int, List<ConversationUser>> FindUsers()
         {

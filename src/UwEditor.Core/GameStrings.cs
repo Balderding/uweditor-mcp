@@ -50,9 +50,13 @@ namespace UwEditor.Core
             return blocks.TryGetValue(number, out b) ? b : new string[0];
         }
 
+        /// <summary>When set (by the editor, while STRINGS.PAK has unsaved edits): Get reads the edited strings through it.</summary>
+        public Func<int, int, string> Live;
+
         /// <summary>A string, or null when the block or the index is not there.</summary>
         public string Get(int block, int index)
         {
+            if (Live != null) return Live(block, index);
             var b = Block(block);
             return index >= 0 && index < b.Length ? b[index] : null;
         }

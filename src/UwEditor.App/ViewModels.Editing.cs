@@ -127,8 +127,14 @@ namespace UwEditor.App
         public string ChainNextLabel { get { return ChainNext.Count > 1 ? "Next (" + ChainNext.Count + ") ▶" : "Next ▶"; } }
         public string ChainPreviousLabel { get { return ChainPrevious.Count > 1 ? "◀ Previous (" + ChainPrevious.Count + ")" : "◀ Previous"; } }
 
+        /// <summary>What leads to the selected object and where it acts (TriggerLinks.Of), each a line to go to.</summary>
+        public List<LinkEntry> Links { get; private set; } = new List<LinkEntry>();
+        public bool HasLinks { get { return Links.Count > 0; } }
+
         void UpdateChain(ObjectInfo o)
         {
+            Links = o != null && session != null && level != null ? TriggerLinks.Of(level, o) : new List<LinkEntry>();
+            Raise(nameof(Links)); Raise(nameof(HasLinks));
             bool has = o != null && session != null && level != null && Triggers.InChain(level, o);
             ChainNext = has ? Triggers.ChainNext(level, o) : new List<ObjectInfo>();
             ChainPrevious = has ? Triggers.ChainPrevious(level, o) : new List<ObjectInfo>();
@@ -250,6 +256,48 @@ namespace UwEditor.App
                 ? Edit(e => { if (UwEditor.Core.Editing.DoorSpikes.IsField(row.Field)) UwEditor.Core.Editing.DoorSpikes.Set(e, row.TargetIndex, row.Field, v); else e.SetObjectField(row.TargetIndex, row.Field, v); }, string.Format("{0} of #{1} set to {2}.", row.Name, row.TargetIndex, v))
                 : Edit(e => e.SetTileField(row.TargetIndex % 64, row.TargetIndex / 64, row.Field.Name, v), string.Format("{0} of tile ({1}, {2}) set to {3}.", row.Name, row.TargetIndex % 64, row.TargetIndex / 64, v));
             if (!ok) ReselectFresh();   // show the value as it is
+        }
+
+        /// <summary>
+        /// Sets a field typed into a row on every object (or tile, x + 64 y) selected together, as
+        /// one undo step. Those the field does not fit (a creature's field on a static object) or
+        /// that refuse the value are left as they are, and counted.
+        /// </summary>
+        public int EditFieldOnAll(PropertyRow row, string text, IEnumerable<int> targets)
+        {
+            int v;
+            var e = Editor;
+            if (e == null) return 0;
+            if (!TryParse(text, out v)) { EditStatus = "'" + text + "' is not a number."; ReselectFresh(); return 0; }
+            var list = targets.Distinct().OrderBy(i => i).ToList();
+            int done = 0, left = 0;
+            string why = null;
+            bool obj = row.Target == "object";
+            e.BeginBatch(row.Name + " of " + list.Count + (obj ? " objects" : " tiles"));
+            try
+            {
+                foreach (int i in list)
+                {
+                    try
+                    {
+                        if (obj)
+                        {
+                            var o = e.Model.Objects[i];
+                            if (o.Free || o.Record.Length < row.Field.Offset + row.Field.ByteSpan) { left++; continue; }
+                            if (UwEditor.Core.Editing.DoorSpikes.IsField(row.Field)) UwEditor.Core.Editing.DoorSpikes.Set(e, i, row.Field, v); else e.SetObjectField(i, row.Field, v);
+                        }
+                        else e.SetTileField(i % 64, i / 64, row.Field.Name, v);
+                        done++;
+                    }
+                    catch (Exception ex) { left++; why = why ?? ex.Message; }
+                }
+            }
+            finally { e.EndBatch(); }
+            EditStatus = string.Format("{0} set to {1} on {2} {3}{4} (one undo step).", row.Name, v, done, obj ? (done == 1 ? "object" : "objects") : (done == 1 ? "tile" : "tiles"),
+                left > 0 ? "; " + left + " left as " + (left == 1 ? "it was" : "they were") + (why != null ? ": " + why : "") : "");
+            FlushRefresh();
+            ReselectFresh();
+            return done;
         }
 
         // ---- tools and the brush

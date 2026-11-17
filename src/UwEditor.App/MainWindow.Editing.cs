@@ -90,6 +90,9 @@ namespace UwEditor.App
         void OnRowCommitted(PropertyRow row, string text)
         {
             if (!vm.ObjectRows.Contains(row) && !vm.TileRows.Contains(row)) return;
+            // several selected together, the one shown among them: the value goes to all of them
+            if (row.Target == "object" && selObjects.Count > 1 && selObjects.Contains(row.TargetIndex)) { vm.EditFieldOnAll(row, text, selObjects); vm.FlushRefresh(); UpdateMarkers(); return; }
+            if (row.Target == "tile" && selTiles.Count > 1 && selTiles.Contains(row.TargetIndex)) { vm.EditFieldOnAll(row, text, selTiles); vm.FlushRefresh(); UpdateMarkers(); return; }
             vm.EditField(row, text);
         }
 
@@ -619,7 +622,8 @@ namespace UwEditor.App
             int added = -1;
             int into = w.Inside ? container : -1;
             if (into >= 0 && spec.IsMobile) { vm.EditStatus = "A creature cannot go inside an object."; return -1; }
-            vm.Edit(ed => added = ed.AddObject(spec, tx, ty, into), "Added " + spec.Describe(vm.Session.Names) + (into >= 0 ? " inside #" + into : string.Format(" on ({0}, {1})", tx, ty)) + ".");
+            WithTexts(() => vm.Edit(ed => added = ed.AddObject(spec, tx, ty, into), "Added " + spec.Describe(vm.Session.Names) + (into >= 0 ? " inside #" + into : string.Format(" on ({0}, {1})", tx, ty)) + "."),
+                () => added >= 0 ? OwnTextsFor(new[] { added }) : null, null);
             if (added >= 0)
             {
                 vm.FlushRefresh();
@@ -638,7 +642,10 @@ namespace UwEditor.App
             if (vm.SelectedObject < 0) return;
             var o = vm.Level.Objects[vm.SelectedObject];
             int idx = o.Index, tx = o.TileX, ty = o.TileY;
-            if (vm.Edit(e => e.DeleteObject(idx), "Deleted #" + idx + " " + o.Name + (o.Children.Count > 0 ? " and its contents" : "") + "."))
+            var texts = TextsUnder(new[] { idx });
+            bool deleted = false;
+            WithTexts(() => deleted = vm.Edit(e => e.DeleteObject(idx), "Deleted #" + idx + " " + o.Name + (o.Children.Count > 0 ? " and its contents" : "") + "."), null, () => deleted ? FreeTexts(texts) : null);
+            if (deleted)
             {
                 vm.FlushRefresh();
                 vm.Select(-1, tx, ty, true);

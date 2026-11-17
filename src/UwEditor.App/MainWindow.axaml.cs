@@ -446,6 +446,8 @@ namespace UwEditor.App
                 tris = BuildMarkers(lines);
                 if (vm.SelectedTileX >= 0) scene.TileOutline(lines, vm.SelectedTileX, vm.SelectedTileY, SelColour);
                 AddSelectionOutlines(lines);
+                AddTileClipOutline(lines);
+                AddLinkBand(lines);
                 AddHitboxes(lines, tris);
             }
             View.SetMarkers(tris);
@@ -843,7 +845,12 @@ namespace UwEditor.App
             if (e.Key == Key.M && ctrlShift) { ShowMods(); e.Handled = true; return; }
             if (e.Key == Key.O && ctrlShift) { ShowModels(); e.Handled = true; return; }
             if (e.Key == Key.A && ctrlShift) { ShowAutomap(); e.Handled = true; return; }
-            bool ctrl = (e.KeyModifiers & KeyModifiers.Control) != 0 && (e.KeyModifiers & KeyModifiers.Shift) == 0;
+            bool ctrlAlt = (e.KeyModifiers & (KeyModifiers.Control | KeyModifiers.Alt | KeyModifiers.Shift)) == (KeyModifiers.Control | KeyModifiers.Alt);
+            if (ctrlAlt && !typing && e.Key == Key.C) { CopyTiles(); e.Handled = true; return; }
+            if (ctrlAlt && !typing && e.Key == Key.V) { PasteTiles(); e.Handled = true; return; }
+            if (ctrlAlt && !typing && e.Key == Key.R) { TurnTileClip(false); e.Handled = true; return; }
+            if (ctrlAlt && !typing && e.Key == Key.M) { TurnTileClip(true); e.Handled = true; return; }
+            bool ctrl = (e.KeyModifiers & KeyModifiers.Control) != 0 && (e.KeyModifiers & (KeyModifiers.Shift | KeyModifiers.Alt)) == 0;
             if (ctrl && e.Key == Key.S) { SaveAll(); e.Handled = true; return; }
             if (ctrl && !typing && e.Key == Key.Z) { Undo(); e.Handled = true; return; }
             if (ctrl && !typing && e.Key == Key.Y) { Redo(); e.Handled = true; return; }
@@ -876,8 +883,9 @@ namespace UwEditor.App
                 case Key.M: vm.ShowModels = !vm.ShowModels; break;
                 case Key.Escape:
                     View.CancelDrag();
-                    if (pick != null || carrying != null || objectPick != null) { pick = null; carrying = null; objectPick = null; vm.EditStatus = "Cancelled."; }
+                    if (pick != null || carrying != null || objectPick != null) { pick = null; carrying = null; objectPick = null; vm.EditStatus = "Cancelled."; UpdateMarkers(); }
                     else if (jumpFromX >= 0) { ClearJump(); UpdateMarkers(); vm.EditStatus = "Try Jump: click the square to jump from, then the square to land on."; }
+                    else if (tileClipShown) { tileClipShown = false; UpdateMarkers(); vm.EditStatus = "The copied tiles are kept; their outline is hidden."; }
                     else { ClearMulti(); vm.ClearSelection(); }
                     break;
                 case Key.Delete: DeleteSelected(); break;
