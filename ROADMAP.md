@@ -71,11 +71,11 @@ template painting, zones for sectors). The rest, most valuable first:
 | done 0.1.54 | **Add and delete conversations:** give an empty slot a conversation (from a template: a greeting and goodbye), delete one | §3.6, `UIManager.Conversations.cs` | the list shows only slots that already have one | 1 |
 | done 0.1.54 (not the door to its door trap: Trap recipes does that) | **Linking from the right-click menu:** link a trigger to a trap that stays where it lies (target square set to the trap's tile), a door to its door trap, a lever through its use trigger, a delete or inventory trap to its target object; a rubber-band line while choosing | `UIManager.ContextMenu.cs` | "Make it run a trap" moves the trap into the chain | 1.5 |
 | done 0.1.54 | **"Linked from" in the properties panel:** the triggers that run this trap, the triggers on this square and the squares it acts on, each with a go-to button | §2.3 | only in the Triggers and traps window | 1 |
-| A | **Typed editors on the properties panel:** add a lock, copy a lock from a door, add / remove a door trap, door type; per trap kind: set-variable operation, change-terrain tile and textures, teleport target, spawn chance, hack-trap mode; picture pickers for levers, writings, graves, bridges, pillars; Identified, Indestructible, Quantity vs Special (+512), potion and scroll traps; Snap to nearest wall | `PropertiesPanel.cs` | raw fields with descriptions and some lists | 3 |
+| done 0.1.55 (not the picture pickers, Identified, or the potion and scroll traps) | **Typed editors on the properties panel:** add a lock, copy a lock from a door, add / remove a door trap, door type; per trap kind: set-variable operation, change-terrain tile and textures, teleport target, spawn chance, hack-trap mode; picture pickers for levers, writings, graves, bridges, pillars; Identified, Indestructible, Quantity vs Special (+512), potion and scroll traps; Snap to nearest wall | `PropertiesPanel.cs` | raw fields with descriptions and some lists | 3 |
 | A | **Add form:** Goal, place at the ceiling, is a trap (potion, scroll), identified, height; new text for books, scrolls, writings and graves | `UIManager.CreateMenus.cs` | most fields, not these | 1 (with the texts) |
 | B | **Dated backups:** `Editor backups\<game>\NAME.<date-time>`, 10 kept, up to 1000 | §5.2 | one `.BKP` and the `.ORIG` | 0.5 |
 | B | **Object list colours and filters:** active critters green, animated objects yellow; Invisible, Owned, In a container | `ObjectListFilter.cs` | kinds and Enchanted | 0.5 |
-| B | **Find in all levels filters:** tri-state Enchanted, Invisible, Quantity, Owned, In a container; quality range; one level only | `ItemFinderWindow.cs` | text, kind, Enchanted | 1 (with 1.2's replace) |
+| done 0.1.55 | **Find in all levels filters:** tri-state Enchanted, Invisible, Quantity, Owned, In a container; quality range; one level only | `ItemFinderWindow.cs` | text, kind, Enchanted | 1 (with 1.2's replace) |
 | B | **Export all pictures** of a file (or every file) to PNG | §3.4 | one at a time; cutscenes have Export all frames | 0.5 |
 | B | **Another auxiliary palette** for an imported object sprite | `UIManager.Textures.cs` | refuse or nearest colour | 0.5 |
 | B | **UW1: add textures** (up to 256) | §3.4 | replace only | 1 |
@@ -102,9 +102,9 @@ None of these exist yet (checked in the manual and the code). Sources: Hammer an
 | Pri | Feature | Seen in | Notes | Days |
 | --- | --- | --- | --- | --- |
 | done 0.1.54 | **Copy and paste tiles with their objects** (a rectangle of the level: types, heights, textures, flags, objects and their links), to another place, level or game; **rotate 90° and mirror** the clipboard before pasting | Hammer, UDB, Tiled | Copy works on objects only today. Diagonal and slope tile types turn with it; trigger targets inside the region move with it | 2.5 |
-| A | **Prefabs (stamps):** save a clipboard as a named piece (a shrine, a trapped corridor, a fallen adventurer's cache) in the settings folder, and place it from a palette | Hammer prefabs, Tiled stamps, UDB prefabs | builds on the tile clipboard; the item caches (see Reminders) could use the same | 1 |
+| done 0.1.55, with Decorate (scatter debris, plants, moss, bones) | **Prefabs (stamps):** save a clipboard as a named piece (a shrine, a trapped corridor, a fallen adventurer's cache) in the settings folder, and place it from a palette | Hammer prefabs, Tiled stamps, UDB prefabs | builds on the tile clipboard; the item caches (see Reminders) could use the same | 1 |
 | done 0.1.54 | **Edit a field on all selected objects** at once (mixed values shown blank) | Hammer, Unity inspector | one undo step | 1 |
-| A | **Find and replace objects across levels:** replace item X with Y (or change a field) where the filters match, with a preview list | UDB, Hammer's entity report | with 1.1's finder filters | 1.5 |
+| done 0.1.55 | **Find and replace objects across levels:** replace item X with Y (or change a field) where the filters match, with a preview list | UDB, Hammer's entity report | with 1.1's finder filters | 1.5 |
 | done 0.1.54 | **Select similar:** every object of the same item, the same kind, or the same owner on this level; every tile with this texture | UDB, Blender | then delete, move or edit them together | 0.5 |
 | B | **Camera bookmarks:** Ctrl+1–9 saves the view, 1–9 goes back, per game | UDB, Blender, Unity | kept in the settings | 0.5 |
 | B | **Reopen where I left off:** the last game, level, camera and open tool windows at start | most editors | an option, on by default | 0.5 |
@@ -115,7 +115,7 @@ None of these exist yet (checked in the manual and the code). Sources: Hammer an
 | C | **Editor notes on the map:** notes for the modder (not the game's map notes), kept beside the game, shown as pins | UDB comments, DromEd | | 0.5 |
 | C | **Lay out tiles from a picture:** a PNG whose colours mean tile types and heights | Tiled, heightmap importers | the reverse of Export the map as a picture | 1 |
 | C | **Room and cave generator** for a selected rectangle | DromEd tools, map generators | optional fun | 2 |
-| C | **Export the 3D view** as a picture | all | for mod pages | 0.25 |
+| done 0.1.55 | **Export the 3D view** as a picture | all | for mod pages | 0.25 |
 
 **Seeing and checking**
 
@@ -123,7 +123,7 @@ None of these exist yet (checked in the manual and the code). Sources: Hammer an
 | --- | --- | --- | --- | --- |
 | A | **Show changes:** tiles and objects that differ from the original (`.ORIG`) highlighted in the view and listed per level | VS Code's diff gutter, git tools | modders see what their mod does; the same comparison as Make a mod | 1.5 |
 | A | **What a mod changes, in words:** "Level 3: 12 objects added, 40 tiles changed; strings: 7 changed in block 3; music theme 5 replaced", in Make a mod, Load a mod and the manager | — | `mod-format.md` says readers work it out from the bytes; nothing does yet. Shared code in `Underworld.Mods` (also part 3's conflict names) | 1.5 |
-| A | **Check before making a mod:** World check, Fixes and the object list check run on Make a mod, with the problems listed first | UDB's map analysis on save | | 0.5 |
+| done 0.1.55 | **Check before making a mod:** World check, Fixes and the object list check run on Make a mod, with the problems listed first | UDB's map analysis on save | | 0.5 |
 | B | **Level statistics:** objects by kind, slots used, gold and item value, monsters' total XP and hit points, locks and keys | UDB map analysis, Hammer map information | | 0.5 |
 | B | **Overlays:** danger (monster strength per area), loot value, height, UW2 light, what the automap has seen | UDB visual modes | drawn like the zones and light flags | 1.5 |
 
@@ -131,14 +131,14 @@ None of these exist yet (checked in the manual and the code). Sources: Hammer an
 
 | Pri | Feature | Notes | Days |
 | --- | --- | --- | --- |
-| A | **Export and import all strings** as a translation table: CSV and PO (Poedit, Weblate), and Underworld Revisited's `Languages/<code>.strings.tsv`, so one translation serves both | with the accent table; ties in with the font work | 1.5 |
+| done 0.1.55 | **Export and import all strings** as a translation table: CSV and PO (Poedit, Weblate), and Underworld Revisited's `Languages/<code>.strings.tsv`, so one translation serves both | with the accent table; ties in with the font work | 1.5 |
 | B | **Spell check** strings and conversation text (a word list per language; the game's own words allowed) | | 1 |
 
 **Working with the editor**
 
 | Pri | Feature | Seen in | Notes | Days |
 | --- | --- | --- | --- | --- |
-| A | **Command palette:** Ctrl+K, type part of any menu item or tool window and press Enter | VS Code, Blender F3 | Ctrl+Shift+P is taken (player) | 0.5 |
+| done 0.1.55 | **Command palette:** Ctrl+K, type part of any menu item or tool window and press Enter | VS Code, Blender F3 | Ctrl+Shift+P is taken (player) | 0.5 |
 | B | **Rebindable keys** (Help ▸ Controls becomes editable; a JSON in the settings) | all | | 1 |
 | B | **Drag and drop** a game folder, `game.gog`, `.uwmod` or PNG onto the window | all | | 0.25 |
 | B | **Check for updates** (GitHub releases, opt-in) in both apps | all | | 0.5 |

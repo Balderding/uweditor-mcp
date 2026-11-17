@@ -108,6 +108,13 @@ namespace UwEditor.Core
                 }
             if (o.TileX >= 0)
                 Add(rows, "Position", string.Format("{0:0.###}, {1:0.###}, h {2:0.###}", o.WorldX, o.WorldY, o.WorldZ), "", "In tiles: x east, y north, height (a floor step is 0.25).");
+            // the fields under the names of what they are for this kind of object (Editing.TypedFields)
+            var typed = Editing.TypedFields.Rows(level.Session.Kind, o);
+            if (typed.Count > 0)
+            {
+                rows.Add(new PropertyRow { Name = "For this kind", IsHeader = true, Value = "", Hex = "", Tip = "" });
+                rows.AddRange(typed);
+            }
             rows.Add(new PropertyRow { Name = "Record", IsHeader = true, Value = "", Hex = "", Tip = "" });
             var fields = FromSchema(o.IsMobile ? Uw1Schemas.MobileObject : Uw1Schemas.StaticObject, o.Record, "object", o.Index);
             var ownerRow = fields.FirstOrDefault(r => r.Name == "Owner");

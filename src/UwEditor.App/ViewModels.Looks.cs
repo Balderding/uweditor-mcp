@@ -35,7 +35,7 @@ namespace UwEditor.App
             for (int i = 0; same && i < rows.Count; i++)
             {
                 var a = to[i]; var b = rows[i];
-                same = a.Name == b.Name && a.Field == b.Field && a.Target == b.Target && a.TargetIndex == b.TargetIndex && a.IsHeader == b.IsHeader;
+                same = a.Name == b.Name && SameField(a.Field, b.Field) && a.Target == b.Target && a.TargetIndex == b.TargetIndex && a.IsHeader == b.IsHeader;
             }
             if (!same)
             {
@@ -48,6 +48,13 @@ namespace UwEditor.App
                 var a = to[i]; var b = rows[i];
                 if (a.Value != b.Value || a.Hex != b.Hex || a.Tip != b.Tip || a.Certainty != b.Certainty || !SameChoices(a.Choices, b.Choices)) to[i] = b;
             }
+        }
+
+        // the rows "For this kind" make their fields anew each time: the same bits under the same name are the same field
+        static bool SameField(UltimateEditor.Uw1.FieldDef a, UltimateEditor.Uw1.FieldDef b)
+        {
+            if (a == null || b == null) return a == b;
+            return a == b || (a.Name == b.Name && a.Offset == b.Offset && a.Bit == b.Bit && a.Bits == b.Bits);
         }
 
         static bool SameChoices(List<UwEditor.Core.Editing.Choice> a, List<UwEditor.Core.Editing.Choice> b)

@@ -10,6 +10,11 @@ and the reason. A temporary file left by an editor that stopped while saving is 
 next time the game is opened.
 
 Press **F1** or use **Help ▸ Manual** to open this manual. **Help ▸ Controls** lists the keys.
+**View ▸ Save the view as a picture…** writes the 3D view as it is drawn to a PNG, with the
+selection's outlines and the markers on it (the labels drawn over the view are not in it).
+**Help ▸ Commands…** (Ctrl+K) finds any command of the menus: type part of its name ("paste
+tiles", "strings", "key scatter"), choose with the arrow keys and press Enter. Each line shows
+the menus the command lies under and its key; commands that cannot run now are greyed out.
 **Help ▸ About** shows the editor's version and the commit it was built from.
 
 ## Opening a game
@@ -171,12 +176,50 @@ that does not read leaves it open and says why.
   attitude's colour; what it carries has its own line and colour.
 - **Level ▸ Find in all levels…** (Ctrl+Shift+F) runs the same search, with every item
   kind, over all levels. Double-click a result to open its level with the object selected.
+  - **More filters:** *This level only*; a quality range; and five boxes with three states
+    each (ticked: only those that are; empty: only those that are not; the filled square they
+    start with: both): Enchanted, Invisible, Is quantity, Owned (items only: a creature's or
+    a trap's owner field is something else) and In a container.
+  - **Replace** changes every object in the list of results, which is the preview: search
+    first. *Become the item* turns them into another item, named or by its id (0x.. or a
+    number), keeping their other fields; *set the field* gives one field of their record a
+    value. It asks before it starts, and it is one undo step over all the levels touched:
+    Edit ▸ Undo on any of them takes the whole replace back. Each object goes through the
+    panel's own checks, so an item cannot become a creature and a link that holds objects
+    is not overwritten; those refused are left as they were and counted, with the reason.
+    Nothing is written until you save.
 
 **Selecting:**
 - Click an object or a tile in the view, or pick one in the object list.
 - The list shows the objects lying on tiles in index order. Whatever is inside an object
   (container contents, inventories, a trigger's trap, a door's lock) hangs under it.
 - The filter takes a name, `#index` or `0x` item id.
+
+**For this kind.** Above the record, the panel names the fields by what they are for the
+kind of object selected, each the same bits as a row of the record below, so typing in
+either changes both. Where the values are a list, the ▾ button offers them.
+- **Triggers:** the target square; in UW1 also who sets it off, whether it is reusable, and
+  a look trigger's Search difficulty.
+- **Locks:** locked, the lock number, the difficulty to pick, whether it stays when
+  unlocked. **Keys:** the lock number they open.
+- **Teleport traps:** the destination square and level. **Delete object traps:** the square.
+  **Door traps:** what they do to the door (open, close, toggle, or only swap the lock).
+- **UW1's other traps:** damage or poison; the special (hack) trap by name; change terrain's
+  new floor texture, wall texture and floor height and how many tiles east and north; a spell
+  trap's class and effect; a create object trap's chance; an inventory trap's least stack; a
+  set variable trap's variable and operation (add, subtract, set, and, or, xor, shift left);
+  a check variable trap's first variable, how many more, and whether it adds them up.
+- **Plain items:** *Special (+512)*, the bit that makes the link a property instead of a
+  count, and the count or property itself.
+UW2's other traps are explained in words under the object's name, as before; their fields are
+not named here, since they differ from UW1's.
+
+**Locks and walls from the right-click menu.** On a door or a container: **Add a lock…**
+(type its number; it is added locked), **Copy another's lock** (then click that door or
+container: it gets a copy of the number, the locked state, the difficulty and the flags, in
+place of its own) and **Remove its lock**. On a lever, button, writing or picture: **Snap to
+the nearest wall** puts it at the edge of its tile that has rock behind it and is nearest,
+facing into the wall.
 
 **Properties:** every field of the object and tile records, with its value in decimal and
 hex. The tooltip gives the field's meaning and its source in the reconstructed game code.
@@ -398,6 +441,25 @@ Ultima Underworld keeps it but does not use it.
   item, of the same kind (weapons, food, creatures and so on) or with the same owner; on a
   tile, **Select the tiles with this floor texture** or **wall texture** selects every open
   tile using that slot. Then delete, drag, copy, or type a value for all.
+- **Prefabs** (Edit ▸ Prefabs…) keep copied tiles under a name. Copy tiles, type a name and
+  **Save the copied tiles**; later, on any level and in any session, **Take it to paste**
+  makes the prefab the copied tiles again, to be turned, mirrored and pasted as usual. A
+  prefab holds what the copy holds (tiles, objects, their links and target squares). The
+  files are small JSON files in the `prefabs` folder under the editor's settings, one folder
+  a game, and can be given to someone else (**Open the folder**).
+- **Decorate the selected tiles** (Edit menu) scatters small scenery over the selected
+  tiles to dress a room: **debris** (piles of debris, rubble, broken weapons, wood),
+  **plants**, **moss** (the games have no item called moss: this is their ground cover and
+  creepers, grass and UW1's vines), **bones** (bones, skulls, piles of bones) and
+  **stalactites**. What the game's own levels hang from the ceiling hangs here too, at the
+  height it has there: stalactites, one of the plants, and the vines; the rest lies on the
+  floor. The status line says how many of a roll hang. Tick the kinds, set
+  how many objects for every 100 tiles, and **Scatter**. Each roll is one undo step, and
+  while it is the newest step of the level the next roll takes its place instead of adding
+  to it: **New roll** tries the next seed, **Thicker** and **Thinner** change the density,
+  **Remove** takes it away. The same seed, tiles and settings give the same scatter. Water
+  and lava are left bare unless you untick that; tiles that hold something can be left bare
+  too. The objects are put at random places in their tiles.
 - **Drag** a selected object to move it (and the others selected with it) to another tile or
   to another place in its own tile. While dragging, the object is drawn where it would land,
   a small yellow square marks the eighth of the tile under the mouse, and the status line
@@ -1868,6 +1930,19 @@ of the file, so edits made in both are never written over each other.
   file has. Characters the game cannot hold are refused: code 0 and codes of 128 and up, `|`
   (it ends a string), and strings over 511 characters. After saving, the
   [checks](#the-accent-table) list letters the fonts cannot show yet.
+- **Export for translation…** writes every string as a translation table, in the format of
+  the file's ending. **TSV** is the format of Underworld Revisited's
+  `Languages/<code>.strings.tsv` (one line a string: the block, a TAB, the index, a TAB, the
+  text; `\n` is a line break, `\t` a TAB, lines starting with `#` are comments), so one
+  translation serves both programs. **CSV** is for a spreadsheet (block, index, source,
+  translation; UTF-8 with a mark so that Excel reads the accents). **PO** is for Poedit and
+  Weblate (the context is `block:index`).
+- **Import a translation…** reads such a table back. A row whose text is empty keeps its
+  string (in CSV the fourth column is the translation; in PO an empty or fuzzy `msgstr` is
+  no translation yet). A string is never added, since the numbers are what the game's code
+  asks for; a row for a block or string that is not there, or with a letter the accent
+  table has no code for, is left out and reported. Nothing is written until **Save
+  STRINGS.PAK**.
 - **Export all as JSON…** writes every block to one file: its number (also in hex), the
   editor's description and its strings as the window shows them, unsaved edits included.
   Accented letters are written as letters. The file is for reading and searching; there is
@@ -4476,6 +4551,12 @@ the files themselves, so it can be shared without the game's data:
   they are not shipped: UW1 speech `SOUND\nn.VOC`; UW2 effects `SPnn.VOC`, trap sounds `UWnn.VOC` and
   speech `BSPnn.VOC`. New music cannot be added (the themes' numbers are fixed in the game's
   code): a new theme replaces the one it goes into.
+- **Checks first.** Collecting the changes also checks the game as saved, and the preview
+  starts with what was found: levels that fail the game's own object list check, what the
+  Fixes window would call a problem, and the world check's problems (a lock no key opens, a
+  level full of objects, a level that cannot be read). Things that may be meant (an item
+  under the floor, say) are only counted. The mod can still be written: the checks tell, they
+  do not stop.
 - **Make a mod** compares the game with the originals the editor kept (`.ORIG`), or with an
   untouched copy, and writes the `.uwmod` (a zip with `mod.json` and one delta per file). A UW2
   archive's compressed blocks are compared uncompressed, so a changed object carries only its
@@ -4519,6 +4600,7 @@ the files themselves, so it can be shared without the game's data:
 | Anywhere | Ctrl+C, Ctrl+X, Ctrl+V, Ctrl+D | copy, cut, paste, duplicate the selected objects |
 | Anywhere | Ctrl+Alt+C, Ctrl+Alt+V | copy the selected tiles with what is on them, paste them under the mouse |
 | Anywhere | Ctrl+Alt+R, Ctrl+Alt+M | turn the copied tiles a quarter clockwise, mirror them |
+| Anywhere | Ctrl+K | the command palette: find and run any menu command |
 | Anywhere | Ctrl+H | undo history |
 | Anywhere | F5 | play-test from the selected tile |
 | View | Tab | the 2D map, and back |

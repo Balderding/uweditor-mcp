@@ -492,6 +492,7 @@ namespace UwEditor.App
                 items.Add(Item("_Frame it", Frame, true, "F"));
                 if (o.OnTile && tx >= 0) items.Add(Item("Select its _tile", () => { ClearMulti(); vm.Select(-1, tx, ty, true); UpdateMarkers(); }));
                 items.Add(SimilarMenu(o));
+                foreach (var extra in TypedItems(o)) items.Add(extra);
                 foreach (var extra in TextItems(o)) items.Add(extra);
                 foreach (var extra in ExtraObjectItems(o)) items.Add(extra);
             }
@@ -683,6 +684,7 @@ namespace UwEditor.App
             var e = vm.Editor;
             if (!hit.Hit || hit.Object < 0 || e == null) { vm.EditStatus = "Cancelled: no object there."; UpdateMarkers(); return true; }
             if (p.Kind == "linkto") { LinkTo(p.Index, hit.Object); UpdateMarkers(); return true; }
+            if (p.Kind == "copylock") { CopyLock(hit.Object, p.Index); return true; }
             if (p.Kind == "link")
             {
                 var trap = vm.Level.Objects[hit.Object];

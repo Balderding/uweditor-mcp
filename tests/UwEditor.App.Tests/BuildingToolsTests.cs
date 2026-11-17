@@ -233,5 +233,242 @@ namespace UwEditor.App.Tests
             cw.Close();
             w.Close();
         }
+
+        [AvaloniaFact]
+        public void The_command_palette_finds_a_menu_command_by_part_of_its_name_and_runs_it()
+        {
+            if (Uw1 == null) return;
+            var w = OpenQuiet(Uw1);
+            var vm = w.ViewModel;
+            var all = w.PaletteCommands();
+            Assert.True(all.Count > 80);
+            Assert.Contains(all, c => c.Path == "Edit ▸ Paste tiles" && c.Gesture.Contains("Alt"));
+            Assert.All(all, c => Assert.Contains(" ▸ ", c.Path));
+            // every word typed must be in the command; the command's own name ranks first
+            var m = CommandPalette.Match(all, "paste tiles");
+            Assert.Equal("Edit ▸ Paste tiles", m[0].Path);
+            Assert.Empty(CommandPalette.Match(all, "no such command at all"));
+            Assert.Equal(all.Count, CommandPalette.Match(all, "").Count);
+            // the palette runs what is picked: a ticked item toggles, a command gets its click
+            bool grid = vm.ShowGrid;
+            var p = w.ShowCommandPalette();
+            Ui.Pump();
+            p.Text = "grid";
+            Ui.Pump();
+            Assert.Contains(p.Shown, c => c.Path == "View ▸ Grid");
+            Assert.Equal("View ▸ Grid", p.Shown[0].Path);
+            Assert.True(p.Run());
+            Ui.Pump();
+            Assert.NotEqual(grid, vm.ShowGrid);
+            // a command that cannot run now stays greyed and does not run
+            var none = w.PaletteCommands().First(c => c.Path == "Edit ▸ Delete the object");
+            vm.Select(-1, -1, -1, true);
+            Assert.False(w.PaletteCommands().First(c => c.Path == "Edit ▸ Delete the object").Enabled);
+            w.Close();
+        }
+
+        [AvaloniaFact]
+        public void The_strings_window_writes_a_translation_table_and_reads_a_translation_back()
+        {
+            if (Uw1 == null) return;
+            var w = OpenQuiet(Uw1);
+            var sw = w.ShowStrings(4, 0);
+            Ui.Pump();
+            string dir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "uwed-table-" + Guid.NewGuid().ToString("N"));
+            System.IO.Directory.CreateDirectory(dir);
+            try
+            {
+                foreach (string ext in new[] { "tsv", "csv", "po" })
+                {
+                    string path = System.IO.Path.Combine(dir, "xx.strings." + ext);
+                    Assert.True(sw.ExportTable(path));
+                    Assert.True(new System.IO.FileInfo(path).Length > 10000);
+                    var same = sw.ImportTable(path);
+                    Assert.NotNull(same);
+                    Assert.Equal(0, same.Changed);
+                }
+                Assert.False(sw.Model.HasChanges);
+                // a translation of one item name
+                string tr = System.IO.Path.Combine(dir, "de.strings.tsv");
+                System.IO.File.WriteAllText(tr, "4" + (char)9 + "0" + (char)9 + "eine_Axt" + (char)10);
+                var res = sw.ImportTable(tr);
+                Assert.Equal(1, res.Changed);
+                Assert.True(sw.Model.HasChanges);
+                Assert.Equal("eine_Axt", w.Strings().Get(4, 0));
+                Assert.Contains("1 string changed", sw.Model.Status);
+                Assert.Null(sw.ImportTable(System.IO.Path.Combine(dir, "strings.json")));
+            }
+            finally { try { System.IO.Directory.Delete(dir, true); } catch (Exception) { } }
+            sw.Close();
+            w.Close();
+        }
+
+        [AvaloniaFact]
+        public void A_prefab_is_saved_taken_and_pasted_and_a_decoration_is_rolled_again_in_place()
+        {
+            if (Uw1 == null) return;
+            var w = OpenQuiet(Uw1);
+            var vm = w.ViewModel;
+            string name = "test-" + Guid.NewGuid().ToString("N").Substring(0, 8);
+            var o = vm.Level.Objects.First(x => !x.Free && x.OnTile && !x.IsMobile && !x.IsTrapOrTrigger && x.TileX > 2 && x.TileX < 58 && x.TileY > 2 && x.TileY < 58);
+            var tiles = new List<int>();
+            for (int y = o.TileY; y < o.TileY + 3; y++) for (int x = o.TileX; x < o.TileX + 3; x++) tiles.Add(x + 64 * y);
+            try
+            {
+                Assert.False(w.SavePrefab(name));                       // nothing copied yet
+                w.AddToSelection(null, tiles);
+                Assert.True(w.CopyTiles());
+                Assert.True(w.SavePrefab(name));
+                var pw = w.ShowPrefabs();
+                Ui.Pump();
+                var info = pw.Shown.First(p => p.Name == name);
+                Assert.Equal(9, info.Tiles);
+                // another copy replaces the clip; taking the prefab brings the nine tiles back
+                w.ClearSelectionAll();
+                vm.Select(-1, o.TileX, o.TileY, true);
+                Assert.True(w.CopyTiles());
+                Assert.Equal(1, w.CopiedTiles.TileCount);
+                Assert.True(w.UsePrefab(info));
+                Assert.Equal(9, w.CopiedTiles.TileCount);
+                var res = w.PasteTiles(o.TileX < 30 ? 56 : 3, o.TileY < 30 ? 56 : 3);
+                Assert.Equal(9, res.Tiles);
+                w.Undo();
+                Assert.True(w.DeletePrefab(info));
+                Assert.DoesNotContain(w.ListPrefabs(), p => p.Name == name);
+                pw.Close();
+            }
+            finally { foreach (var p in w.ListPrefabs().Where(p => p.Name == name)) System.IO.File.Delete(p.Path); }
+
+            // decorate: a roll, another roll in its place, thicker, and removed
+            var dw = w.ShowDecorate();
+            Ui.Pump();
+            Assert.Equal(Decoration.Kinds, dw.KindsOffered.ToArray());
+            w.ClearSelectionAll();
+            Assert.Null(dw.Scatter());                                  // no tiles selected
+            var region = new List<int>();
+            for (int y = 0; y < 64; y++) for (int x = 0; x < 64; x++) if (!vm.Level.Tiles[x, y].IsSolid && region.Count < 120) region.Add(x + 64 * y);
+            w.AddToSelection(null, region);
+            var before = (byte[])vm.Editor.Data.Clone();
+            int steps = vm.Editor.UndoLabels.Count;
+            dw.Density = 20;
+            var first = dw.Scatter();
+            Assert.True(first.Made.Count > 10);
+            Assert.Equal(steps + 1, vm.Editor.UndoLabels.Count);
+            Assert.True(w.DecorationCanBeReplaced);
+            var afterFirst = (byte[])vm.Editor.Data.Clone();
+            var second = dw.NewRoll();
+            Assert.Equal(steps + 1, vm.Editor.UndoLabels.Count);      // in the first one's place, not on top of it
+            Assert.Equal(first.Made.Count, second.Made.Count);
+            Assert.NotEqual(afterFirst, vm.Editor.Data);
+            var thick = dw.Thicker();
+            Assert.True(thick.Made.Count > second.Made.Count);
+            Assert.Equal(steps + 1, vm.Editor.UndoLabels.Count);
+            dw.SetKind("bones", false); dw.SetKind("debris", false); dw.SetKind("plants", false); dw.SetKind("stalactites", false);
+            var moss = dw.Thinner();
+            Assert.Single(moss.ByKind);
+            Assert.True(moss.ByKind.ContainsKey("moss"));
+            Assert.True(w.RemoveDecoration());
+            Assert.Equal(before, vm.Editor.Data);
+            Assert.False(w.RemoveDecoration());
+            // after another edit the next roll adds a step of its own
+            dw.Scatter();
+            vm.Select(o.Index, -1, -1, true);
+            vm.EditField(vm.ObjectRows.First(r => r.Name == "Quality"), "3");
+            Assert.False(w.DecorationCanBeReplaced);
+            dw.Close();
+            w.Close();
+        }
+
+        [AvaloniaFact]
+        public async System.Threading.Tasks.Task The_find_window_filters_three_ways_and_replaces_in_its_results()
+        {
+            if (Uw1 == null) return;
+            var w = OpenQuiet(Uw1);
+            var vm = w.ViewModel;
+            var find = w.ShowFind();
+            Ui.Pump();
+            Assert.False(find.Model.CanReplace);
+            // food on this level only, lying about (not in a container)
+            find.Model.KindIndex = find.Model.Kinds.IndexOf("Food");
+            find.Model.ThisLevelOnly = true;
+            find.Model.InContainer = false;
+            await find.SearchAsync();
+            Assert.NotEmpty(find.Model.Hits);
+            Assert.All(find.Model.Hits, h => Assert.Equal(vm.Level.Level, h.Hit.Level));
+            Assert.All(find.Model.Hits, h => Assert.True(vm.Level.Objects[h.Hit.Index].Parent < 0));
+            Assert.True(find.Model.CanReplace);
+            int n = find.Model.Hits.Count;
+            var before = (byte[])vm.Editor.Data.Clone();
+            // what the boxes do not say is refused with the reason
+            find.Model.ReplaceMode = 1;
+            find.Model.ReplaceFieldIndex = find.Model.ReplaceFields.IndexOf("Quality");
+            find.Model.ReplaceValue = "";
+            Assert.Null(await find.ReplaceAsync());
+            Assert.Contains("Type the value", find.Model.Status);
+            find.Model.ReplaceValue = "33";
+            var res = await find.ReplaceAsync();
+            Assert.Equal(n, res.Changed + res.Same);
+            Assert.All(find.Model.Hits, h => Assert.Equal(33, vm.Editor.Model.Objects[h.Hit.Index].Quality));
+            Assert.Contains("Replaced", find.Model.Status);
+            w.Undo();
+            Assert.Equal(before, vm.Editor.Data);
+            // become another item, named
+            find.Model.ReplaceMode = 0;
+            find.Model.ReplaceItem = "no such thing";
+            Assert.Null(await find.ReplaceAsync());
+            int to = find.Model.Hits[0].Hit.Item;
+            find.Model.ReplaceItem = "0x" + to.ToString("X");
+            var res2 = await find.ReplaceAsync();
+            Assert.Equal(n, res2.Changed + res2.Same);
+            Assert.All(find.Model.Hits, h => Assert.Equal(to, h.Hit.Item));
+            find.Close();
+            w.Close();
+        }
+
+        [AvaloniaFact]
+        public void The_panel_names_a_traps_fields_and_the_menu_adds_copies_and_removes_a_doors_lock()
+        {
+            if (Uw1 == null) return;
+            var w = OpenQuiet(Uw1);
+            var vm = w.ViewModel;
+            // a level with a teleport trap, a bare door and a locked door
+            ObjectInfo tp = null, bare = null, locked = null;
+            foreach (var slot in vm.Session.LevelSlots().Where(x => x.Present))
+            {
+                vm.LoadLevel(slot.Level);
+                var m = vm.Level;
+                Func<ObjectInfo, bool> door = o => !o.Free && o.OnTile && (ItemCategories.Of(o.Item, vm.Session.Kind) & ItemCategory.Door) != 0;
+                tp = m.Objects.FirstOrDefault(o => !o.Free && o.TileX >= 0 && o.Item == 0x181);
+                bare = m.Objects.FirstOrDefault(o => door(o) && vm.Editor.LockOf(o.Index) == null && o.Children.Count == 0);
+                locked = m.Objects.FirstOrDefault(o => door(o) && vm.Editor.LockOf(o.Index) != null);
+                if (tp != null && bare != null && locked != null) break;
+            }
+            Assert.NotNull(tp); Assert.NotNull(bare); Assert.NotNull(locked);
+            // the typed row edits the record's field
+            vm.Select(tp.Index, -1, -1, true);
+            var dest = vm.ObjectRows.First(r => r.Name == "Destination X");
+            Assert.Equal(tp.Quality.ToString(), dest.Value);
+            vm.EditField(dest, "11");
+            vm.FlushRefresh();
+            Assert.Equal(11, vm.Level.Objects[tp.Index].Quality);
+            Assert.Equal("11", vm.ObjectRows.First(r => r.Name == "Quality").Value);
+            w.Undo();
+            // the door's menu: add, copy, remove
+            var h = Headers(w.ContextItems(new PickResult { Object = bare.Index, Tile = bare.TileX + 64 * bare.TileY }));
+            Assert.Contains("Add a lock…", h);
+            Assert.DoesNotContain("Remove its lock", h);
+            Assert.True(w.AddLock(bare.Index, 44));
+            var lk = vm.Level.Objects[vm.SelectedObject];
+            Assert.Equal(0x10F, lk.Item);
+            Assert.Equal("44", vm.ObjectRows.First(r => r.Name == "Lock number").Value);
+            Assert.Contains("Remove its lock", Headers(w.ContextItems(new PickResult { Object = bare.Index, Tile = bare.TileX + 64 * bare.TileY })));
+            Assert.True(w.CopyLock(locked.Index, bare.Index));
+            Assert.Equal(vm.Editor.LockOf(locked.Index).Link, vm.Editor.LockOf(bare.Index).Link);
+            Assert.True(w.RemoveLock(bare.Index));
+            Assert.Null(vm.Editor.LockOf(bare.Index));
+            Assert.False(w.RemoveLock(bare.Index));
+            bool ok; vm.Editor.Check(out ok); Assert.True(ok);
+            w.Close();
+        }
     }
 }

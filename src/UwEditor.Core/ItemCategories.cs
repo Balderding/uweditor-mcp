@@ -154,8 +154,23 @@ namespace UwEditor.Core
         public string Text = "";
         public ItemCategory Categories = ItemCategory.All;
         public bool EnchantedOnly;
+        /// <summary>Three-way filters: null either way, true only those that are, false only those that are not.</summary>
+        public bool? Enchanted, Invisible, IsQuantity, Owned, InContainer;
+        /// <summary>The quality must lie in this range (0-63).</summary>
+        public int QualityMin = 0, QualityMax = 63;
+        /// <summary>Only this level (0: every level). LevelSearch reads it; Matches does not.</summary>
+        public int OnlyLevel;
 
-        public bool IsEmpty { get { return string.IsNullOrWhiteSpace(Text) && Categories == ItemCategory.All && !EnchantedOnly; } }
+        public bool IsEmpty
+        {
+            get
+            {
+                return string.IsNullOrWhiteSpace(Text) && Categories == ItemCategory.All && !EnchantedOnly && Enchanted == null && Invisible == null && IsQuantity == null
+                    && Owned == null && InContainer == null && QualityMin <= 0 && QualityMax >= 63 && OnlyLevel == 0;
+            }
+        }
+
+        static bool Fits(bool? want, bool has) { return want == null || want.Value == has; }
 
         /// <summary>What matched in the object's text or NPC name, for showing beside a result; null if nothing there did.</summary>
         public string MatchedText;
@@ -165,6 +180,10 @@ namespace UwEditor.Core
             MatchedText = null;
             if (Categories != ItemCategory.All && (ItemCategories.Of(o.Item, s.Kind) & Categories) == 0) return false;
             if (EnchantedOnly && !o.Enchanted) return false;
+            // an owner is a creature's or a trap's own setting, not an owner: Owned asks items only
+            if (!Fits(Enchanted, o.Enchanted) || !Fits(Invisible, o.Invisible) || !Fits(IsQuantity, o.IsQuantity) || !Fits(InContainer, o.Parent >= 0)) return false;
+            if (Owned != null && (o.IsCritter || o.IsTrapOrTrigger || (o.Owner != 0) != Owned.Value)) return false;
+            if (o.Quality < QualityMin || o.Quality > QualityMax) return false;
             string f = (Text ?? "").Trim().ToLowerInvariant();
             if (f.Length == 0) return true;
             int v;
@@ -217,7 +236,7 @@ namespace UwEditor.Core
             var hits = new List<SearchHit>();
             foreach (var slot in s.LevelSlots())
             {
-                if (!slot.Present) continue;
+                if (!slot.Present || (q.OnlyLevel > 0 && slot.Level != q.OnlyLevel)) continue;
                 var level = (levelOf != null ? levelOf(slot.Level) : null) ?? s.LoadLevel(slot.Level);
                 foreach (var o in level.Objects)
                 {

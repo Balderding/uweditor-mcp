@@ -4,17 +4,41 @@
         x:Class="UwEditor.App.FindWindow"
         x:DataType="app:FindViewModel"
         Title="Find in all levels"
-        Width="640" Height="560" MinWidth="460" MinHeight="320"
+        Width="700" Height="640" MinWidth="520" MinHeight="380"
         WindowStartupLocation="CenterOwner">
   <DockPanel Margin="16">
     <TextBlock DockPanel.Dock="Top" Text="Find in all levels" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10" />
-    <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" Margin="0,0,0,8">
+    <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto" Margin="0,0,0,8">
       <TextBox x:Name="QueryBox" Grid.Column="0" Text="{Binding Text}" PlaceholderText="Name, text, NPC name, #index or 0x item id" />
       <Button x:Name="SearchButton" Grid.Column="1" Content="Search" Click="OnSearch" IsDefault="True" Margin="8,0,0,0" MinWidth="88"
               HorizontalContentAlignment="Center" IsEnabled="{Binding !Busy}" />
       <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="12" Margin="0,8,0,0">
         <ComboBox x:Name="KindBox" ItemsSource="{Binding Kinds}" SelectedIndex="{Binding KindIndex}" MinWidth="240" />
-        <CheckBox x:Name="EnchantedBox" Content="Enchanted only" IsChecked="{Binding EnchantedOnly}" />
+        <CheckBox x:Name="ThisLevelBox" Content="This level only" IsChecked="{Binding ThisLevelOnly}" />
+        <TextBlock Text="Quality" VerticalAlignment="Center" />
+        <NumericUpDown x:Name="QualityMinBox" Value="{Binding QualityMin}" Minimum="0" Maximum="63" FormatString="0" MinWidth="96" />
+        <TextBlock Text="to" VerticalAlignment="Center" />
+        <NumericUpDown x:Name="QualityMaxBox" Value="{Binding QualityMax}" Minimum="0" Maximum="63" FormatString="0" MinWidth="96" />
+      </StackPanel>
+      <WrapPanel Grid.Row="2" Grid.ColumnSpan="2" Margin="0,6,0,0"
+                 ToolTip.Tip="Each box has three states: ticked finds only those that are, empty only those that are not, and the filled square (the start) finds both.">
+        <CheckBox x:Name="EnchantedBox" Content="Enchanted" IsThreeState="True" IsChecked="{Binding Enchanted}" Margin="0,0,14,0" />
+        <CheckBox x:Name="InvisibleBox" Content="Invisible" IsThreeState="True" IsChecked="{Binding Invisible}" Margin="0,0,14,0" />
+        <CheckBox x:Name="QuantityBox" Content="Is quantity" IsThreeState="True" IsChecked="{Binding IsQuantity}" Margin="0,0,14,0" />
+        <CheckBox x:Name="OwnedBox" Content="Owned (items)" IsThreeState="True" IsChecked="{Binding Owned}" Margin="0,0,14,0" />
+        <CheckBox x:Name="InsideBox" Content="In a container" IsThreeState="True" IsChecked="{Binding InContainer}" />
+      </WrapPanel>
+      <StackPanel Grid.Row="3" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
+        <TextBlock Text="Replace:" VerticalAlignment="Center" FontWeight="SemiBold" />
+        <ComboBox x:Name="ReplaceModeBox" SelectedIndex="{Binding ReplaceMode}" MinWidth="150">
+          <ComboBoxItem Content="become the item" />
+          <ComboBoxItem Content="set the field" />
+        </ComboBox>
+        <TextBox x:Name="ReplaceItemBox" Text="{Binding ReplaceItem}" PlaceholderText="item id (0x.. or number) or name" MinWidth="200" IsVisible="{Binding ReplacesItem}" />
+        <ComboBox x:Name="ReplaceFieldBox" ItemsSource="{Binding ReplaceFields}" SelectedIndex="{Binding ReplaceFieldIndex}" MinWidth="130" IsVisible="{Binding !ReplacesItem}" />
+        <TextBox x:Name="ReplaceValueBox" Text="{Binding ReplaceValue}" PlaceholderText="value" MinWidth="70" IsVisible="{Binding !ReplacesItem}" />
+        <Button x:Name="ReplaceButton" Content="Replace in the results" Click="OnReplace" IsEnabled="{Binding CanReplace}"
+                ToolTip.Tip="Every object in the list below becomes the item, or gets the field set, as one undo step over all the levels touched. Search first: the list is the preview." />
       </StackPanel>
     </Grid>
     <Grid DockPanel.Dock="Bottom" ColumnDefinitions="*,Auto" Margin="0,10,0,0">

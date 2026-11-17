@@ -153,8 +153,39 @@ namespace UwEditor.App
             int w = (int)Math.Max(1, Bounds.Width * scale), h = (int)Math.Max(1, Bounds.Height * scale);
             renderer.Render(fb, w, h, Camera, State);
             if (renderer.Error != null) GlError = renderer.Error;
+            if (pictureWanted != null)
+            {
+                // the frame just drawn, read back from the framebuffer (bottom row first) and handed over on the UI thread
+                var done = pictureWanted;
+                pictureWanted = null;
+                var px = new byte[w * h * 4];
+                var pin = System.Runtime.InteropServices.GCHandle.Alloc(px, System.Runtime.InteropServices.GCHandleType.Pinned);
+                try
+                {
+                    if (readPixels == null) readPixels = System.Runtime.InteropServices.Marshal.GetDelegateForFunctionPointer<ReadPixelsFn>(gl.GetProcAddress("glReadPixels"));
+                    readPixels(0, 0, w, h, 0x1908, 0x1401, pin.AddrOfPinnedObject());      // GL_RGBA, GL_UNSIGNED_BYTE
+                }
+                catch (Exception e) { px = null; GlError = e.Message; }
+                finally { pin.Free(); }
+                Avalonia.Threading.Dispatcher.UIThread.Post(() => done(w, h, px));
+            }
             LastFrameMs = frameClock.Elapsed.TotalMilliseconds;
             Avalonia.Threading.Dispatcher.UIThread.Post(() => FrameDrawn?.Invoke());
+        }
+
+        Action<int, int, byte[]> pictureWanted;
+        [System.Runtime.InteropServices.UnmanagedFunctionPointer(System.Runtime.InteropServices.CallingConvention.Winapi)]
+        delegate void ReadPixelsFn(int x, int y, int width, int height, int format, int type, IntPtr data);
+        ReadPixelsFn readPixels;
+
+        /// <summary>
+        /// Hands over the next frame drawn as pixels: width, height and RGBA bytes with the bottom
+        /// row first (null when the frame could not be read). Called on the UI thread.
+        /// </summary>
+        public void TakePicture(Action<int, int, byte[]> done)
+        {
+            pictureWanted = done;
+            Redraw();
         }
 
         // ---- what to draw

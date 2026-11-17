@@ -41,6 +41,8 @@
         <MenuItem Header="Paste ti_les" InputGesture="Ctrl+Alt+V" Click="OnPasteTiles" IsEnabled="{Binding HasGame}" />
         <MenuItem Header="Tur_n the copied tiles a quarter" InputGesture="Ctrl+Alt+R" Click="OnTurnTiles" IsEnabled="{Binding HasGame}" />
         <MenuItem Header="_Mirror the copied tiles" InputGesture="Ctrl+Alt+M" Click="OnMirrorTiles" IsEnabled="{Binding HasGame}" />
+        <MenuItem Header="Pre_fabs…" Click="OnPrefabs" IsEnabled="{Binding HasGame}" />
+        <MenuItem Header="Decorate the selected tiles…" Click="OnDecorate" IsEnabled="{Binding HasGame}" />
         <Separator />
         <MenuItem Header="_Add an object…" InputGesture="Insert" Click="OnAddObject" IsEnabled="{Binding HasGame}" />
         <MenuItem Header="_Delete the object" InputGesture="Delete" Click="OnDeleteObject" IsEnabled="{Binding HasObject}" />
@@ -67,6 +69,7 @@
         <Separator />
         <MenuItem Header="_Frame the selection" InputGesture="F" Click="OnFrame" />
         <MenuItem Header="Look _straight down" InputGesture="T" Click="OnTopDown" />
+        <MenuItem Header="Save the view as a _picture…" Click="OnSaveViewPicture" IsEnabled="{Binding HasGame}" />
         <MenuItem x:Name="MapItem" Header="2D _map" ToggleType="CheckBox" InputGesture="Tab" Click="OnToggleMap" IsEnabled="{Binding HasGame}" />
         <MenuItem Header="_Export the map as a picture…" Click="OnExportMap" IsEnabled="{Binding HasGame}" />
         <MenuItem Header="Go to the _start" InputGesture="Home" Click="OnGoToStart" />
@@ -156,6 +159,7 @@
       </MenuItem>
       <MenuItem Header="_Help">
         <MenuItem Header="_Manual" InputGesture="F1" Click="OnManual" />
+        <MenuItem Header="Co_mmands…" InputGesture="Ctrl+K" Click="OnCommandPalette" />
         <MenuItem Header="_Controls" Click="OnControls" />
         <MenuItem Header="_About" Click="OnAbout" />
       </MenuItem>

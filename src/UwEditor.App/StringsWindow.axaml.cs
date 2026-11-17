@@ -203,6 +203,58 @@ namespace UwEditor.App
             if (e.Key == Key.Enter && (e.KeyModifiers & KeyModifiers.Control) != 0) { Model.SearchAll(); e.Handled = true; }
         }
 
+        static readonly Avalonia.Platform.Storage.FilePickerFileType[] TableTypes =
+        {
+            new Avalonia.Platform.Storage.FilePickerFileType("TSV (Underworld Revisited's strings.tsv)") { Patterns = new[] { "*.tsv" } },
+            new Avalonia.Platform.Storage.FilePickerFileType("CSV (spreadsheets)") { Patterns = new[] { "*.csv" } },
+            new Avalonia.Platform.Storage.FilePickerFileType("PO (Poedit, Weblate)") { Patterns = new[] { "*.po", "*.pot" } },
+        };
+
+        async void OnExportTable(object sender, RoutedEventArgs e)
+        {
+            var f = await StorageProvider.SaveFilePickerAsync(new Avalonia.Platform.Storage.FilePickerSaveOptions
+            {
+                Title = "Export the strings for translation", SuggestedFileName = "xx.strings.tsv", DefaultExtension = "tsv", FileTypeChoices = TableTypes,
+            });
+            string path = f?.TryGetLocalPath();
+            if (path != null) ExportTable(path);
+        }
+
+        async void OnImportTable(object sender, RoutedEventArgs e)
+        {
+            var f = await StorageProvider.OpenFilePickerAsync(new Avalonia.Platform.Storage.FilePickerOpenOptions { Title = "Import a translation table", FileTypeFilter = TableTypes });
+            string path = f.FirstOrDefault()?.TryGetLocalPath();
+            if (path != null) ImportTable(path);
+        }
+
+        /// <summary>Writes every string as a translation table; the format is the file's extension (tsv, csv, po). True when written.</summary>
+        public bool ExportTable(string path)
+        {
+            try
+            {
+                string format = UwEditor.Core.Editing.StringsTable.FormatOf(path) ?? "tsv";
+                System.IO.File.WriteAllText(path, UwEditor.Core.Editing.StringsTable.Export(Model.Editor, format), new System.Text.UTF8Encoding(false));
+                Model.Status = "All strings written as " + format.ToUpperInvariant() + " to " + path + ".";
+                return true;
+            }
+            catch (Exception ex) { Model.Status = "Not exported: " + ex.Message; return false; }
+        }
+
+        /// <summary>Reads a translation table (by its extension) into the strings; they are saved with Save STRINGS.PAK. Returns what was done, or null.</summary>
+        public UwEditor.Core.Editing.StringsImportResult ImportTable(string path)
+        {
+            try
+            {
+                string format = UwEditor.Core.Editing.StringsTable.FormatOf(path);
+                if (format == null) { Model.Status = "Not imported: the file's ending must be .tsv, .csv or .po."; return null; }
+                var res = UwEditor.Core.Editing.StringsTable.Import(Model.Editor, System.IO.File.ReadAllText(path), format);
+                Model.Reload();
+                Model.Status = "Imported " + System.IO.Path.GetFileName(path) + ": " + res.Describe() + (res.Changed > 0 ? " Save STRINGS.PAK writes them." : "");
+                return res;
+            }
+            catch (Exception ex) { Model.Status = "Not imported: " + ex.Message; return null; }
+        }
+
         async void OnExportJson(object sender, RoutedEventArgs e)
         {
             try

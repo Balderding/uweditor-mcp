@@ -845,6 +845,7 @@ namespace UwEditor.App
             if (e.Key == Key.M && ctrlShift) { ShowMods(); e.Handled = true; return; }
             if (e.Key == Key.O && ctrlShift) { ShowModels(); e.Handled = true; return; }
             if (e.Key == Key.A && ctrlShift) { ShowAutomap(); e.Handled = true; return; }
+            if (e.Key == Key.K && (e.KeyModifiers & (KeyModifiers.Control | KeyModifiers.Alt | KeyModifiers.Shift)) == KeyModifiers.Control) { ShowCommandPalette(); e.Handled = true; return; }
             bool ctrlAlt = (e.KeyModifiers & (KeyModifiers.Control | KeyModifiers.Alt | KeyModifiers.Shift)) == (KeyModifiers.Control | KeyModifiers.Alt);
             if (ctrlAlt && !typing && e.Key == Key.C) { CopyTiles(); e.Handled = true; return; }
             if (ctrlAlt && !typing && e.Key == Key.V) { PasteTiles(); e.Handled = true; return; }

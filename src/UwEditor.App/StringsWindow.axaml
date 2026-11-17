@@ -9,11 +9,15 @@
         WindowStartupLocation="CenterOwner">
   <DockPanel Margin="16">
     <TextBlock DockPanel.Dock="Top" Text="Strings (STRINGS.PAK)" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10" />
-    <Grid DockPanel.Dock="Bottom" ColumnDefinitions="*,Auto,Auto,Auto" Margin="0,10,0,0">
+    <Grid DockPanel.Dock="Bottom" ColumnDefinitions="*,Auto,Auto,Auto,Auto,Auto" Margin="0,10,0,0">
       <TextBlock x:Name="StatusText" Text="{Binding Status}" Classes="muted" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
       <Button Grid.Column="1" Content="Export all as JSON…" Click="OnExportJson" Margin="0,0,8,0" ToolTip.Tip="Write every string of every block to a JSON file." />
-      <Button Grid.Column="2" Content="Revert this block" Click="OnRevert" IsEnabled="{Binding BlockChanged}" Margin="0,0,8,0" />
-      <Button Grid.Column="3" x:Name="SaveButton" Content="Save STRINGS.PAK" Click="OnSave" IsEnabled="{Binding HasChanges}" />
+      <Button Grid.Column="2" Content="Export for translation…" Click="OnExportTable" Margin="0,0,8,0"
+              ToolTip.Tip="Write every string as a translation table: TSV (Underworld Revisited's Languages/&lt;code&gt;.strings.tsv), CSV for a spreadsheet, or PO for Poedit and Weblate." />
+      <Button Grid.Column="3" Content="Import a translation…" Click="OnImportTable" Margin="0,0,8,0"
+              ToolTip.Tip="Read a translation table (TSV, CSV or PO) and put its texts in the strings. Rows left empty keep their string. Nothing is written until you save." />
+      <Button Grid.Column="4" Content="Revert this block" Click="OnRevert" IsEnabled="{Binding BlockChanged}" Margin="0,0,8,0" />
+      <Button Grid.Column="5" x:Name="SaveButton" Content="Save STRINGS.PAK" Click="OnSave" IsEnabled="{Binding HasChanges}" />
     </Grid>
     <Grid ColumnDefinitions="330,16,*">
       <DockPanel Grid.Column="0">

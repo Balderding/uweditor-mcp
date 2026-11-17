@@ -42,9 +42,13 @@ namespace UwEditor.App
         public bool CanApply { get { return Loaded != null && loadedFits; } }
 
         /// <summary>Compares the saved game folder with its originals and makes the mod (checked: each delta rebuilds its file).</summary>
+        /// <summary>What the checks found in the saved game when the changes were last collected (ModChecks), or null.</summary>
+        public UwEditor.Core.Editing.ModCheckResult GameChecks { get; private set; }
+
         public ModPackage Collect()
         {
             Package = null;
+            GameChecks = null;
             if (UseFolder && !Directory.Exists(referenceFolder)) { Status = "Choose the folder of an untouched copy of the game."; Raise(nameof(HasPackage)); return null; }
             try
             {
@@ -64,12 +68,15 @@ namespace UwEditor.App
                     var auth = authors.Split(',').Select(a => a.Trim()).Where(a => a.Length > 0);
                     var m = ModMaker.Make(changes, id.Trim(), name.Trim(), version.Trim(), description, auth, EditorMods.MadeWith);
                     Package = m;
-                    var sb = new StringBuilder(m.Summary);
+                    // the checks first: a mod that breaks the game should not leave the editor unnoticed
+                    GameChecks = UwEditor.Core.Editing.ModChecks.Run(Session);
+                    var sb = new StringBuilder(GameChecks.Report());
+                    sb.AppendLine().Append(m.Summary);
                     sb.Append("\nMade from (SHA-256 of each original):\n");
                     foreach (var f in m.Files) sb.AppendFormat("  {0}  {1}\n", f.Path, f.Added ? "(none: the mod adds it)" : f.BaseSha256);
                     sb.AppendFormat("\nThe package holds {0:N0} bytes of changes in all, and nothing of the original files.\n", m.Files.Sum(f => (long)f.Delta.Length));
                     Preview = sb.ToString();
-                    Status = m.Files.Count + " file(s) changed.";
+                    Status = m.Files.Count + " file(s) changed." + (GameChecks.Problems.Count > 0 ? " The checks found " + GameChecks.Problems.Count + " problem(s) in the saved game: they are listed first. The mod can still be written." : " The checks found no problem.");
                 }
             }
             catch (Exception ex) { Status = ex.Message; Package = null; }
