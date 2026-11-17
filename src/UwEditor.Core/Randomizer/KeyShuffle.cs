@@ -1711,19 +1711,32 @@ namespace UwEditor.Core.Randomizer
             // (another source does as well: Zoranthus's bottle by the sceptre in the Void's pocket at level 65 (44, 52), or the
             // Void's own bottle); a walkthrough that went in has no way back out (NO WAY FOUND). The solve with nothing taken
             // from inside a trap (TimelineSolve.Safe) reaches the goal too, so the walkthrough follows that one instead.
+            // Also when the first one could be walked only with its order made again (Walkthrough.Reordered) and the
+            // trap-free one can be walked in the order by spheres: it keeps out of the pocket altogether.
             bool safe = false;
-            if (r.Walkthrough.NoWay.Count > 0 && r.Check.Safe != null && r.Check.Safe.GoalReached)
+            if ((r.Walkthrough.NoWay.Count > 0 || r.Walkthrough.Reordered) && r.Check.Safe != null && r.Check.Safe.GoalReached)
             {
                 try
                 {
                     var alt = Walkthrough.Build(r.CheckBuild, r.Check.Safe, r.Options.Names, level);
-                    if (alt.NoWay.Count < r.Walkthrough.NoWay.Count) { r.Walkthrough = alt; safe = true; }
+                    if (alt.NoWay.Count < r.Walkthrough.NoWay.Count || (alt.NoWay.Count == r.Walkthrough.NoWay.Count && r.Walkthrough.Reordered && !alt.Reordered)) { r.Walkthrough = alt; safe = true; }
                 }
                 catch (Exception) { }
             }
             var wt = r.Walkthrough;
+            // a walkthrough that still cannot be followed somewhere: said near the top of the log, so the seed's walkthrough is not trusted blindly
+            if (wt.NoWay.Count > 0)
+            {
+                string all = b.ToString();
+                int at = all.IndexOf("\nLogic: ", StringComparison.Ordinal);
+                string warn = "WALKTHROUGH NOT FOLLOWABLE: " + wt.NoWay.Count + " step" + (wt.NoWay.Count == 1 ? "" : "s") + " of the walkthrough at the end " + (wt.NoWay.Count == 1 ? "is" : "are") +
+                    " marked NO WAY FOUND (the player cannot get there from where the step before leaves him). The seed can be finished (the solve proved it), but do not trust the walkthrough's order there." + Environment.NewLine;
+                if (at >= 0) b.Insert(at + 1, warn); else b.Insert(0, warn);
+            }
             b.AppendLine("WALKTHROUGH (one way to finish this seed, from the solve that proved it)");
             b.AppendLine("  The steps go in the order the logic reaches things (by sphere); only what the goal needs is listed.");
+            if (wt.Reordered)
+                b.AppendLine("  Here some steps come before or after their sphere: in the order by spheres a one-way way (or the leaving of a shut world) came while a step it leaves behind was still to do. So such a way waits until every step behind it is done, and is taken when a step needs it.");
             b.AppendLine("  Each step says what to do, then why it can be done then: what it needs, which of the alternatives is used,");
             b.AppendLine("  and the earlier step that gave it. A logic option used is named (bashing, lock picking, the Search skill).");
             b.AppendLine("  Ways that need nothing are not steps: the zones walked through are listed \"on the way\" before the next step.");

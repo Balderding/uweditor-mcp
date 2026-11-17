@@ -100,8 +100,10 @@ namespace UwEditor.Core.Tests
             var step = Assert.Single(w.Steps, x => x.Note.Length > 0);
             Assert.StartsWith("Leave the Pits of Carnage now", step.Note);
             Assert.Contains(w.Lines(), x => x.StartsWith("  >>> Leave the Pits of Carnage now"));
-            // the steps before it are all in the Pits' world
-            foreach (var st in w.Steps.TakeWhile(x => x != step)) if (st.Level > 0) Assert.InRange(st.Level, 57, 64);
+            // the steps before it are all in the Pits' world, or beyond its stairs of level 59 (55, 42) into the Void's levels
+            // 65 and 71, reached on foot without the gem: since Gate Travel (0.1.52) the order by spheres is walked again
+            // (Reordered) and the walk keeps the leaving until those steps behind it are done
+            foreach (var st in w.Steps.TakeWhile(x => x != step)) if (st.Level > 0) Assert.True(st.Level >= 57 && st.Level <= 64 || st.Level == 65 || st.Level == 71, st.Number + ": level " + st.Level);
         }
 
         /// <summary>The game's own start and a castle start have no shut world; a Prison Tower start neither (its facet shows below plot 4).</summary>

@@ -130,6 +130,8 @@ namespace UwEditor.Core.Randomizer
         public bool Once;
         /// <summary>warp: only from the zones of this level (0: from every zone).</summary>
         public int FromLevel;
+        /// <summary>warp: only from the zones of the levels above this one (0: no such limit). UW2's death outside Britannia: 8.</summary>
+        public int FromAbove;
         /// <summary>free: the objects (levers) and triggers whose chains count as done once their zone is reached, and the flags granted there.</summary>
         public readonly List<int> Objects = new List<int>();
         public readonly List<int> Triggers = new List<int>();
@@ -214,7 +216,7 @@ namespace UwEditor.Core.Randomizer
         public static readonly string[] KnownOptions =
         {
             "magic", "single_use", "lockpick", "pick_retry", "search_retry", "damage_walls", "ring_needs_lava", "kill_npcs",
-            "cut_levels", "gap_jumps", "diagonal_jumps", "glitches", "require_orb", "pits_gem_by_blog",
+            "cut_levels", "gap_jumps", "diagonal_jumps", "glitches", "require_orb", "pits_gem_by_blog", "death_returns",
         };
 
         /// <summary>
@@ -455,7 +457,7 @@ namespace UwEditor.Core.Randomizer
                     Level = I(n, "level", 0), Object = I(n, "object", -1), Trigger = I(n, "trigger", -1), X = I(n, "x", -1), Y = I(n, "y", -1),
                     Tiles = S(n, "tiles"), Notes = S(n, "notes"), Source = S(n, "source"), Confidence = S(n, "confidence"), File = file,
                     TwoWay = B(n, "twoWay") || B(n, "twoway") || B(n, "two_way"), Option = Opt(S(n, "option")), Otherwise = S(n, "otherwise"),
-                    LinkKind = S(n, "linkKind"), Replace = B(n, "replace"), FromLevel = I(n, "fromLevel", 0), Once = B(n, "once"),
+                    LinkKind = S(n, "linkKind"), Replace = B(n, "replace"), FromLevel = I(n, "fromLevel", 0), FromAbove = I(n, "fromAbove", 0), Once = B(n, "once"),
                 };
                 var rect = n?["rect"] as JsonArray;
                 if (rect != null) f.Rect = rect.Select(x => Int(x, 0)).ToArray();

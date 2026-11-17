@@ -30,7 +30,8 @@
       "killNpcs": false,
       "requireOrb": false,
       "avoidLost": true,
-      "pitsGemByBlog": false
+      "pitsGemByBlog": false,
+      "deathReturns": false
     }
   }
 }

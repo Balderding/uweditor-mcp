@@ -2359,6 +2359,21 @@ ability).
 The Academy's lava room on that level is a fact: crossed over its pillars, which the
 wand's reach raises and lowers by the buttons on the walls, never through the lava.
 
+**Gate Travel in UW2** (0.1.52) works differently from UW1's. UW2 has two moonstones, one in
+the locked chest of castle level 3 at (34, 16) (key 3, or a pick of difficulty 3), the other
+lying loose on level 45 at (18, 48), in the Scintillus Academy; the game remembers the level
+each lies on. The spell (Vas Rel Por, circle 6) is aimed at a moonstone, one in the pack or
+within reach, and takes the player to the level of the moonstone that is not carried, to the
+square of the first moonstone found there, inside a container as well (combat/SPELLS.C
+obj_spells, game/SKILLS.C do_mstone). With both carried it fails. The logic counts one way:
+with level 3's moonstone taken from its chest and kept (`moonstone_l3`), Gate Travel goes to
+level 45's from anywhere (the warp `gate_travel`), under the usual rules: not from runes in
+Britannia, and not from runes before a new character has left the start's free area. The
+way back, aimed at level 45's moonstone, would need level 3's left in its chest, which the
+first way takes, so it is not counted; nor is a moonstone put down somewhere else, which
+becomes the new target. With the default options the solve reaches the Academy at sphere 17
+instead of 21. Both moonstones stay where they are in the key item scatter.
+
 The **castle plot** (X clock 1) is a count: `plot:N` in a requirement holds when the highest
 value the plot was set to (`plotset:V`) plus the steps that add one (`plotstep:NAME`) reach
 N. The traps that set it to 1, 2 and 3 (levels 3, 9 and 14) and the two that add one when a
@@ -2979,6 +2994,7 @@ Not yet played in the game.
 | Require breaking the orb | off | the goal also needs Tyball's orb broken |
 | Avoid what may be lost (in code only) | on | a source the game takes away with time counts only before it goes |
 | The Pits' key gem only by Blog's way (UW2) | off | gem 7 only through Blog; killing Dorstag does not count |
+| Dying outside Britannia returns to the blackrock gem (UW2) | on | death is a way from every other world to castle level 5 |
 
 #### 9. What the logic simplifies
 
@@ -3190,6 +3206,20 @@ only the doors that need picking, when lock picking is off. Three more options:
   Dorstag's room and gives it to the player. With it on, only Blog's way counts (with the
   default options the gem then comes at sphere 16 instead of 14; the game still ends). The
   walkthrough warns not to kill Blog or Dorstag before the handover.
+- **Dying outside Britannia returns to the blackrock gem** (UW2, on). On any level above 8 a
+  player with no health left does not lose the game: he wakes in the blackrock gem's cavern
+  on castle level 5, a step from (28, 40), with all he holds, a ninth of his experience lost,
+  nearly full health and most of his mana (game/SKILLS.C player_is_dead, do_gem). No castle
+  plot is asked for, so it works from a world the gem still keeps shut, and running into
+  walls at speed is enough to die. With the option on, the facts' warp `death_to_gem` counts:
+  the gem's cavern is reached from every zone outside Britannia, a place with no way out on
+  foot is no one-way trap when the way back from the cavern holds, and a start in a shut
+  world leaves by dying when no way to the castle holds on foot. The walkthrough takes a way
+  on foot where there is one and says "Let the Avatar die" where there is not. Not counted:
+  in Britannia death ends the game (a castle guard on level 1 jails instead); asleep in the
+  Void after a dream plant the player only wakes; a death during a fight in the Pits' arena
+  clears the pit record and Jospur's debt. Off: no solve counts on dying. The example
+  settings files in `docs/examples/settings` were made before this option and carry it off.
 
 **Facts that follow their object.** A flag fact names the object whose place gives its token.
 When the game checks that thing by its kind and not by where it lies, the fact can say so with
@@ -3215,7 +3245,8 @@ creature with what it carries). Three kinds:
 
 - **a**, lost only by a choice the player can always avoid (a wrong answer to the Prison
   Tower's goblins, offering to join Mors Gotha, killing both brain creatures that hold Killorn
-  Keep up). The logic counts it; the walkthrough warns at the step ("Beware: ...").
+  Keep up, handing Altara's dagger to Mystell, after which Altara puts the Avatar out of her
+  room). The logic counts it; the walkthrough warns at the step ("Beware: ...").
 - **b**, lost with time whatever the player does (Dupre's key only at castle plot 0, Charles's
   at 9 to 11, Altara leaving at 14).
 - **c**, a place that closes with what lies in it.
@@ -3860,7 +3891,7 @@ The options are laid out in columns: the checkboxes of a group start at the same
 Some objects always stay where they are. The log lists them with the reason: items carried
 by an NPC with a conversation, a create trap's template, objects a trap or trigger names,
 objects that hold other objects or a trigger, the orbs, the moonstone (Gate Travel goes to
-it), and the coins and food beside Shak and Zak.
+it; UW2's two moonstones as well), and the coins and food beside Shak and Zak.
 
 **On Ultima Underworld 2.** The goal is the end of the game: the castle's plot at 16, Nystul's
 ceremony with the horn. The game starts from its own square, or from a random start (the castle,
@@ -3881,8 +3912,8 @@ logic works. What moves and what stays, and why:
   picks, the scrolls, potions, wands and worn things the logic counts, the amethyst rods,
   black eggshells and dream plants (Altara and the dream take any of their kind).
 - **Staying:** the Sceptre of the Deadly Seeker and the Delgnizator (each holds an object or
-  a trigger), the horn (Praecor Loth carries it), the Void's bottle (a mobile record),
-  everything creatures carry with creature inventories off, the Academy's telekinesis wand
+  a trigger), the horn (Praecor Loth carries it), the Void's bottle (a mobile record), the two
+  moonstones (Gate Travel goes to them, see **Gate Travel in UW2**), everything creatures carry with creature inventories off, the Academy's telekinesis wand
   (the game puts it back on level 43 whenever the player leaves the level), and the plot items
   the logic asks nothing of: the Void's and Talorus's artifacts and spheres, the eyeballs and
   the like stay where they are, since a puzzle the logic does not model may look for them.
@@ -3960,7 +3991,8 @@ fresh solve that proved it. It is meant for checking the logic, and for a player
   need are left out.
 - **In playing order.** The steps follow the solve's spheres ("-- sphere 3 --"). Inside a
   sphere each step comes after the steps it needs, and steps on the same level stay together
-  where they can. The steps are numbered, so a later step can name an earlier one.
+  where they can (but see "One-way ways" below). The steps are numbered, so a later step can
+  name an earlier one.
 - **What to do:** "Take the key at L2 (36, 23) in the center (key:5)", "Go through the door at
   L2 (30, 13) …", "Take the stairs at L1 (7, 34) … to level 2", "Meet Zak at …", "Set off the
   trigger #539 at L8 (32, 27): …", "Kill Tyball at …". A quest step, a trade or a crafting step
@@ -3983,7 +4015,21 @@ fresh solve that proved it. It is meant for checking the logic, and for a player
   the steps so far gave; single-use items are not counted on the way. **NO WAY FOUND** before
   a step means the logic reaches it but you cannot get there from where you stand (a one-way
   drop with no way round): the logic takes every zone once reached as reachable again, and
-  this is where that fails. Such steps are also listed before the walkthrough.
+  this is where that fails. Such steps are also listed before the walkthrough, and a line near
+  the top of the log says so ("WALKTHROUGH NOT FOLLOWABLE: …"): the seed can still be finished,
+  but do not trust the walkthrough's order there.
+- **One-way ways** (0.1.52). Before the walkthrough is written, its steps are walked one after
+  the other, each from where the one before left you, with what you hold by then. The order by
+  spheres does not know that a one-way way (a teleport, a drop, stairs that do not lead back, the
+  leaving of a shut world) leaves behind whatever has no way back yet. When that walk gets stuck,
+  the order is made again by walking it: of the steps that can be done, the first in the order by
+  spheres that leaves nothing behind is taken; a one-way way waits until every step behind it is
+  done, and is taken when a step needs it. The walkthrough then says at its head that "some steps
+  come before or after their sphere", and such a step is shown in the latest sphere reached by
+  then. From the Scintillus Academy at level 46 (49, 43), seed 1: the room at (53, 31), reached
+  by the one-way teleport at (60, 39), is done (its stairs to level 47) before the way on to level
+  41. From the Ethereal Void at level 65 (37, 27): the pocket at (44, 52), which leads on to level
+  71 with no way back to the Void's way out, waits until the Void is left and opened again.
 - **One-way pockets** (0.1.51). The solve may take something from inside a one-way trap when
   the goal does not need it (UW2 seed 2: the sceptre in the Void's pocket at level 65 (44, 52),
   entered from the Pits by a one-way teleport and left only with lava protection; the sceptre

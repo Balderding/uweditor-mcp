@@ -8,7 +8,10 @@ at 0.1.47 the key item scatter on UW2 from the game's own start (4.1); at 0.1.49
 given starts on UW2 (end of 3, 4.1); at 0.1.50 a start in a shut world, links taken once or
 marked, what the Prison Tower's goblins carry, Merzan's gold (2.1, 2.6, end of 3); at 0.1.51 what every
 creature carries, locked chests and create traps on UW2 (2.1), the walkthrough kept out of one-way
-pockets, a wider sweep of random starts, settings files to play (end of 3, 4.1).
+pockets, a wider sweep of random starts, settings files to play (end of 3, 4.1); at 0.1.52 the
+walkthrough's order around one-way ways (end of 3) and a "For later" list (end of 4). Also at 0.1.52: death
+outside Britannia as a way back to the gem (2.10), Gate Travel (2.11), Altara's door (2.12), the
+Pits' arenas checked again (2.4), the dream swept (2.13), the barter list (end of 4).
 
 ## Where it stands
 
@@ -244,7 +247,11 @@ Ordered by how much a shuffle could be hurt by the gap.
    The six unreached one-square zones of level 57 are five bridge squares ((8, 18), and
    (25, 18), (26, 19), (18, 25), (19, 26) in the corners of the Arena of Fire's lava) and
    the square (14, 62) where Blog is kept until a create object trap brings him; none holds
-   anything.
+   anything. Checked again at 0.1.52 (Karl: the teleports are free, the arenas are open and
+   one can walk out and lose): the four squares and the four NPCs who send the Avatar there
+   (Zaria #253, Dorstag #252, the warriors, Jospur #227) all lie in zone L57:2, which is no
+   trap, so links for the teleports would add nothing and are not modelled. Jail is not
+   modelled either (Karl: the player reloads).
 5. **Fights are taken as won**, everywhere. A challenge setting for UW2 (as UW1 has) would
    need the creature tables reviewed.
 6. **Gold and Charm.** At 0.1.50 Merzan's potion of Iron Flesh asks for a hundred gold coins
@@ -257,6 +264,73 @@ Ordered by how much a shuffle could be hurt by the gap.
 8. **Reveal spots** (level 3 (44, 55), level 59 (40, 41), level 26 (18, 45)): still asking
    for Reveal or Search. Karl to say whether an experienced player is taken to know them.
 9. **Bounce** stays set aside (niche).
+10. **Death outside Britannia** (0.1.52). Karl: with no health left in any other world the
+    player wakes by the blackrock gem, and running into walls is enough to die. Checked in the
+    game's code (game/SKILLS.C player_is_dead, do_gem; game/UWEDIT.C new_player_pos): any
+    level above 8, to level 5 near (28, 40), the pack kept, a ninth of the experience lost, no
+    plot or facet asked for; Britannia, the dream and the arena's record are the exceptions
+    (the fact's notes). Modelled as the warp `death_to_gem` (a warp's new `fromAbove`) behind
+    the logic option `death_returns` (AbilityOptions.DeathReturns, on by default; the row
+    "Death" of the logic options). The forward solve and the return check take it as any
+    warp; a shut start world is left by it when no way to the castle holds on foot
+    (Engine.Run's leaving); the walkthrough's Routes fall back on it when no way on foot is
+    found (TimelineSolve.FreeWarps). Run against the game files on 2026-11-16: the
+    fact leads to (28, 41), the square beside the gem (do_gem moves the player one step off
+    (28, 40), which is a one-square zone of its own, entered by nothing else). Over the sample
+    of 142 starts and the own start's seeds 1 to 20, on and off: every run fills, none has a
+    NO WAY FOUND; off, 16 runs get a made object (the 8 sealed zones), on, none does (they
+    leave by dying). Placements of the own start (UW1 and UW2, seeds 1 to 6) are the same on,
+    off and at 0.1.51. Two tests keep the option off, as they are about what it replaces: the
+    made wand of the sealed start on level 51, and the one-way pocket of the Void.
+11. **Gate Travel** (0.1.52). UW2's is an object spell (class 7 minor 15, Vas Rel Por, circle
+    6), not UW1's: combat/SPELLS.C obj_spells case 15. The player aims it at a moonstone (in
+    the pack or within reach: ui/INTERACT.C calls the spell on the object clicked). UW2 keeps
+    two moonstone records (player->moonstones, 3 and 45 at the start: game/CHARGEN.C), zeroed
+    when a moonstone is picked up (ui/INTERACT.C player_3dget, also for a container holding
+    one) and set to the level where one is put down (inv/BAGS.C). The spell goes to the level
+    of a record that is not this level; if the records are this level's, to the other moonstone
+    on this map; with both carried, "The moonstone is not available". Arrival is
+    game/SKILLS.C do_mstone -> moveto: the square of the first moonstone Obj_FindInMap finds
+    row by row, and Obj_InList looks inside containers (recurse 1), so a moonstone in a chest
+    works and lands on the chest's square. No level or world limit (event/WORLDEV.C
+    do_teleport), except asleep in the Void's dream. The moonstones: level 3 #766 in the locked
+    chest #734 at (34, 16) (lock #800: key 3, difficulty 3; used in the world the chest drops
+    its contents, obj/USEITEMS.C UseCont), level 45 #975 loose at (18, 48). Modelled as the
+    flag fact `moonstone_l3` (taken and kept, `key:3 | pick:3`) and the warp `gate_travel` to
+    level 45 #975, `spell:gate_travel & flag:moonstone_l3`, from any zone, so the existing
+    casting rules apply (Britannia's circle 3, the new character's circle, nomana squares).
+    Not counted: the way back (aimed at level 45's moonstone it goes to level 3's, but only
+    while that one is still in its chest, which the first way takes), and a moonstone put down
+    elsewhere. Both moonstones stay in the scatter (KeyShuffle: the facts name them), and the
+    warp's object place is read on the shuffled levels (a contained object has its container's
+    square), so it would follow a moved moonstone, inside a container too. The default solve
+    reaches level 45 at sphere 17 instead of 21 (39 spheres, was 41; 334 zones, plot 16).
+    UW1, checked the same way: combat/SPELLS.C xt_spells case 10, game/SKILLS.C moveto and
+    obj/OBJECTS.C Obj_FindInMap also look inside containers, and inv/BAGS.C records the level
+    for a container holding the moonstone, so UW1's `gate_travel` is right as it stands.
+    `Uw2GateTravelTests`. *To check in the game:* the moonstone of level 3 taken and Gate
+    Travel cast on it from another world lands at (18, 48) of level 45; with a moonstone left
+    in a chest, Gate Travel lands on the chest's square.
+12. **Altara's door** (0.1.52). Conversation 45: one who handed her jewelled dagger to Mystell
+    (quest 16, conversation 44) and did not kill Relk (quest 123, event/WORLDEV.C case 0x31)
+    asks for another chance; she slams the door on him: teleport_player(19, 49, 17), then
+    gronk_door(19, 50, 1) closes her door (conv/BABLHACK.C: 0 open, 1 close, 2 toggle the door
+    on the square), once (global 40). Her other call, gronk_door(21, 48, 1), closes the outer
+    door when she begins to confide. The link fact `altara_door` stands from Altara herself
+    (level 17 #243) to (19, 49), `item:jewelled_dagger & npc:mystell`, once, marked a. Both
+    ends lie in zone L17:2, so it adds no link today (a link from a creature that shares a
+    zone with its end is now dropped without a warning); it counts if an NPC randomizer ever
+    moves her. `Uw2GateTravelTests`.
+13. **The Ethereal Void by dreaming** (0.1.52, a sweep, no change). game/SKILLS.C go_void: the
+    dreamer goes to level 69 at void_tiles[0] (32, 28) five times in eight (the platform, zone
+    L69:14), else near (25, 13), (38, 32) or (14, 40) (zone L69:2), for 2 to 5 duration checks
+    (game/PLAYTIME.C); punt_void brings him back to where he slept, dropping in the Void what
+    is on the cursor. While dreaming nothing goes into the pack (inv/INVPANEL.C), nothing is
+    taken from it, and no teleport leaves world 9 (event/WORLDEV.C do_teleport); death wakes
+    him. So nothing can be carried out of the dream or lost from the pack in it; a thing lifted
+    there (the key gem, or anything the scatter put on level 69) can only be moved about on
+    level 69, which the logic reaches awake by its own ways. The logic counts the dream only
+    as `key_gem_8_dream`; no rule is needed for the scatter's places.
 
 ## 3. Starting positions
 
@@ -670,6 +744,41 @@ been run on UW2 in this stretch; each needs a first run and a look at its log.
 5. **A walkthrough read-through** for UW2: the spoiler log's steps for the facts added
    lately (wall teleports, the force field, the oscillator floor) have not been read for
    wording.
+
+**For later** (set aside by Karl; not being worked on):
+
+- *Gifts made when another source is in reach.* A gift is made from its fact alone, even when
+  another source of the same token lies within reach: from the start at level 51 (28, 37)
+  Altara's dagger is made although another jewelled dagger lies on level 51 (22, 9), and the game
+  takes any.
+- *Barter is not a way to get an item.* The logic does not count barter, so what an NPC only
+  barters needs the kill NPCs option (2.1, the creature table). Strict, not wrong. Karl: if it
+  is ever wanted, hand-written rules for the few cases, not a model. The list they would be
+  written from (0.1.52): every key item or ability source an NPC carries that it gives only
+  by barter. Barter (conv/BARTER.C setup_to_barter, both games) puts up to four (UW1) or six
+  (UW2) things from the NPC's own list in its slots, never the first weapon or anything of
+  value 0 (COMOBJ), with a random pick when there are more; do_offer then weighs the offer
+  against the NPC's greed. So a thing of value 0 (UW1's runes and quest items, UW2's Ylem
+  stone, key gems, the dagger, the horn) is never bartered, and an NPC whose conversation
+  never reaches setup_to_barter does not barter at all (UW1: Lanugo, Bronus, Kallistan,
+  Bolinard, Smonden and the troll jailer have it only in an uncalled function; Altara's in
+  UW2 likewise, her runes come by give_all_stuff, a gift). Scatter: what an NPC with a
+  conversation carries never moves, but other copies of the same token do, so strictness
+  matters where the token is one the logic asks for.
+
+  | Game | NPC, level | Bartered only | Value | Asks | Logic today | Could matter |
+  |---|---|---|---|---|---|---|
+  | UW1 | Zak, L3 (47, 38), conversation 28 | the Taper of Sacrifice | 1 | nothing fixed; Karl's rule: food | trade fact: `(npc:zak & item:food) \| option:kill_npcs` | already modelled |
+  | UW1 | the two bandits, L3 (29, 9) and (33, 12), conversation 112 | food (cheese, potions) | 2, 20 | nothing fixed | `option:kill_npcs` (ChainPlacements) | no: food lies free from sphere 0 |
+  | UW2 | the goblin armorer, L13 (28, 34) #255, conversation 5 | Sanct #932, Rel #956 | 20 each | nothing fixed | `option:kill_npcs` (`carried_goblin_armorer`) | yes: Sanct is Iron Flesh's (the djinn), Rel Gate Travel's |
+  | UW2 | Fissif, L1 (38, 39) #237, conversation 128 | three lock picks | 10 | nothing fixed | `option:kill_npcs & flag:create_L1_844` (`carried_fissif`) | only with lock picking in logic |
+  | UW2 | a guard of Killorn, L17 (22, 45) #231, conversation 40 | a lock pick #567 | 10 | nothing fixed | `option:kill_npcs` (`carried_guard_l17_231`) | only with lock picking in logic |
+
+  Not on the list: the NPCs who barter but give the thing in their talk anyway (UW2: Janar's key
+  ring, the armorer's gauntlets). Found on the way, outside barter: four UW1 NPCs hand a counted
+  thing over in their talk, which the logic counts only by killing them (strict, not wrong):
+  Bronus the book (conversation 190, on a promise), Ironwit his flying potion (90, for his
+  blueprints), Goldthirst the Gem Cutter of Coulnes (3, a reward), Dr. Owl the Flam stone (14).
 
 ## 5. Housekeeping
 

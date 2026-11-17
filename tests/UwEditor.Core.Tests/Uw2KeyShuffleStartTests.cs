@@ -110,7 +110,7 @@ namespace UwEditor.Core.Tests
         public void A_sealed_uw2_start_gets_a_wand_made_for_its_way_out()
         {
             var s = Session(); if (s == null) return;
-            var r = KeyShuffle.RunOn(s, snapshot, new KeyShuffleOptions { Seed = 1, Retries = 2, Start = StartChoice.Given, StartAt = KeyShuffleOptions.GivenStart(51, 28, 37) });
+            var r = KeyShuffle.RunOn(s, snapshot, new KeyShuffleOptions { Seed = 1, Retries = 2, Start = StartChoice.Given, StartAt = KeyShuffleOptions.GivenStart(51, 28, 37), Logic = new AbilityOptions { DeathReturns = false } }); // with dying as a way back (the default) this start needs nothing made
             foreach (var f in r.Failures) output.WriteLine(f);
             Assert.True(r.Success, r.Refused ?? string.Join("; ", r.Failures));
             Assert.Equal(new[] { "levitate" }, r.StartCheck.Made);

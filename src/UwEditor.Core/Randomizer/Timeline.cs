@@ -72,6 +72,8 @@ namespace UwEditor.Core.Randomizer
         public readonly List<OneWayTrap> Traps = new List<OneWayTrap>();
         /// <summary>Zones the return check found safe thanks to the planted silver sapling.</summary>
         public int SavedBySapling;
+        /// <summary>The warps that ask for nothing held and whose option is on (UW2: dying outside Britannia), each with the zone it leads to: ways the walkthrough may take between steps.</summary>
+        public readonly List<KeyValuePair<Fact, int>> FreeWarps = new List<KeyValuePair<Fact, int>>();
         /// <summary>From a start other than the game's own: the zones the player comes out into from it, which the return check counted as back as the start (Engine.ReRoot); empty when it went back to the start alone.</summary>
         public readonly List<int> ReturnTo = new List<int>();
         /// <summary>The solve again with nothing taken from inside a trap (or -1 when not run).</summary>
@@ -864,6 +866,8 @@ namespace UwEditor.Core.Randomizer
                     int[] ta = Tile(f.From, lm), tz = Tile(f.To, lm);
                     int a = ZoneAt(ta), z = ZoneAt(tz);
                     if (a <= ZoneSet.Unassigned || z <= ZoneSet.Unassigned) { res.Warnings.Add("Facts: " + f.Id + ": no zone at " + f.From + " or " + f.To + "."); continue; }
+                    // a link that starts at a creature (Altara's door) lies in one zone only while the creature stands there: no fault in the facts
+                    if (a == z && f.From.HasObject && lm(f.From.Level) is LevelModel fm && f.From.Object < fm.Objects.Length && fm.Objects[f.From.Object].IsCritter) continue;
                     if (a == z) { res.Warnings.Add("Facts: " + f.Id + ": " + f.From + " and " + f.To + " lie in the same zone (" + SolveResult.ZoneName(zs, a) + "); the link changes nothing."); continue; }
                     // a spell is cast where the way starts (AbilityZones.CastAt): a two-way link whose ends differ becomes a link each way
                     string fwd = CastAt(f.Requires, ta), back = f.TwoWay ? CastAt(f.Requires, tz) : fwd;
@@ -1411,7 +1415,17 @@ namespace UwEditor.Core.Randomizer
             {
                 if (f.Option.Length > 0 && !ctx.Options.OptionsOn.Contains(f.Option)) return false;
                 if (f.FromLevel > 0 && !ctx.Reach.Any(z => zs.LevelsOf(z).Contains(f.FromLevel))) return false;
+                if (f.FromAbove > 0 && !ctx.Reach.Any(z => WarpFrom(f, z))) return false;
                 return Req(WarpRequires(f, ctx)).Eval(ctx);
+            }
+
+            /// <summary>Whether a warp can be made from a zone: one of its level (FromLevel), or of a level above FromAbove.</summary>
+            bool WarpFrom(Fact f, int z)
+            {
+                if (f.FromLevel <= 0 && f.FromAbove <= 0) return true;
+                int l = ZoneLevel(z);
+                if (f.FromLevel > 0 && l != f.FromLevel && !zs.LevelsOf(z).Contains(f.FromLevel)) return false;
+                return f.FromAbove <= 0 || l > f.FromAbove;
             }
 
             int WarpTarget(Fact f)
@@ -1491,6 +1505,14 @@ namespace UwEditor.Core.Randomizer
                 // the single-use sources a step used up: those spent since the count n
                 Action<TimelineEvent, int> spentSince = (ev, n) => { for (int i = n; i < sv.OnceSpent.Count; i++) ev.Spent.Add(sv.OnceSpent[i]); };
                 var warpTo = res.Warps.ToDictionary(f => f, f => WarpTarget(f));
+                foreach (var f in res.Warps)
+                {
+                    if (f.To == null || f.To.IsPlanted || (f.Option.Length > 0 && !so.OptionsOn.Contains(f.Option))) continue;
+                    if (warpTo[f] <= ZoneSet.Unassigned) { sv.Warnings.Add("Facts: the warp " + f.Id + " leads to " + f.To + ", where no zone lies; it is not counted."); continue; }
+                    // a warp that asks for nothing held (dying, UW2) is a way the walkthrough may take between steps
+                    string wr = (f.Requires ?? "").Trim();
+                    if (wr.Length == 0 || wr == "free") sv.FreeWarps.Add(new KeyValuePair<Fact, int>(f, warpTo[f]));
+                }
                 var counted = new HashSet<Placement>();
                 var tally = new Dictionary<string, int>();
                 var sphere = new TimelineSphere { Index = 0 };
@@ -1529,7 +1551,21 @@ namespace UwEditor.Core.Randomizer
                         ZoneLink exit = null;
                         int exitFrom = -1, exitTo = -1, x0 = sv.OnceSpent.Count;
                         bool exitCastle = false;
-                        foreach (var k in links.OrderBy(k => k.To).ThenBy(k => k.From))
+                        // a warp that holds from the world (dying outside Britannia) is a way out as well, taken only when no
+                        // way on foot leads as far (to the castle, or else out of the world at all)
+                        var ways = links.OrderBy(k => k.To).ThenBy(k => k.From).ToList();
+                        var wayWarp = new Dictionary<ZoneLink, Fact>();
+                        foreach (var f in res.Warps)
+                        {
+                            int z = warpTo[f];
+                            if (z <= ZoneSet.Unassigned || !WarpHolds(f, ctx, cur)) continue;
+                            int a = ctx.Reach.Where(x => WarpFrom(f, x)).DefaultIfEmpty(-1).Min();
+                            if (a < 0) continue;
+                            var wk = new ZoneLink { From = a, To = z, Kind = "warp", Requires = WarpRequires(f, ctx), Notes = "facts: " + f.Id };
+                            wayWarp[wk] = f;
+                            ways.Add(wk);
+                        }
+                        foreach (var k in ways)
                         {
                             if (k.Confidence == "todo" && !so.TrustTodoLinks) continue;
                             if (k.Once && onceUsedLinks.Contains(onceKey(k))) continue;
@@ -1540,7 +1576,7 @@ namespace UwEditor.Core.Randomizer
                                 int zl = ZoneLevel(z);
                                 if (!ctx.Reach.Contains(a) || zl < 1 || sealedLevels.Contains(zl)) continue;
                                 bool castle = zl <= 8;
-                                if (exit != null && ((exitCastle && !castle) || (exitCastle == castle && z >= exitTo))) continue;
+                                if (exit != null && ((exitCastle && !castle) || (exitCastle == castle && (z >= exitTo || wayWarp.ContainsKey(k))))) continue;
                                 if (!Req(k.Requires).Eval(ctx)) continue;
                                 exit = k; exitFrom = a; exitTo = z; exitCastle = castle;
                             }
@@ -1553,6 +1589,8 @@ namespace UwEditor.Core.Randomizer
                         if (!sv.ZoneSphere.ContainsKey(exitTo)) { sv.ZoneSphere[exitTo] = sphere.Index; sphere.Zones.Add(exitTo); }
                         if (!sv.FirstLink.ContainsKey(exitTo)) sv.FirstLink[exitTo] = exit;
                         var lev = new TimelineEvent { Sphere = sphere.Index, Kind = "zone", Zone = exitTo, From = exitFrom, Link = exit, Requires = exit.Requires ?? "" };
+                        Fact exitWarp;
+                        if (wayWarp.TryGetValue(exit, out exitWarp)) lev.Warp = exitWarp;
                         spentSince(lev, x0);
                         List<string> was0;
                         if (exit.Level > 0 && applied.TryGetValue(exit.Level, out was0)) lev.Changes.AddRange(was0);
@@ -2253,7 +2291,8 @@ namespace UwEditor.Core.Randomizer
                 sb.AppendLine(string.Format("  {0}: {1} {2} {3} needs {4}{5}", k.Notes, Z(res, sv, k.From), k.TwoWay ? "<->" : "->", Z(res, sv, k.To), k.Requires,
                     f != null && f.Option.Length > 0 ? " with option:" + f.Option + (f.Otherwise.Length > 0 ? ", else " + f.Otherwise : ", else no link") : ""));
             }
-            foreach (var f in res.Warps) sb.AppendLine(string.Format("  warp {0}: from {1} to {2} when {3}", f.Id, f.FromLevel > 0 ? "level " + f.FromLevel : "every zone", f.To, f.Requires));
+            foreach (var f in res.Warps) sb.AppendLine(string.Format("  warp {0}: from {1} to {2} when {3}", f.Id, f.FromLevel > 0 ? "level " + f.FromLevel : f.FromAbove > 0 ? "every level above " + f.FromAbove : "every zone", f.To,
+                string.IsNullOrWhiteSpace(f.Requires) ? "free" : f.Requires) + (f.Option.Length > 0 ? " with option:" + f.Option + (res.Options.Tokens().Contains(f.Option) ? " (on)" : " (off)") : ""));
             if (res.GoalFact != null) sb.AppendLine(string.Format("  goal {0}: {1} at {2}, needs {3}", res.GoalFact.Id, Z(res, sv, res.GoalZone), res.GoalFact.To, res.GoalRequires));
             foreach (var f in res.Facts.OfKind("free")) sb.AppendLine(string.Format("  free {0}: L{1} {2}", f.Id, f.Level, string.Join(", ", f.Objects.Select(o => "#" + o).Concat(f.Triggers.Select(t => "trigger #" + t)).Concat(f.Flags))));
             var npc = res.Abilities.NpcHeld;

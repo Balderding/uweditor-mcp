@@ -84,7 +84,7 @@ namespace UwEditor.Core.Tests
             Assert.True(sv.GoalReached, string.Join(", ", sv.GoalMissing));
             Assert.Equal(16, Requirement.PlotClock(sv.TokenSphere.Keys));
             Assert.Empty(sv.CutOff);
-            Assert.Equal(41, sv.Spheres.Count);
+            Assert.Equal(39, sv.Spheres.Count);     // 41 before UW2's Gate Travel (0.1.52) reached the Academy sooner
             Assert.Equal(334, Timeline.BaseZonesReached(sv));
             int ledge = t.Set.ZoneAt(1, 31, 53), gem = t.Set.ZoneAt(5, 28, 40);
             Assert.DoesNotContain(ledge, sv.ZoneSphere.Keys);

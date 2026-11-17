@@ -32,6 +32,23 @@
       }
     },
     {
+      "id": "altara_door",
+      "kind": "link",
+      "from": { "level": 17, "object": 243 },
+      "to": { "level": 17, "x": 19, "y": 49 },
+      "requires": "item:jewelled_dagger & npc:mystell",
+      "twoWay": false,
+      "once": true,
+      "linkKind": "teleport",
+      "notes": "Altara puts a traitor out of her room: once the Avatar has handed her jewelled dagger to Mystell (quest 16) and has not killed Relk (quest 123), she throws him out and slams the door, teleport_player(19, 49, 17) just outside it, gronk_door(19, 50, 1) closing her door behind him; she then wants Relk's head. Only once (she remembers it, global 40). Her other door call, gronk_door(21, 48, 1) when she starts to trust him, closes the outer door. Neither door is locked, and both ends lie in one zone today, so the link adds nothing; it stands from wherever Altara is, for a randomizer that moves NPCs.",
+      "source": "conversation 45 (Altara): get_quest(16) && !get_quest(123) && !global44, 'Wait! Give me another chance' -> func_1B7B: teleport_player(19, 49, 17), gronk_door(19, 50, 1), global40 = 1; func_0E89: gronk_door(21, 48, 1); conversation 44 (Mystell): find_barter(10) -> set_quest(16, 1); event/WORLDEV.C case 0x31 (Relk killed: quest 123); conv/BABLHACK.C gronk_door (0 open, 1 close, 2 toggle the door on that square), teleport_player (done when the talk ends)",
+      "confidence": "certain",
+      "mayBeLost": {
+        "kind": "a",
+        "why": "betraying Altara to Mystell gives Mystell the jewelled dagger, which the listener's death asks for; Altara makes another only after Relk is dead"
+      }
+    },
+    {
       "id": "plot_listener",
       "kind": "flag",
       "grants": "plotstep:listener",
@@ -99,6 +116,39 @@
       "requires": "spell:levitate & (spell:telekinesis | spell:portal)",
       "notes": "The blackrock key gem of the Ethereal Void (item 0x11F, gem 8) lies on the platform at level 69 (32, 28), twelve steps up among pillars, over a ring of floor walled in all round ((29, 25) to (35, 31)). Karl: awake, Fly or Levitate up beside the platform and take the gem with Telekinesis, or step onto the platform with Portal. Granted in the zone outside the ring, by the gem's facet at (32, 22).",
       "source": "Karl, 2026-11-13; level 69 object #906; combat/SPELLS2.C xt_spells (Portal)"
+    },
+    {
+      "id": "death_to_gem",
+      "kind": "warp",
+      "from": "any",
+      "fromAbove": 8,
+      "to": { "level": 5, "x": 28, "y": 41 },
+      "option": "death_returns",
+      "requires": "free",
+      "notes": "Let the Avatar die (running into walls at speed does it): outside Britannia he wakes by the blackrock gem on castle level 5, keeping all he holds and losing a ninth of his experience. With no health left on any level above 8 player_is_dead teleports him to level 5 and do_gem puts him a step from (28, 40), 2 to 4 health below full, mana an eighth and 2 below full, poison and running spells gone; nothing is taken from the pack, and what was held on the cursor is dropped where he died. No castle plot or facet is asked for, so it works from a world the gem still keeps shut. In Britannia (levels 1 to 8) death ends the game, except at the hands of a castle guard on level 1 (jail). Asleep in the Void after a dream plant he only wakes where he slept. Dying during a fight in the Pits' arena also clears the pit record and Jospur's debt (quest bytes 1 and 5). If no free square is found near the gem the game ends.",
+      "source": "Karl, 2026-11-16; game/SKILLS.C player_is_dead, do_gem, punt_mouse_obj; game/UWEDIT.C new_player_pos; ui/INTERACT.C (hp 0)",
+      "confidence": "certain"
+    },
+    {
+      "id": "moonstone_l3",
+      "kind": "flag",
+      "grants": "flag:moonstone_l3",
+      "level": 3,
+      "object": 766,
+      "requires": "key:3 | pick:3",
+      "notes": "Take the moonstone out of the locked chest on castle level 3 (34, 16) and keep it: Gate Travel is cast on it to reach the other moonstone, on level 45 (gate_travel). Used in the world, the chest drops what it holds on the floor; picking the moonstone up clears the game's record of it on level 3.",
+      "source": "game/CHARGEN.C (player->moonstones 3 and 0x2D); obj/USEITEMS.C UseCont (a container in the world: DumpTheBag); ui/INTERACT.C player_3dget (a moonstone taken frees its moonstones entry); level 3 chest #734 with lock #800 (key 3, difficulty 3) and moonstone #766",
+      "confidence": "certain"
+    },
+    {
+      "id": "gate_travel",
+      "kind": "warp",
+      "from": "any",
+      "to": { "level": 45, "object": 975 },
+      "requires": "spell:gate_travel & flag:moonstone_l3",
+      "notes": "Gate Travel (Vas Rel Por, circle 6) cast on the moonstone of castle level 3, held in the pack, takes the Avatar to the other moonstone, which lies loose at level 45 (18, 48) in the Scintillus Academy, from any level. UW2 has two moonstones and remembers the level each lies on (3 and 45 at the start, 0 while carried). The spell is aimed at a moonstone (one in the pack or within reach); it goes to the level of the one that is not carried, and do_mstone lands on the square of the first moonstone found there, looking inside containers too. With both carried it fails. The moonstone of level 45 must stay where it lies. The other way, holding level 45's to go back to the chest on level 3, is not counted: it needs level 3's left in its chest, which this way takes. A moonstone put down elsewhere becomes the target (a movable return point, as in UW1); the logic does not follow that. The usual casting rules hold: not from runes on levels 1 to 8 (above circle 3), a new character casts it only once the start's free area is left. Asleep in the Void's dream no teleport leaves the Void.",
+      "source": "combat/SPELLS.C obj_spells case 15 (player->moonstones, Obj_FindInMap, do_mstone); game/SKILLS.C do_mstone, moveto; obj/OBJECTS.C Obj_FindInMap, Obj_InList (recurse into contents); ui/INTERACT.C mous_in_inv and the world click (ObjectActor on the object picked); inv/BAGS.C DoSpecialActions (a moonstone put down records the level); event/WORLDEV.C do_teleport (the dream's limit); level 45 moonstone #975",
+      "confidence": "probable"
     },
     {
       "id": "key_gem_8_dream",

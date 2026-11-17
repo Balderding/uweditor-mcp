@@ -56,6 +56,10 @@ namespace UwEditor.Core.Randomizer
     /// steps keep the solve's spheres in order; inside a sphere every step comes after the steps
     /// it needs, and steps on the same level stay together where they can. Ways that need
     /// nothing are not steps of their own: they are listed as "on the way" before the next step.
+    /// The order is walked before the steps are written (each step from where the one before left
+    /// the player, with what he holds then); when it cannot be, because a one-way way or the
+    /// leaving of a shut world came while a step behind it was still to do, the order is made
+    /// again by walking it (Reordered).
     /// </summary>
     public sealed class Walkthrough
     {
@@ -71,6 +75,16 @@ namespace UwEditor.Core.Randomizer
         /// again, and here that does not hold (a one-way drop with no way round).
         /// </summary>
         public readonly List<string> NoWay = new List<string>();
+        /// <summary>
+        /// The order by spheres could not be walked (a one-way way, or the leaving of a shut world,
+        /// came while a step behind it was still to do), and the steps are in the order of a walk
+        /// that keeps such a way until nothing is left behind it (Builder.Reorder).
+        /// </summary>
+        public bool Reordered;
+        /// <summary>The steps were walked one after the other, each from where the one before left the player, with what he held then (Routes; a step with no way there goes to NoWay).</summary>
+        public bool Walked;
+        /// <summary>The walkthrough reaches the goal and the walk found a way to every step.</summary>
+        public bool Walkable { get { return Reached && Walked && NoWay.Count == 0; } }
         /// <summary>
         /// The reverse check: the steps gone through from the goal back to the start. What a
         /// step needs is owed from there on; a step that gives it pays it off (one piece of a
@@ -174,22 +188,39 @@ namespace UwEditor.Core.Randomizer
             public bool Trivial { get { return Parts.All(p => p.Trivial); } }
         }
 
-        /// <summary>The world as it stood just before an event (Cut): the tokens and zones the solve had gained.</summary>
+        /// <summary>
+        /// The world as it stood just before an event (Cut): the tokens and zones the solve had gained.
+        /// On the player's walk through the steps (NotYet given): less what the walkthrough's own
+        /// steps still to come give, which the player does not hold yet whatever the solve's record says.
+        /// </summary>
         sealed class At : IRequirementContext, INowContext
         {
             public Builder B;
             public int Cut;
+            /// <summary>The walkthrough's events not walked yet (null: none left out).</summary>
+            public HashSet<int> NotYet;
             public SolverOptions Options { get { return B.So; } }
+            bool Gained(List<int> at) { return at != null && at.Any(i => i < Cut && !NotYet.Contains(i)); }
             public bool HasToken(string t)
             {
                 t = Requirement.Normalize(t);
                 int i;
-                return B.Start.Contains(t) || (B.FirstToken.TryGetValue(t, out i) && i < Cut);
+                if (B.Start.Contains(t)) return true;
+                if (NotYet == null) return B.FirstToken.TryGetValue(t, out i) && i < Cut;
+                List<int> at;
+                return B.TokenAt.TryGetValue(t, out at) && Gained(at);
             }
-            public bool ZoneReachable(int z) { int i; return B.FirstZone.TryGetValue(z, out i) && i < Cut; }
+            public bool ZoneReachable(int z)
+            {
+                int i;
+                if (NotYet == null) return B.FirstZone.TryGetValue(z, out i) && i < Cut;
+                List<int> at;
+                return B.ZoneAt.TryGetValue(z, out at) && Gained(at);
+            }
             public bool ZoneNow(int z) { return ZoneReachable(z); }
-            public int TalismanCount() { return B.FirstToken.Count(kv => kv.Key.StartsWith("talisman:") && kv.Value < Cut) + B.Start.Count(x => x.StartsWith("talisman:")); }
-            public int PlotClock() { return Requirement.PlotClock(B.FirstToken.Where(kv => kv.Value < Cut).Select(kv => kv.Key).Concat(B.Start)); }
+            IEnumerable<string> Tokens() { return NotYet == null ? B.FirstToken.Where(kv => kv.Value < Cut).Select(kv => kv.Key) : B.TokenAt.Where(kv => Gained(kv.Value)).Select(kv => kv.Key); }
+            public int TalismanCount() { return Tokens().Count(k => k.StartsWith("talisman:")) + B.Start.Count(x => x.StartsWith("talisman:")); }
+            public int PlotClock() { return Requirement.PlotClock(Tokens().Concat(B.Start)); }
         }
 
         sealed class Builder
@@ -204,6 +235,9 @@ namespace UwEditor.Core.Randomizer
             public readonly HashSet<string> Start = new HashSet<string>();
             public readonly Dictionary<int, int> FirstZone = new Dictionary<int, int>();
             public readonly Dictionary<string, int> FirstToken = new Dictionary<string, int>();
+            /// <summary>Every event that gives a token (or flag), and every one that enters a zone, in order.</summary>
+            public readonly Dictionary<string, List<int>> TokenAt = new Dictionary<string, List<int>>();
+            public readonly Dictionary<int, List<int>> ZoneAt = new Dictionary<int, List<int>>();
             readonly Dictionary<string, List<int>> counts = new Dictionary<string, List<int>>();
             readonly Dictionary<int, List<int>> spentFrom = new Dictionary<int, List<int>>();
             readonly Dictionary<int, Explained> explained = new Dictionary<int, Explained>();
@@ -248,26 +282,22 @@ namespace UwEditor.Core.Randomizer
                     foreach (int d in Deps(i)) if (!need.Contains(d)) stack.Push(d);
                 }
                 var order = Order(need);
+                var folded = new HashSet<int>(order.Where(i => i != 0 && Folds(i)));
+                // the order by spheres may not be one the player can follow: a one-way way taken (or a shut world left) while
+                // a step behind it is still to do, which the solve, taking every zone once reached as reachable again, does not
+                // see; then the order is made again by walking it (Reorder), and kept if that one can be walked
+                if (!Walks(order, need, folded))
+                {
+                    var again = Reorder(order, need, folded);
+                    if (again != null && Walks(again, need, folded)) { order = again; w.Reordered = true; }
+                }
 
                 // the steps: a way that needs nothing goes "on the way" of the first step that needs it
                 var stepOf = new Dictionary<int, int>();
                 var pos = new Dictionary<int, int>();
                 for (int k = 0; k < order.Count; k++) pos[order[k]] = k;
-                var folded = new HashSet<int>(order.Where(i => i != 0 && Folds(i)));
                 var attached = new HashSet<int>();
-                Func<IEnumerable<int>, List<int>> onTheWay = from =>
-                {
-                    var mine = new List<int>();
-                    var st2 = new Stack<int>(from.Where(folded.Contains));
-                    while (st2.Count > 0)
-                    {
-                        int f = st2.Pop();
-                        if (!attached.Add(f)) continue;
-                        mine.Add(f);
-                        foreach (int g in Deps(f)) if (folded.Contains(g)) st2.Push(g);
-                    }
-                    return mine.OrderBy(f => pos[f]).ToList();
-                };
+                Func<IEnumerable<int>, List<int>> onTheWay = from => OnTheWay(from, folded, attached, pos);
                 var built = new List<KeyValuePair<WalkStep, int>>();
                 foreach (int i in order)
                 {
@@ -280,11 +310,14 @@ namespace UwEditor.Core.Randomizer
                 }
                 var goal = new WalkStep { Number = built.Count + 1, Kind = "goal", Sphere = sv.Spheres.Count > 0 ? sv.Spheres.Count - 1 : 0 };
                 foreach (int p in onTheWay(folded.Where(f => !attached.Contains(f)).ToList())) { goal.Events.Add(ev[p]); goal.OnTheWay.Add(ZoneText(ev[p].Zone)); stepOf[p] = goal.Number; }
+                // a step the walk put before steps of a later sphere is shown in that sphere (the world is at least that far by then)
+                int upTo = 0;
+                foreach (var kv in built) kv.Key.Sphere = upTo = Math.Max(upTo, kv.Key.Sphere);
                 foreach (var kv in built) { Describe(kv.Key, kv.Value, stepOf); w.Steps.Add(kv.Key); }
                 foreach (var kv in built)
                     if (Postponed.ContainsKey(kv.Value))
                         kv.Key.Warning = (kv.Key.Warning.Length > 0 ? kv.Key.Warning + " " : "") + "Not before this point: when the solve first got here (sphere " + ev[kv.Value].Sphere + ") this was a one-way pocket with no way back out yet.";
-                Routes(built.Select(kv => kv.Key).ToList());
+                Routes(built.Select(kv => kv.Key).ToList(), need);
                 // the goal
                 goal.Level = goalIdx >= 0 && FirstZone.ContainsKey(sv.GoalAt) ? LevelOf(FirstZone[sv.GoalAt]) : 0;
                 if (FirstZone.ContainsKey(sv.GoalAt)) goal.Sphere = ev[FirstZone[sv.GoalAt]].Sphere;
@@ -311,6 +344,8 @@ namespace UwEditor.Core.Randomizer
                     var e = ev[i];
                     if (e.Kind == "zone" && !FirstZone.ContainsKey(e.Zone)) FirstZone[e.Zone] = i;
                     if ((e.Kind == "token" || e.Kind == "flag") && e.Token.Length > 0 && !FirstToken.ContainsKey(e.Token)) FirstToken[e.Token] = i;
+                    if (e.Kind == "zone") { List<int> l; if (!ZoneAt.TryGetValue(e.Zone, out l)) ZoneAt[e.Zone] = l = new List<int>(); l.Add(i); }
+                    if ((e.Kind == "token" || e.Kind == "flag") && e.Token.Length > 0) { List<int> l; if (!TokenAt.TryGetValue(e.Token, out l)) TokenAt[e.Token] = l = new List<int>(); l.Add(i); }
                     if (e.Kind == "count") { List<int> l; if (!counts.TryGetValue(e.Token, out l)) counts[e.Token] = l = new List<int>(); l.Add(i); }
                     // a single-use source spent: the k-th use of a kind is the k-th source of it found
                     foreach (var tok in e.Spent)
@@ -344,10 +379,11 @@ namespace UwEditor.Core.Randomizer
                         // stood in when a change went off: the change before it
                         for (int k = i - 1; k >= 0; k--) if (ev[k].Kind == "flag") { d.Add(k); break; }
                     }
-                    else if (e.Warp != null && e.Warp.FromLevel > 0)
+                    else if (e.Warp != null && (e.Warp.FromLevel > 0 || e.Warp.FromAbove > 0))
                     {
-                        int k = FirstZone.Where(kv => kv.Value < i && LevelsOf(kv.Key).Contains(e.Warp.FromLevel)).Select(kv => kv.Value).DefaultIfEmpty(-1).Min();
-                        if (k >= 0) d.Add(k); else w.Doubts.Add("Event " + i + ": the warp " + e.Warp.Id + " needs a zone on level " + e.Warp.FromLevel + " reached before it; none is.");
+                        int k = FirstZone.Where(kv => kv.Value < i && WarpFrom(e.Warp, kv.Key)).Select(kv => kv.Value).DefaultIfEmpty(-1).Min();
+                        string where = e.Warp.FromLevel > 0 ? "on level " + e.Warp.FromLevel : "on a level above " + e.Warp.FromAbove;
+                        if (k >= 0) d.Add(k); else w.Doubts.Add("Event " + i + ": the warp " + e.Warp.Id + " needs a zone " + where + " reached before it; none is.");
                     }
                     else if (e.From >= 0)
                     {
@@ -885,7 +921,7 @@ namespace UwEditor.Core.Randomizer
                         case "warp":
                             {
                                 var f = e.Warp;
-                                st.Text = "Warp to " + into + (f != null ? ": " + FirstSentence(f.Notes) : "") + ".";
+                                st.Text = "Warp to " + into + (f != null ? ": " + FirstSentence(f.Notes).TrimEnd('.') : "") + ".";
                                 break;
                             }
                         default:
@@ -1141,60 +1177,241 @@ namespace UwEditor.Core.Randomizer
             /// holds by then. Single-use items are not counted on the way back. No way found: the
             /// step goes to NoWay.
             /// </summary>
-            void Routes(List<WalkStep> steps)
+            void Routes(List<WalkStep> steps, HashSet<int> need)
             {
                 var index = new Dictionary<TimelineEvent, int>();
                 for (int i = 0; i < ev.Count; i++) index[ev[i]] = i;
-                int here = ev[0].Zone;
-                // what is held on the way: all that the steps so far gave (a way listed "on the way" may come early in the solve's
-                // record, before a key a step before it in the walkthrough took)
-                int held = 0, sphere = 0;
+                var wk = new Walk { Here = ev[0].Zone, NotYet = new HashSet<int>(need) };
                 foreach (var st in steps)
                 {
                     foreach (var e in st.Events)
                     {
-                        int i = index[e];
-                        int want = PlaceOf(i);
-                        sphere = Math.Max(sphere, e.Sphere);
-                        if (want > 0 && want != here)
-                        {
-                            int from0 = here;
-                            int cut = Math.Max(i, held + 1);
-                            var hops = Route(here, want, cut, sphere) ?? Route(here, want, cut, sphere - 1);
-                            // a zone entered by a way from a zone he cannot get back to (a one-way teleport took him on): another
-                            // way straight into the zone the step leads to does as well (the Academy's level 46: the teleport at
-                            // (60, 39) to the room at (53, 31), whose own stairs lead to level 41 as the step's stairs do)
-                            List<KeyValuePair<ZoneLink, int>> into = null;
-                            if (hops == null && e.Kind == "zone" && e.Zone != here && (e.Link == null || e.Link.Kind != "reach"))
-                                into = Route(here, e.Zone, cut, sphere) ?? Route(here, e.Zone, cut, sphere - 1);
-                            if (into != null)
-                            {
-                                var texts = into.Select(HopText).ToList();
-                                if (texts.Count > 9) texts = texts.Take(4).Concat(new[] { "… " + (texts.Count - 8) + " more …" }).Concat(texts.Skip(texts.Count - 4)).ToList();
-                                st.Route.Add("by another way from " + ZoneText(here) + " (" + ZoneText(want) + ", where the step starts, is behind you): " + string.Join("; ", texts));
-                                hops = into;
-                                want = e.Zone;
-                            }
-                            else if (hops == null)
-                            {
-                                st.Route.Add("NO WAY FOUND from " + ZoneText(here) + " to " + ZoneText(want) + " with what is held by then: check this.");
-                                w.NoWay.Add("Step " + st.Number + ": no way from " + ZoneText(here) + " to " + ZoneText(want) + ".");
-                            }
-                            else
-                            {
-                                var texts = hops.Select(HopText).ToList();
-                                if (texts.Count > 9) texts = texts.Take(4).Concat(new[] { "… " + (texts.Count - 8) + " more …" }).Concat(texts.Skip(texts.Count - 4)).ToList();
-                                st.Route.Add("the way there from " + ZoneText(here) + ": " + string.Join("; ", texts));
-                            }
-                            here = want;
-                            // a zone the hand reaches from afar is not stood in: he stays where he reached from
-                            if (hops != null && hops.Count > 0 && hops[hops.Count - 1].Key.Kind == "reach") here = hops.Count > 1 ? hops[hops.Count - 2].Value : from0;
-                        }
-                        if (e.Kind == "zone") here = e.Link != null && e.Link.Kind == "reach" && e.From > 0 ? e.From : e.Zone;
-                        held = Math.Max(held, i);
+                        string from, to;
+                        if (!Move(wk, index[e], st.Route, out from, out to))
+                            w.NoWay.Add("Step " + st.Number + ": no way from " + from + " to " + to + ".");
                     }
-                    st.EndsIn = here;
+                    st.EndsIn = wk.Here;
                 }
+                w.Walked = true;
+            }
+
+            /// <summary>
+            /// The player on his walk through the steps: the zone he stands in, the last of the
+            /// solve's events walked (what he holds: what the solve had gained by then, less the
+            /// walkthrough's events still to come), the sphere of the world as it stands.
+            /// </summary>
+            sealed class Walk
+            {
+                public int Here, Held, Sphere;
+                public HashSet<int> NotYet;
+                public Walk Copy() { return new Walk { Here = Here, Held = Held, Sphere = Sphere, NotYet = new HashSet<int>(NotYet) }; }
+            }
+
+            /// <summary>
+            /// One event of the walk: the way from where the player stands to where the event is
+            /// done (into route, when given), then where it leaves him. False when there is no way
+            /// there (from and to name the zones).
+            /// </summary>
+            bool Move(Walk wk, int i, List<string> route, out string fromText, out string toText)
+            {
+                fromText = toText = "";
+                var e = ev[i];
+                int want = PlaceOf(i);
+                bool ok = true;
+                wk.Sphere = Math.Max(wk.Sphere, e.Sphere);
+                if (want > 0 && want != wk.Here)
+                {
+                    int here = wk.Here, from0 = here, sphere = wk.Sphere;
+                    // what is held on the way: all that the steps so far gave (a way listed "on the way" may come early in the solve's
+                    // record, before a key a step before it in the walkthrough took)
+                    int cut = Math.Max(i, wk.Held + 1);
+                    var hops = Route(here, want, cut, sphere, wk.NotYet) ?? Route(here, want, cut, sphere - 1, wk.NotYet);
+                    // a zone entered by a way from a zone he cannot get back to (a one-way teleport took him on): another
+                    // way straight into the zone the step leads to does as well (the Academy's level 46: the teleport at
+                    // (60, 39) to the room at (53, 31), whose own stairs lead to level 41 as the step's stairs do)
+                    List<KeyValuePair<ZoneLink, int>> into = null;
+                    if (hops == null && e.Kind == "zone" && e.Zone != here && (e.Link == null || e.Link.Kind != "reach"))
+                        into = Route(here, e.Zone, cut, sphere, wk.NotYet) ?? Route(here, e.Zone, cut, sphere - 1, wk.NotYet);
+                    // no way on foot: a warp that asks for nothing held may be part of the way (UW2: dying outside Britannia)
+                    if (hops == null && into == null && sv.FreeWarps.Count > 0) hops = Route(here, want, cut, sphere, wk.NotYet, true) ?? Route(here, want, cut, sphere - 1, wk.NotYet, true);
+                    if (into != null)
+                    {
+                        if (route != null)
+                        {
+                            var texts = into.Select(HopText).ToList();
+                            if (texts.Count > 9) texts = texts.Take(4).Concat(new[] { "… " + (texts.Count - 8) + " more …" }).Concat(texts.Skip(texts.Count - 4)).ToList();
+                            route.Add("by another way from " + ZoneText(here) + " (" + ZoneText(want) + ", where the step starts, is behind you): " + string.Join("; ", texts));
+                        }
+                        hops = into;
+                        want = e.Zone;
+                    }
+                    else if (hops == null)
+                    {
+                        ok = false;
+                        fromText = ZoneText(here);
+                        toText = ZoneText(want);
+                        if (route != null) route.Add("NO WAY FOUND from " + fromText + " to " + toText + " with what is held by then: check this.");
+                    }
+                    else if (route != null)
+                    {
+                        var texts = hops.Select(HopText).ToList();
+                        if (texts.Count > 9) texts = texts.Take(4).Concat(new[] { "… " + (texts.Count - 8) + " more …" }).Concat(texts.Skip(texts.Count - 4)).ToList();
+                        route.Add("the way there from " + ZoneText(here) + ": " + string.Join("; ", texts));
+                    }
+                    wk.Here = want;
+                    // a zone the hand reaches from afar is not stood in: he stays where he reached from
+                    if (hops != null && hops.Count > 0 && hops[hops.Count - 1].Key.Kind == "reach") wk.Here = hops.Count > 1 ? hops[hops.Count - 2].Value : from0;
+                }
+                if (e.Kind == "zone") wk.Here = e.Link != null && e.Link.Kind == "reach" && e.From > 0 ? e.From : e.Zone;
+                wk.Held = Math.Max(wk.Held, i);
+                wk.NotYet.Remove(i);
+                return ok;
+            }
+
+            /// <summary>The folded ways (Folds) the events of `from` rest on that no step has taken on its way yet, now taken by this one, in the order of pos.</summary>
+            List<int> OnTheWay(IEnumerable<int> from, HashSet<int> folded, HashSet<int> attached, Dictionary<int, int> pos)
+            {
+                var mine = new List<int>();
+                var st2 = new Stack<int>(from.Where(folded.Contains));
+                while (st2.Count > 0)
+                {
+                    int f = st2.Pop();
+                    if (!attached.Add(f)) continue;
+                    mine.Add(f);
+                    foreach (int g in Deps(f)) if (folded.Contains(g)) st2.Push(g);
+                }
+                return pos == null ? mine.OrderBy(f => f).ToList() : mine.OrderBy(f => pos[f]).ToList();
+            }
+
+            /// <summary>The steps an order makes (as Run makes them): each step's events, the ways on the way first.</summary>
+            List<List<int>> Units(List<int> order, HashSet<int> folded)
+            {
+                var pos = new Dictionary<int, int>();
+                for (int k = 0; k < order.Count; k++) pos[order[k]] = k;
+                var attached = new HashSet<int>();
+                var units = new List<List<int>>();
+                foreach (int i in order)
+                {
+                    if (folded.Contains(i)) continue;
+                    var u = OnTheWay(Deps(i), folded, attached, pos);
+                    u.Add(i);
+                    units.Add(u);
+                }
+                return units;
+            }
+
+            /// <summary>Whether the player can walk an order's steps (as Routes walks them) without a step he has no way to.</summary>
+            bool Walks(List<int> order, HashSet<int> need, HashSet<int> folded)
+            {
+                var wk = new Walk { Here = ev[0].Zone, NotYet = new HashSet<int>(need) };
+                string a, b;
+                foreach (var u in Units(order, folded))
+                    foreach (int i in u)
+                        if (!Move(wk, i, null, out a, out b)) return false;
+                return true;
+            }
+
+            sealed class Frame
+            {
+                public int Choice;
+                public Walk Before;
+                public HashSet<int> Done, Attached, Tried;
+                /// <summary>The steps still to do that the player could get to before this one and cannot after it.</summary>
+                public HashSet<int> Lost;
+            }
+
+            /// <summary>
+            /// The order made by walking it: the player's zone and what he holds are followed step by
+            /// step. Of the steps whose needs are met and that he can get to, the one taken is the
+            /// first in the order by spheres that leaves behind no other step still to do: one he
+            /// can get to now and could not get back to afterwards with what he holds then (a
+            /// one-way way, the leaving of a shut world). When every step leaves something behind,
+            /// the one that leaves the least. When the walk gets stuck (steps left that he cannot
+            /// get to), it goes back to the step that left behind what it is stuck on and takes
+            /// another there. Null when no walk is found within the bound.
+            /// </summary>
+            List<int> Reorder(List<int> order, HashSet<int> need, HashSet<int> folded)
+            {
+                var steps = order.Where(i => i != 0 && !folded.Contains(i)).ToList();
+                var wk = new Walk { Here = ev[0].Zone, NotYet = new HashSet<int>(need) };
+                string a, b;
+                if (!Move(wk, 0, null, out a, out b)) return null;
+                var done = new HashSet<int> { 0 };
+                var attached = new HashSet<int>();
+                var tried = new HashSet<int>();
+                var frames = new List<Frame>();
+                var units = new List<List<int>>();
+                int bound = 4 * steps.Count + 400;
+                while (done.Count < steps.Count + 1)
+                {
+                    if (--bound < 0) return null;
+                    var pending = steps.Where(i => !done.Contains(i)).ToList();
+                    var reach = Reach(wk);
+                    var open = new HashSet<int>(pending.Where(p => CanGetTo(p, reach)));
+                    int best = -1, bestLoss = int.MaxValue;
+                    Walk bestWalk = null;
+                    List<int> bestUnit = null;
+                    HashSet<int> bestLost = null;
+                    foreach (int c in pending)
+                    {
+                        if (tried.Contains(c) || !Deps(c).All(d => done.Contains(d) || folded.Contains(d))) continue;
+                        var unit = OnTheWay(Deps(c), folded, new HashSet<int>(attached), null);
+                        unit.Add(c);
+                        var inUnit = new HashSet<int>(unit);
+                        if (!unit.All(e => Deps(e).All(d => done.Contains(d) || inUnit.Contains(d) || !need.Contains(d)))) continue;
+                        var w2 = wk.Copy();
+                        bool ok = true;
+                        foreach (int e in unit) if (!Move(w2, e, null, out a, out b)) { ok = false; break; }
+                        if (!ok) continue;
+                        var after = Reach(w2);
+                        var lost = new HashSet<int>(open.Where(p => p != c && !CanGetTo(p, after)));
+                        if (lost.Count < bestLoss) { best = c; bestLoss = lost.Count; bestWalk = w2; bestUnit = unit; bestLost = lost; }
+                        if (lost.Count == 0) break;
+                    }
+                    if (best < 0)
+                    {
+                        // stuck: back to the latest step that left behind a step it cannot get to now, and another step there
+                        var stuck = new HashSet<int>(pending.Where(p => !open.Contains(p)));
+                        int k = frames.Count - 1;
+                        while (k >= 0 && !frames[k].Lost.Overlaps(stuck)) k--;
+                        if (k < 0) k = frames.Count - 1;
+                        if (k < 0) return null;
+                        var f = frames[k];
+                        frames.RemoveRange(k, frames.Count - k);
+                        units.RemoveRange(k, units.Count - k);
+                        wk = f.Before; done = f.Done; attached = f.Attached;
+                        tried = f.Tried;
+                        tried.Add(f.Choice);
+                        continue;
+                    }
+                    frames.Add(new Frame { Choice = best, Before = wk, Done = new HashSet<int>(done), Attached = new HashSet<int>(attached), Tried = tried, Lost = bestLost });
+                    units.Add(bestUnit);
+                    wk = bestWalk;
+                    foreach (int e in bestUnit) { done.Add(e); if (folded.Contains(e)) attached.Add(e); }
+                    tried = new HashSet<int>();
+                }
+                var result = new List<int> { 0 };
+                foreach (var u in units) result.AddRange(u);
+                // the ways no step takes on its way (the goal's)
+                result.AddRange(order.Where(i => !result.Contains(i)));
+                return result;
+            }
+
+            /// <summary>Whether the player can get to where a step is done from the zones he can get to (or straight into the zone a way of it leads to).</summary>
+            bool CanGetTo(int i, HashSet<int> reach)
+            {
+                int want = PlaceOf(i);
+                if (want <= 0 || reach.Contains(want)) return true;
+                var e = ev[i];
+                return e.Kind == "zone" && (e.Link == null || e.Link.Kind != "reach") && reach.Contains(e.Zone);
+            }
+
+            /// <summary>The zones the player can get to from where he stands, with what he holds (over the world of his sphere or the one before).</summary>
+            HashSet<int> Reach(Walk wk)
+            {
+                var r = Search(wk.Here, -1, wk.Held + 1, wk.Sphere, wk.NotYet, null);
+                if (wk.Sphere > 0) r.UnionWith(Search(wk.Here, -1, wk.Held + 1, wk.Sphere - 1, wk.NotYet, null));
+                return r;
             }
 
             string HopText(KeyValuePair<ZoneLink, int> hop)
@@ -1202,30 +1419,70 @@ namespace UwEditor.Core.Randomizer
                 var k = hop.Key;
                 string req = string.IsNullOrWhiteSpace(k.Requires) || k.Requires.Trim() == "free" ? "" : " [" + k.Requires.Trim() + "]";
                 string at = k.Level > 0 && k.X >= 0 ? string.Format(" L{0} ({1}, {2})", k.Level, k.X, k.Y) : "";
+                if (k.Kind == "warp" && (k.Notes ?? "").StartsWith("facts: "))
+                {
+                    var f = t.Facts.Facts.FirstOrDefault(y => y.Id == k.Notes.Substring(7));
+                    if (f != null) return FirstSentence(f.Notes) + " > " + zs.Label(hop.Value);
+                }
                 return (k.Kind ?? "way") + at + req + " > " + zs.Label(hop.Value);
             }
 
-            readonly Dictionary<string, Requirement> parsed = new Dictionary<string, Requirement>();
+            /// <summary>Whether a warp can be made from a zone: one of its level (FromLevel), or of a level above FromAbove.</summary>
+            bool WarpFrom(Fact f, int z)
+            {
+                var ls = LevelsOf(z);
+                if (f.FromLevel > 0 && !ls.Contains(f.FromLevel)) return false;
+                return f.FromAbove <= 0 || ls.Any(l => l > f.FromAbove);
+            }
 
-            /// <summary>The shortest way from one zone to another over a sphere's links, through zones the solve reaches, with what was held before event `cut`; null when there is none.</summary>
-            List<KeyValuePair<ZoneLink, int>> Route(int from, int to, int cut, int sphere)
+            readonly Dictionary<string, Requirement> parsed = new Dictionary<string, Requirement>();
+            readonly Dictionary<List<ZoneLink>, Dictionary<int, List<KeyValuePair<ZoneLink, int>>>> ways = new Dictionary<List<ZoneLink>, Dictionary<int, List<KeyValuePair<ZoneLink, int>>>>();
+            readonly Dictionary<List<ZoneLink>, Dictionary<int, List<KeyValuePair<ZoneLink, int>>>> waysWarp = new Dictionary<List<ZoneLink>, Dictionary<int, List<KeyValuePair<ZoneLink, int>>>>();
+
+            /// <summary>
+            /// The shortest way from one zone to another over a sphere's links, through zones the solve reaches, with what was held
+            /// before event `cut`; null when there is none. With warps, the solve's free warps (TimelineSolve.FreeWarps) count as ways.
+            /// </summary>
+            List<KeyValuePair<ZoneLink, int>> Route(int from, int to, int cut, int sphere, HashSet<int> notYet, bool warps = false)
             {
                 if (sphere < 0) return null;
-                var links = sphere < sv.Spheres.Count && sv.Spheres[sphere].Links != null ? sv.Spheres[sphere].Links : sv.Spheres.Count > 0 && sv.Spheres[sv.Spheres.Count - 1].Links != null ? sv.Spheres[sv.Spheres.Count - 1].Links : zs.Links;
-                var ctx = new At { B = this, Cut = cut };
-                var outOf = new Dictionary<int, List<KeyValuePair<ZoneLink, int>>>();
-                Action<int, int, ZoneLink> way = (a, z, k) =>
-                {
-                    // through any zone the solve reaches at some time: one it lists later may well be walked through now, when the ways to it hold
-                    if (z != to && !FirstZone.ContainsKey(z)) return;
-                    List<KeyValuePair<ZoneLink, int>> l;
-                    if (!outOf.TryGetValue(a, out l)) outOf[a] = l = new List<KeyValuePair<ZoneLink, int>>();
-                    l.Add(new KeyValuePair<ZoneLink, int>(k, z));
-                };
-                // a way the game allows only once is the step that takes it, never a stretch of a way there
-                foreach (var k in links) { if (k.Once) continue; way(k.From, k.To, k); if (k.TwoWay) way(k.To, k.From, k); }
                 var prev = new Dictionary<int, KeyValuePair<ZoneLink, int>>();
+                if (!Search(from, to, cut, sphere, notYet, prev, warps).Contains(to)) return null;
+                var path = new List<KeyValuePair<ZoneLink, int>>();
+                for (int z = to; z != from; z = prev[z].Value) path.Add(new KeyValuePair<ZoneLink, int>(prev[z].Key, z));
+                path.Reverse();
+                return path;
+            }
+
+            /// <summary>The zones reached from one over a sphere's links, through zones the solve reaches (and to), with what was held before event `cut`; stops once `to` is reached. prev: the link each was reached by.</summary>
+            HashSet<int> Search(int from, int to, int cut, int sphere, HashSet<int> notYet, Dictionary<int, KeyValuePair<ZoneLink, int>> prev, bool warps = false)
+            {
                 var seen = new HashSet<int> { from };
+                if (sphere < 0) return seen;
+                var links = sphere < sv.Spheres.Count && sv.Spheres[sphere].Links != null ? sv.Spheres[sphere].Links : sv.Spheres.Count > 0 && sv.Spheres[sv.Spheres.Count - 1].Links != null ? sv.Spheres[sv.Spheres.Count - 1].Links : zs.Links;
+                Dictionary<int, List<KeyValuePair<ZoneLink, int>>> outOf;
+                var cache = warps ? waysWarp : ways;
+                if (!cache.TryGetValue(links, out outOf))
+                {
+                    cache[links] = outOf = new Dictionary<int, List<KeyValuePair<ZoneLink, int>>>();
+                    Action<int, int, ZoneLink> way = (x, z, k) =>
+                    {
+                        List<KeyValuePair<ZoneLink, int>> l;
+                        if (!outOf.TryGetValue(x, out l)) outOf[x] = l = new List<KeyValuePair<ZoneLink, int>>();
+                        l.Add(new KeyValuePair<ZoneLink, int>(k, z));
+                    };
+                    // a way the game allows only once is the step that takes it, never a stretch of a way there
+                    foreach (var k in links) { if (k.Once) continue; way(k.From, k.To, k); if (k.TwoWay) way(k.To, k.From, k); }
+                    if (warps)
+                        foreach (var fw in sv.FreeWarps)
+                        {
+                            var wl = new ZoneLink { From = 0, To = fw.Value, Kind = "warp", Requires = "free", Notes = "facts: " + fw.Key.Id };
+                            // from every zone of the zone set that the warp can be made from (the cache serves every start of a search)
+                            foreach (int a in zs.Zones.Select(z => z.Id).Concat(FirstZone.Keys).Distinct().ToList())
+                                if (a > 0 && a != fw.Value && WarpFrom(fw.Key, a)) way(a, fw.Value, wl);
+                        }
+                }
+                var ctx = new At { B = this, Cut = cut, NotYet = notYet };
                 var queue = new Queue<int>();
                 queue.Enqueue(from);
                 while (queue.Count > 0 && !seen.Contains(to))
@@ -1235,21 +1492,18 @@ namespace UwEditor.Core.Randomizer
                     if (!outOf.TryGetValue(a, out l)) continue;
                     foreach (var h in l)
                     {
-                        if (seen.Contains(h.Value)) continue;
+                        // through any zone the solve reaches at some time: one it lists later may well be walked through now, when the ways to it hold
+                        if (seen.Contains(h.Value) || (h.Value != to && !FirstZone.ContainsKey(h.Value))) continue;
                         string rq = string.IsNullOrWhiteSpace(h.Key.Requires) ? "free" : h.Key.Requires;
                         Requirement r;
                         if (!parsed.TryGetValue(rq, out r)) parsed[rq] = r = Requirement.TryParse(rq, out _);
                         if (r == null || !r.Eval(ctx)) continue;
                         seen.Add(h.Value);
-                        prev[h.Value] = new KeyValuePair<ZoneLink, int>(h.Key, a);
+                        if (prev != null) prev[h.Value] = new KeyValuePair<ZoneLink, int>(h.Key, a);
                         queue.Enqueue(h.Value);
                     }
                 }
-                if (!seen.Contains(to)) return null;
-                var path = new List<KeyValuePair<ZoneLink, int>>();
-                for (int z = to; z != from; z = prev[z].Value) path.Add(new KeyValuePair<ZoneLink, int>(prev[z].Key, z));
-                path.Reverse();
-                return path;
+                return seen;
             }
 
             /// <summary>A name with "the" before it, unless it has an article already, or it is a proper name and not a thing.</summary>

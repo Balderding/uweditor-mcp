@@ -12,10 +12,10 @@ namespace UwEditor.Core.Tests
     /// </summary>
     public class StartOverrideTests
     {
-        static TimelineResult From(GameSession s, int level, int x, int y)
+        static TimelineResult From(GameSession s, int level, int x, int y, bool death = true)
         {
             var nav = new NavOptions { StartOverride = new StartPoint { Level = level, X = x + 0.5, Y = y + 0.5, Description = "test start" } };
-            return Timeline.Build(s, l => s.LoadLevel(l), nav, new AbilityOptions(), null, null, variants: false);
+            return Timeline.Build(s, l => s.LoadLevel(l), nav, new AbilityOptions { DeathReturns = death }, null, null, variants: false);
         }
 
         [Fact]
@@ -74,7 +74,8 @@ namespace UwEditor.Core.Tests
         {
             string game = GameData.Game("UW2"); if (game == null) return;
             var s = GameSession.Open(game);
-            var t = From(s, level, x, y);
+            // without dying as a way back to the gem (0.1.52): with it, the starts of levels 16 and 18 are no longer shut in
+            var t = From(s, level, x, y, death: false);
             Assert.Equal(t.Set.ZoneAt(level, x, y), t.Set.StartZone);
             Assert.False(t.Solve.GoalReached);
             Assert.True(t.Solve.ZoneSphere.Count < 10, t.Solve.ZoneSphere.Count + " zones");

@@ -114,7 +114,7 @@ namespace UwEditor.Core.Randomizer
 			"search:Z       a look trigger of height Z passes with the Search skill option (Z 0: always)",
 			"zone:N         zone N must be reachable (a lever or button on the other side)",
 			"now_zone:N     zone N reached now (a lever to work again after a door closed behind the player); else as zone:N",
-			"option:NAME    a logic option is on (magic, single_use, lockpick, search_retry, ring_needs_lava, kill_npcs ...)",
+			"option:NAME    a logic option is on (magic, single_use, lockpick, search_retry, ring_needs_lava, kill_npcs, death_returns ...)",
 			"nooption:NAME  a logic option is off (UW2's Pits gem by killing Dorstag: nooption:pits_gem_by_blog)",
 			"spell:telekinesis  Telekinesis (Ort Por Ylem): uses things from afar; the links ask for item:pole | spell:telekinesis",
 			"free           nothing needed",

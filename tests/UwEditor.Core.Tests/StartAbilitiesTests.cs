@@ -72,7 +72,7 @@ namespace UwEditor.Core.Tests
         [Fact]
         public void The_games_own_start_casts_nothing_above_circle_1_before_it_leaves_its_free_area()
         {
-            foreach (var (g, spheres) in new[] { ("UW", 22), ("UW2", 41) })
+            foreach (var (g, spheres) in new[] { ("UW", 22), ("UW2", 39) })
             {
                 var s = Session(g); if (s == null) continue;
                 var t = Timeline.Build(s, l => s.LoadLevel(l), new NavOptions(), new AbilityOptions(), null, null, variants: false);

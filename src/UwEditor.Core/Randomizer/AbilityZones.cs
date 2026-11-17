@@ -63,6 +63,13 @@ namespace UwEditor.Core.Randomizer
         /// key_gem_7 needs nooption:pits_gem_by_blog). Off: both ways count.
         /// </summary>
         public bool PitsGemByBlog;
+        /// <summary>
+        /// UW2: dying outside Britannia is a way back to the castle (option:death_returns; the facts'
+        /// warp death_to_gem). With no health left on a level above 8 the player wakes in the
+        /// blackrock gem's cavern on level 5 with all he holds, a ninth of his experience lost
+        /// (game/SKILLS.C player_is_dead, do_gem). Off: no solve counts on dying.
+        /// </summary>
+        public bool DeathReturns = true;
 
         // Bashing is always in the logic (Karl: fists bash any breakable door), so it is no option.
 
@@ -82,6 +89,7 @@ namespace UwEditor.Core.Randomizer
             if (KillNpcs) h.Add("kill_npcs");
             if (RequireOrb) h.Add("require_orb");
             if (PitsGemByBlog) h.Add("pits_gem_by_blog");
+            if (DeathReturns) h.Add("death_returns");
             return h;
         }
 
@@ -103,7 +111,7 @@ namespace UwEditor.Core.Randomizer
                 Magic ? (NewCharacterCircle >= MaxCircle ? "on" : "on (from runes up to circle " + NewCharacterCircle + " until the start's free area is left)") : "off", SingleUseItems ? "count" : "do not count", LockPicking ? "on (skill " + PickSkill + (PickRetry ? ", retry" : "") + ")" : "off",
                 SearchSkill, SearchRetry ? " with retry" : " without retry", DamageTrapWalls ? "everywhere" : "only in the facts' areas",
                 RingNeedsLava ? "needs lava protection" : "free", KillNpcs ? "in logic" : "not in logic", RequireOrb ? ", the goal needs the orb broken" : "",
-                AvoidLost ? "" : ", things the game takes away count", PitsGemByBlog ? ", the Pits' gem only by Blog's way" : "");
+                AvoidLost ? "" : ", things the game takes away count", PitsGemByBlog ? ", the Pits' gem only by Blog's way" : "") + (DeathReturns ? "" : ", dying is no way back (UW2)");
         }
     }
 

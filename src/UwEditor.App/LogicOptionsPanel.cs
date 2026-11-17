@@ -103,6 +103,9 @@ namespace UwEditor.App
             var blog = Check("The Pits' key gem only by Blog's way (UW2)", () => logic.PitsGemByBlog, v => logic.PitsGemByBlog = v);
             ToolTip.SetTip(blog, "Ultima Underworld 2: the key gem of the Pits of Carnage counts only when Blog the troll gets it for you. Befriend Blog on level 59 (give him a grey rock, or lose three games of White Rock Black Rock with the black rocks in his room), then speak to Dorstag, who hands the gem to Blog, and Blog gives it to you. Killing Dorstag, who carries the gem, no longer counts. Unticked, both ways count.");
             lg.AddRow("Pits gem", blog);
+            var death = Check("Dying outside Britannia returns to the blackrock gem (UW2)", () => logic.DeathReturns, v => logic.DeathReturns = v);
+            ToolTip.SetTip(death, "Ultima Underworld 2: on any level outside Britannia, a player with no health left wakes in the blackrock gem's cavern on castle level 5 with all he holds, a ninth of his experience lost. With this on the logic counts it as a way back to the castle from every other world (running into walls at speed is enough to die), so a place with no way out on foot is no trap and a start in a shut world can always leave. Off: no solve counts on dying.");
+            lg.AddRow("Death", death);
             Children.Add(lg);
         }
 

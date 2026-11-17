@@ -119,7 +119,7 @@ namespace UwEditor.Core.Tests
         public void The_walkthrough_keeps_out_of_a_one_way_pocket()
         {
             var s = Session(); if (s == null) return;
-            var r = KeyShuffle.RunOn(s, KeyShuffle.Snapshot(s, null), new KeyShuffleOptions { Seed = 2, Retries = 0 });
+            var r = KeyShuffle.RunOn(s, KeyShuffle.Snapshot(s, null), new KeyShuffleOptions { Seed = 2, Retries = 0, Logic = new AbilityOptions { DeathReturns = false } }); // with dying as a way back (the default) the pocket is no trap
             Assert.True(r.Success, string.Join("; ", r.Failures));
             Assert.NotNull(r.Check.Safe);
             Assert.True(r.Check.Safe.GoalReached);

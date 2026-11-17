@@ -158,17 +158,24 @@ namespace UwEditor.Core.Tests
             var p = Uw2(); if (p == null) return;
             Assert.False(p.StandIn);
             // since 0.1.49 the filter holds every moving item (no stand-in): Fissif's cell still misses the goal (nothing opens it), the
-            // top of the Prison Tower is now rejected for the castle plot's order (level 14's trigger before the sewers'), and the round
-            // room of level 18 still misses the goal (3 zones: its key 9 does not move)
+            // top of the Prison Tower is rejected for the castle plot's order (level 14's trigger before the sewers') only when dying
+            // does not return to the gem; with that option on (0.1.52, the default) dying there leads to the sewers first and the
+            // start is accepted. The round room of level 18 still misses the goal (3 zones: its key 9 does not move)
             var fissif = p.Check(1, 38, 38);
             Assert.False(fissif.Viable);
             Assert.StartsWith("the solve from here misses the goal", fissif.Reason);
             var top = p.Check(16, 33, 33);
-            Assert.False(top.Viable);
-            Assert.StartsWith("the castle plot's trap that sets it to 3", top.Reason);
+            Assert.True(top.Viable, top.Reason);
+            var alive = StartPicker.For(p.Session, l => p.Session.LoadLevel(l), new KeyShuffleOptions { Logic = new AbilityOptions { DeathReturns = false } });
+            var topAlive = alive.Check(16, 33, 33);
+            Assert.False(topAlive.Viable);
+            Assert.StartsWith("the castle plot's trap that sets it to 3", topAlive.Reason);
+            // the round room likewise: shut in alive, but dying there leads to the gem
             var round = p.Check(18, 27, 28);
-            Assert.False(round.Viable);
-            Assert.StartsWith("the solve from here misses the goal", round.Reason);
+            Assert.True(round.Viable, round.Reason);
+            var roundAlive = alive.Check(18, 27, 28);
+            Assert.False(roundAlive.Viable);
+            Assert.StartsWith("the solve from here misses the goal", roundAlive.Reason);
             var cell = p.Check(1, 42, 38);
             Assert.False(cell.Viable);
             Assert.StartsWith("a trigger", cell.Reason);
