@@ -54,7 +54,7 @@ namespace UwEditor.Core.Tests
         public void Uw2_ends_with_the_gem_by_either_way_and_by_blogs_alone()
         {
             string game = GameData.Game("UW2"); if (game == null) return;
-            var s = GameSession.Open(game);
+            var s = TestWorld.Session("UW2");
             // Blog and Dorstag, not hostile, and the rocks for Blog's game beside him
             var l59 = s.LoadLevel(59);
             Assert.Equal(0x65, l59.Objects[255].Record[0x1A]);
@@ -67,29 +67,29 @@ namespace UwEditor.Core.Tests
 
             // the default options: both ways count, the kill comes first (sphere 14); with the option, Blog's way (sphere 16)
             // (334 zones: since 0.1.44 Telekinesis from runes does not reach the two barrier squares of Britannia, WhereMagicWorksTests)
-            var t = Timeline.Build(s, l => s.LoadLevel(l), new NavOptions(), new AbilityOptions(), null, null, variants: false);
+            var t = TestWorld.Build("UW2", new NavOptions(), new AbilityOptions());
             Ends(t.Solve, 334);
             Assert.Equal("facts: key_gem_7", GemEvent(t.Solve).Placement.Source);
             Assert.Equal(14, GemEvent(t.Solve).Sphere);
-            var blog = Timeline.Solve(t, new AbilityOptions { PitsGemByBlog = true }, "Blog's way");
+            var blog = TestWorld.Solve(t, new AbilityOptions { PitsGemByBlog = true }, "Blog's way");
             Ends(blog, 334);
             Assert.Equal("facts: key_gem_7_blog", GemEvent(blog).Placement.Source);
             Assert.Equal(16, GemEvent(blog).Sphere);
             Assert.DoesNotContain(blog.Events, e => e.Placement != null && e.Placement.Source == "facts: key_gem_7");
             Assert.True(blog.TokenSphere["flag:blog_friend"] <= GemEvent(blog).Sphere);
             // the walkthrough warns at both of Blog's steps (lost only by a choice)
-            var w = Walkthrough.Build(t, blog, null, l => s.LoadLevel(l));
+            var w = TestWorld.Walk(t, blog, null, l => s.LoadLevel(l));
             Assert.Contains(w.Steps, st => st.Event?.Token == "flag:blog_friend" && st.Warning.Contains("killing Blog"));
             Assert.Contains(w.Steps, st => st.Event?.Token == "item:key_gem_7" && st.Warning.Contains("killing Dorstag or Blog"));
 
             // a pure fighter (rune magic off, of the single-use things only Iron Flesh): the same
             var fighter = new AbilityOptions { Magic = false, SingleUseItems = true, SingleUseOnly = new HashSet<string> { "iron_flesh" }, PitsGemByBlog = true };
-            var tf = Timeline.Build(s, l => s.LoadLevel(l), new NavOptions(), fighter, null, null, variants: false);
+            var tf = TestWorld.Build("UW2", new NavOptions(), fighter);
             Ends(tf.Solve, 257);
             Assert.Equal("facts: key_gem_7_blog", GemEvent(tf.Solve).Placement.Source);
             Assert.Equal(16, GemEvent(tf.Solve).Sphere);
             var f2 = fighter.Clone(); f2.PitsGemByBlog = false;
-            var killed = Timeline.Solve(tf, f2, "fighter, either way");
+            var killed = TestWorld.Solve(tf, f2, "fighter, either way");
             Ends(killed, 257);
             Assert.Equal(14, GemEvent(killed).Sphere);
         }

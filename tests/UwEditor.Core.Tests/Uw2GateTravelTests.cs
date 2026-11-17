@@ -66,8 +66,8 @@ namespace UwEditor.Core.Tests
         public void Uw2_gate_travel_goes_to_level_45_once_level_3s_moonstone_is_held()
         {
             string game = GameData.Game("UW2"); if (game == null) return;
-            var s = GameSession.Open(game);
-            var t = Timeline.Build(s, l => s.LoadLevel(l), new NavOptions(), new AbilityOptions(), null, null, variants: false);
+            var s = TestWorld.Session("UW2");
+            var t = TestWorld.Build("UW2", new NavOptions(), new AbilityOptions());
             var sv = t.Solve;
             Assert.True(sv.GoalReached, string.Join(", ", sv.GoalMissing));
             Assert.DoesNotContain(t.Warnings, x => x.Contains("gate_travel") || x.Contains("moonstone_l3") || x.Contains("altara_door"));
@@ -86,7 +86,7 @@ namespace UwEditor.Core.Tests
             Assert.True(sv.TokenSphere.ContainsKey("cast:gate_travel") && ev.Sphere >= sv.TokenSphere["cast:gate_travel"]);
 
             // without magic no runes cast it: only a scroll or a wand of Gate Travel held before could
-            var off = Timeline.Solve(t, new AbilityOptions { Magic = false }, "no magic");
+            var off = TestWorld.Solve(t, new AbilityOptions { Magic = false }, "no magic");
             var evOff = off.Events.FirstOrDefault(e => e.Warp != null && e.Warp.Id == "gate_travel");
             if (evOff != null)
                 Assert.Contains(off.TokenSphere, kv => (kv.Key == "once:gate_travel" || kv.Key == "perm:gate_travel" || kv.Key == "worn:gate_travel") && kv.Value <= evOff.Sphere);
@@ -101,9 +101,9 @@ namespace UwEditor.Core.Tests
         public void Altaras_door_counts_only_where_its_ends_lie_in_two_zones()
         {
             string game = GameData.Game("UW2"); if (game == null) return;
-            var s = GameSession.Open(game);
+            var s = TestWorld.Session("UW2");
             // as shipped: Altara (L17 #243) and the square outside her door share a zone, so no link and no warning
-            var t = Timeline.Build(s, l => s.LoadLevel(l), new NavOptions(), new AbilityOptions(), null, null, variants: false);
+            var t = TestWorld.Build("UW2", new NavOptions(), new AbilityOptions());
             Assert.Equal(t.Set.ZoneAt(17, 19, 49), t.Set.ZoneOf(17, s.LoadLevel(17), s.LoadLevel(17).Objects[243]));
             Assert.DoesNotContain(t.FactLinks, k => (k.Notes ?? "").Contains("altara_door"));
             Assert.DoesNotContain(t.Warnings, x => x.Contains("altara_door"));

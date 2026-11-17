@@ -72,7 +72,7 @@ namespace UwEditor.Core.Tests
         public void The_default_UW2_solve_ends_the_game_with_the_Britannia_rule()
         {
             var s = Session("UW2"); if (s == null) return;
-            var t = Timeline.Build(s, l => s.LoadLevel(l), new NavOptions(), new AbilityOptions(), null, null, variants: false);
+            var t = TestWorld.Build("UW2", new NavOptions(), new AbilityOptions());
             Assert.True(t.Abilities.BritanniaEdges > 0);
             var high = new Regex(@"\b(cast|spell):(levitate|lava|open|telekinesis|gate_travel|reveal|portal|iron_flesh)\b");
             var castle = t.Set.Links.Where(k => k.Level >= 1 && k.Level <= 8).ToList();
@@ -90,7 +90,7 @@ namespace UwEditor.Core.Tests
             Assert.DoesNotContain(ledge, sv.ZoneSphere.Keys);
             Assert.DoesNotContain(gem, sv.ZoneSphere.Keys);
             // the game's one scroll of Telekinesis does it for one of them (each reach uses one up)
-            var once = Timeline.Solve(t, new AbilityOptions { SingleUseItems = true }, "single-use things");
+            var once = TestWorld.Solve(t, new AbilityOptions { SingleUseItems = true }, "single-use things");
             Assert.True(once.ZoneSphere.ContainsKey(ledge) || once.ZoneSphere.ContainsKey(gem));
             Assert.Contains("once:telekinesis", once.OnceSpent);
         }
@@ -155,7 +155,7 @@ namespace UwEditor.Core.Tests
                 facts.Add(FactSet.FromJson("{\"format\":\"uw1-facts\",\"facts\":[{\"id\":\"test_gate_from_" + from + "\",\"kind\":\"warp\",\"fromLevel\":" + from + ",\"to\":{\"level\":1,\"x\":30,\"y\":32},\"requires\":\"spell:gate_travel\"}]}", "test"));
                 return Timeline.Build(s, l => s.LoadLevel(l), new NavOptions(), new AbilityOptions(), null, facts, variants: false).Solve;
             };
-            var t0 = Timeline.Build(s, l => s.LoadLevel(l), new NavOptions(), new AbilityOptions(), null, null, variants: false);
+            var t0 = TestWorld.Build("UW", new NavOptions(), new AbilityOptions());
             int room = t0.Set.ZoneAt(1, 30, 32);
             Assert.DoesNotContain(room, t0.Solve.ZoneSphere.Keys);
             var six = solve(6);

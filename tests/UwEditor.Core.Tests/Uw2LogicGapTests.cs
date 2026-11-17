@@ -22,7 +22,6 @@ namespace UwEditor.Core.Tests
 
         static readonly object gate = new object();
         static GameSession session;
-        static TimelineResult own;
 
         static GameSession Session()
         {
@@ -36,13 +35,8 @@ namespace UwEditor.Core.Tests
             }
         }
 
-        static TimelineResult Own(GameSession s)
-        {
-            lock (gate)
-            {
-                return own ?? (own = Timeline.Build(s, l => s.LoadLevel(l), new NavOptions(), new AbilityOptions(), null, null, false));
-            }
-        }
+        /// <summary>The unshuffled default build, shared (TestWorld): read it, solve again only through TestWorld's lock.</summary>
+        static TimelineResult Own(GameSession s) { return TestWorld.Build("UW2", new NavOptions(), new AbilityOptions()); }
 
         static int LevelOf(TimelineResult t, TimelineSolve sv, int z)
         {
@@ -67,7 +61,8 @@ namespace UwEditor.Core.Tests
             var s = Session(); if (s == null) return;
             var opt = new KeyShuffleOptions();
             var t = Timeline.Build(s, l => s.LoadLevel(l), new NavOptions { StartOverride = KeyShuffleOptions.GivenStart(58, 52, 5) }, opt.Logic, null, null, false);
-            var held = KeyShuffle.MovingTokens(s, l => s.LoadLevel(l), Own(s), opt);
+            var own = Own(s);
+            var held = TestWorld.Locked(own, () => KeyShuffle.MovingTokens(s, l => s.LoadLevel(l), own, opt));
             var sv = Timeline.Solve(t, opt.Logic, "Pits start", held);
             Assert.True(sv.GoalReached, string.Join(", ", sv.GoalMissing));
             Assert.Equal(16, Requirement.PlotClock(sv.TokenSphere.Keys));
@@ -177,11 +172,11 @@ namespace UwEditor.Core.Tests
             Assert.Contains(t.Set.Placements, p => p.Counts == "gold_100" && p.Quantity > 0);
             // the pure fighter (magic off, of the single-use things only Iron Flesh) buys it and still ends the game
             var fighter = new AbilityOptions { Magic = false, SingleUseItems = true, SingleUseOnly = new HashSet<string> { "iron_flesh" } };
-            var fs = Timeline.Solve(t, fighter, "fighter");
+            var fs = TestWorld.Solve(t, fighter, "fighter");
             Assert.True(fs.GoalReached, string.Join(", ", fs.GoalMissing));
             Assert.True(fs.TokenSphere["once:iron_flesh"] >= fs.TokenSphere["item:gold_100"]);
 
-            var w = Walkthrough.Build(t, sv, null, l => s.LoadLevel(l));
+            var w = TestWorld.Walk(t, sv, null, l => s.LoadLevel(l));
             Assert.Contains(w.Steps, x => x.Text.StartsWith("Walk into the wall at L1 (37, 39)") && x.Text.Contains("teleports you to level 2"));
             Assert.DoesNotContain(w.Steps, x => x.Text.StartsWith("Take the stairs at L1 (37, 39)"));
             var hist = Assert.Single(w.Steps, x => x.Event != null && x.Event.Link != null && x.Event.Link.Notes == "facts: talorus_historian_island");

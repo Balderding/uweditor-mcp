@@ -121,8 +121,8 @@ namespace UwEditor.Core.Tests
         public void Uw2_things_give_the_abilities_and_the_solve_uses_them()
         {
             string game = GameData.Game("UW2"); if (game == null) return;
-            var s = GameSession.Open(game);
-            var t = Timeline.Build(s, l => s.LoadLevel(l), new NavOptions(), new AbilityOptions(), null, null, variants: false);
+            var s = TestWorld.Session("UW2");
+            var t = TestWorld.Build("UW2", new NavOptions(), new AbilityOptions());
             var src = t.Abilities.Sources;
             // a scroll and a potion are used up, a thing worn works while worn; a spell object counts through its wand only
             Assert.Contains(src, x => x.Level == 25 && x.Token == "once:waterwalk" && x.Kind == "scroll");
@@ -260,7 +260,7 @@ namespace UwEditor.Core.Tests
             // the two-state controls are as they were
             Assert.Equal(6, g.ToggleTiles[25].Count);
             // so the control island is reached with no spell
-            var t2 = Timeline.Build(s, l => s.LoadLevel(l), new NavOptions(), new AbilityOptions { Magic = false, SingleUseItems = false }, null, null, variants: false);
+            var t2 = TestWorld.Build("UW2", new NavOptions(), new AbilityOptions { Magic = false, SingleUseItems = false });
             Assert.Contains(t2.Set.ZoneAt(25, 39, 16), t2.Solve.ZoneSphere.Keys);
         }
 
@@ -268,8 +268,8 @@ namespace UwEditor.Core.Tests
         public void The_Academys_telekinesis_wand_works_on_its_level_only()
         {
             string game = GameData.Game("UW2"); if (game == null) return;
-            var s = GameSession.Open(game);
-            var t = Timeline.Build(s, l => s.LoadLevel(l), new NavOptions(), new AbilityOptions(), null, null, variants: false);
+            var s = TestWorld.Session("UW2");
+            var t = TestWorld.Build("UW2", new NavOptions(), new AbilityOptions());
             // level 43's wand (item 0x9B with id bit 13) is taken away on leaving the level (event/WORLDEV.C remove_TK_wand)
             var wand = t.Abilities.Sources.Single(x => x.Level == 43 && x.Ability == "telekinesis");
             Assert.Equal(43, wand.OnlyLevel);

@@ -135,7 +135,7 @@ namespace UwEditor.Core.Tests
             var s = GameSession.Open(game);
             var opt = new AbilityOptions();
             Assert.True(opt.AvoidLost);
-            var t = Timeline.Build(s, l => s.LoadLevel(l), new NavOptions(), opt, null, null, variants: false);
+            var t = TestWorld.Build("UW2", new NavOptions(), opt);
             var sv = t.Solve;
             Assert.True(sv.GoalReached, string.Join(", ", sv.GoalMissing));
             Assert.Equal(16, Requirement.PlotClock(sv.TokenSphere.Keys));
@@ -159,7 +159,7 @@ namespace UwEditor.Core.Tests
             Assert.Equal("b", fact("charles_key").Lost);
             Assert.Equal("a", fact("line_2").Lost);       // on Killorn's lower level
             // the walkthrough warns at a source lost by a choice (the rune bag, Killorn's lower level) and at one only there for a time (Altara's rod)
-            var w = Walkthrough.Build(t, sv, null, l => s.LoadLevel(l));
+            var w = TestWorld.Walk(t, sv, null, l => s.LoadLevel(l));
             Assert.True(w.Reached);
             Assert.Contains(w.Steps, st => st.Event?.Token == "item:rune_bag" && st.Warning.StartsWith("this may be lost for good: ") && st.Warning.Contains("do not offer to join her"));
             Assert.Contains(w.Steps, st => st.Event?.Token == "flag:line_2" && st.Warning.Contains("brain creatures"));

@@ -969,6 +969,7 @@ namespace UwEditor.Core.Randomizer
             TimelineResult t = null;
             StartCheck c = null;
             int tries = Math.Max(1, opt.Retries + 1);
+            var kept = new BaseBuild();
             for (int attempt = 0; attempt < tries; attempt++)
             {
                 int seed = unchecked(opt.Seed + attempt);
@@ -983,7 +984,7 @@ namespace UwEditor.Core.Randomizer
                 var o = opt.Clone();
                 o.Seed = seed; o.Retries = 0; o.FailAttempts = attempt < opt.FailAttempts ? 1 : 0;
                 o.Nav.StartOverride = c.Point(string.Format("{0} start, level {1} ({2}, {3}): the first step at level {4} ({5}, {6}) teleports the player there", opt.Start == StartChoice.Random ? "the random" : "the given", c.Level, c.X, c.Y, from.Level, (int)from.X, (int)from.Y));
-                r = RunCore(s, levels, o, facts, out t);
+                r = RunCore(s, levels, o, facts, out t, kept);
                 if (r.Refused != null) { r.Log.AppendLine(r.Refused); return r; }
                 foreach (var f in r.Failures) failures.Add(f + " (start L" + c.Level + " (" + c.X + ", " + c.Y + "))");
                 r.Start = o.Nav.StartOverride; r.StartFrom = from; r.StartCheck = c;
@@ -1000,13 +1001,52 @@ namespace UwEditor.Core.Randomizer
             return r;
         }
 
-        static KeyShuffleResult RunCore(GameSession s, LevelSnapshot levels, KeyShuffleOptions opt, FactSet facts, out TimelineResult t)
+        /// <summary>
+        /// The unshuffled world's build for a start (RunWithStart), kept for the next attempt: with a
+        /// given start every attempt builds the same world (the build reads the levels, the movement
+        /// and logic options, the facts, the zoning and the start, and an attempt changes only the
+        /// seed), so it is built once and the engine put back before each attempt as it stood right
+        /// after the build (Engine.Remember, Restore): the attempt's solves then go as on a build
+        /// made afresh. Built on a copy of its own of the levels, as Unlock writes the attempt's.
+        /// <para>Not the start picker's build: that one starts at the game's own square, and the
+        /// start shapes the build beyond the start zone (the start's region is kept from folding
+        /// into a neighbour, at first and in every level rebuilt, so the zones may differ; the
+        /// build's own solve and the return check start there; Auto.Start is the start).</para>
+        /// </summary>
+        sealed class BaseBuild
+        {
+            public StartPoint Start;
+            public TimelineResult T;
+            public Timeline.Engine.Mark Mark;
+
+            public static bool Same(StartPoint a, StartPoint b)
+            {
+                return a != null && b != null && a.Level == b.Level && a.X.Equals(b.X) && a.Y.Equals(b.Y) && a.Z.Equals(b.Z) && a.Description == b.Description;
+            }
+        }
+
+        /// <summary>The unshuffled world built for an attempt: the one kept when its start is the same (put back as it was right after the build), else built afresh (and kept).</summary>
+        static TimelineResult BaseFor(GameSession s, LevelSnapshot levels, KeyShuffleOptions opt, FactSet facts, BaseBuild kept)
+        {
+            if (kept.T != null && BaseBuild.Same(kept.Start, opt.Nav.StartOverride))
+            {
+                kept.T.Engine.Restore(kept.Mark);
+                return kept.T;
+            }
+            kept.T = null; kept.Mark = null; kept.Start = null;
+            var wb = levels.W.Copy();
+            var t = Timeline.Build(s, wb.Model, opt.Nav, opt.Logic, null, facts, false, opt.Zoning);
+            kept.T = t; kept.Mark = t.Engine.Remember(); kept.Start = opt.Nav.StartOverride;
+            return t;
+        }
+
+        static KeyShuffleResult RunCore(GameSession s, LevelSnapshot levels, KeyShuffleOptions opt, FactSet facts, out TimelineResult t, BaseBuild kept = null)
         {
             var r = new KeyShuffleResult { Options = opt, Game = s.Kind };
             var w0 = levels.W.Copy();
             foreach (int l in w0.Levels) { r.Before[l] = (byte[])w0.Data[l].Clone(); r.Textures[l] = w0.Tex[l]; }
             var w = w0.Copy();
-            t = Timeline.Build(s, w.Model, opt.Nav, opt.Logic, null, facts, false, opt.Zoning);
+            t = kept != null ? BaseFor(s, levels, opt, facts, kept) : Timeline.Build(s, w.Model, opt.Nav, opt.Logic, null, facts, false, opt.Zoning);
             var so0 = Timeline.SolverFor(t, opt.Logic, null);
             var needed = Needed(t, so0, s.IsUw2);
             var objs = Survey(s, w, t, opt, needed);

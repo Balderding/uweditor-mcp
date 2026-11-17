@@ -740,6 +740,59 @@ namespace UwEditor.Core.Randomizer
 
             List<Placement> Placements { get { return placements ?? zs.Placements; } }
 
+            /// <summary>
+            /// What the solves add to the engine as they go, as it stands at one moment (Remember):
+            /// the level states rebuilt (and the ids of the zones they split off, handed out in the
+            /// order the states were first rebuilt), the doorways, the zones' levels, the requirements
+            /// read (with the warnings they gave), the last world solved.
+            /// </summary>
+            internal sealed class Mark
+            {
+                public List<KeyValuePair<string, LevelState>> Cache;
+                public List<KeyValuePair<string, int>> FreshIds;
+                public int NextFresh;
+                public List<int> Doorways;
+                public List<KeyValuePair<int, int>> ZoneLevel;
+                public List<KeyValuePair<string, Requirement>> Parsed;
+                public int Warnings;
+                public Dictionary<int, LevelState> LastWorld;
+                public List<ZoneLink> LastLinks;
+            }
+
+            /// <summary>The engine's state now (see Mark). Restore puts it back, so the solves after it go as they would on a build made afresh, when taken right after Timeline.Build.</summary>
+            public Mark Remember()
+            {
+                return new Mark
+                {
+                    Cache = cache.ToList(), FreshIds = freshIds.ToList(), NextFresh = nextFresh, Doorways = doorways.ToList(), ZoneLevel = zoneLevel.ToList(),
+                    Parsed = parsed.ToList(), Warnings = res.Warnings.Count, LastWorld = lastWorld, LastLinks = lastLinks,
+                };
+            }
+
+            /// <summary>
+            /// Puts the engine back as it was at Remember: what the solves since added is dropped, in
+            /// the order it was then (a dictionary refilled in its order iterates as the one made
+            /// afresh). The rest is not changed by a solve: made by Prepare and Classify (the base
+            /// mechanisms, links, places, cuts, the changes applied), or a cache of what never
+            /// differs (castAt, castSquares, a level state's tile zones); freshSquare is made again
+            /// from the fresh ids.
+            /// </summary>
+            public void Restore(Mark m)
+            {
+                cache.Clear(); foreach (var kv in m.Cache) cache.Add(kv.Key, kv.Value);
+                freshIds.Clear(); foreach (var kv in m.FreshIds) freshIds.Add(kv.Key, kv.Value);
+                nextFresh = m.NextFresh;
+                doorways.Clear(); foreach (int z in m.Doorways) doorways.Add(z);
+                zoneLevel.Clear(); foreach (var kv in m.ZoneLevel) zoneLevel.Add(kv.Key, kv.Value);
+                parsed.Clear(); foreach (var kv in m.Parsed) parsed.Add(kv.Key, kv.Value);
+                if (res.Warnings.Count > m.Warnings) res.Warnings.RemoveRange(m.Warnings, res.Warnings.Count - m.Warnings);
+                freshSquare = null;
+                lastWorld = m.LastWorld;
+                lastLinks = m.LastLinks;
+                placements = null;
+                extraSpot.Clear();
+            }
+
             /// <summary>The zone of a placement's tile in a changed level (placements the zone set does not hold).</summary>
             int ZoneOfTile(LevelState st, int[] t, int dflt)
             {

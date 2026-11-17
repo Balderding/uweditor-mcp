@@ -75,7 +75,7 @@ namespace UwEditor.Core.Tests
             foreach (var (g, spheres) in new[] { ("UW", 22), ("UW2", 39) })
             {
                 var s = Session(g); if (s == null) continue;
-                var t = Timeline.Build(s, l => s.LoadLevel(l), new NavOptions(), new AbilityOptions(), null, null, variants: false);
+                var t = TestWorld.Build(g, new NavOptions(), new AbilityOptions());
                 var sv = t.Solve;
                 Assert.True(sv.GoalReached, g);
                 Assert.Equal(spheres, sv.Spheres.Count);
@@ -84,8 +84,8 @@ namespace UwEditor.Core.Tests
                 foreach (var e in sv.Events.Where(e => e.Kind == "token" && e.Token.StartsWith("cast:")))
                     Assert.True(e.Placement.Circle <= 1 || e.Sphere >= sv.FreeAreaLeft, g + ": " + e.Token + " (circle " + e.Placement.Circle + ") in sphere " + e.Sphere + ", free area left in " + sv.FreeAreaLeft);
                 Assert.Contains(sv.Events, e => e.Kind == "token" && e.Token == "cast:light" && e.Sphere < sv.FreeAreaLeft);
-                Assert.Contains("A new character casts from runes up to circle 1", Timeline.Report(t));
-                var any = Timeline.Build(s, l => s.LoadLevel(l), new NavOptions(), new AbilityOptions { NewCharacterCircle = AbilityOptions.MaxCircle }, null, null, variants: false);
+                Assert.Contains("A new character casts from runes up to circle 1", TestWorld.Locked(t, () => Timeline.Report(t)));
+                var any = TestWorld.Build(g, new NavOptions(), new AbilityOptions { NewCharacterCircle = AbilityOptions.MaxCircle });
                 Assert.Null(any.Solve.FreeArea);
                 Assert.Equal(spheres, any.Solve.Spheres.Count);
             }

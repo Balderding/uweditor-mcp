@@ -53,7 +53,7 @@ namespace UwEditor.Core.Tests
             // one undo step takes it away; the shipped game is still won on level 9 alone
             edits.For(1).Undo();
             Assert.Single(EndGame.Find(s, edits.Model));
-            var plain = Timeline.Build(s, l => s.LoadLevel(l), new NavOptions(), new AbilityOptions(), null, null, false);
+            var plain = TestWorld.Build("UW", new NavOptions(), new AbilityOptions());
             Assert.True(plain.Solve.GoalReached);
             Assert.Equal("the goal zone", plain.Solve.GoalBy);
             // UW2: not known

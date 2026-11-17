@@ -15,7 +15,6 @@ namespace UwEditor.Core.Tests
     {
         static readonly object gate = new object();
         static GameSession session;
-        static TimelineResult auto;
 
         static GameSession Session()
         {
@@ -28,15 +27,8 @@ namespace UwEditor.Core.Tests
             }
         }
 
-        static TimelineResult Auto()
-        {
-            lock (gate)
-            {
-                if (auto != null) return auto;
-                var s = Session();
-                return auto = Timeline.Build(s, l => s.LoadLevel(l), new NavOptions(), new AbilityOptions(), null, null, false);
-            }
-        }
+        /// <summary>The unshuffled default build, shared (TestWorld): read only.</summary>
+        static TimelineResult Auto() { return TestWorld.Build("UW", new NavOptions(), new AbilityOptions()); }
 
         static ZoneSet Painted(GameSession s)
         {

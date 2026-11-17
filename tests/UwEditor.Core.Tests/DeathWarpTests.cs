@@ -43,8 +43,7 @@ namespace UwEditor.Core.Tests
         public void Uw2_death_is_a_way_back_to_the_gem_only_with_the_option()
         {
             string game = GameData.Game("UW2"); if (game == null) return;
-            var s = GameSession.Open(game);
-            var t = Timeline.Build(s, l => s.LoadLevel(l), new NavOptions(), new AbilityOptions(), null, null, variants: false);
+            var t = TestWorld.Build("UW2", new NavOptions(), new AbilityOptions());
             var on = t.Solve;
             Assert.True(on.GoalReached, string.Join(", ", on.GoalMissing));
             Assert.DoesNotContain(on.Warnings, x => x.Contains("death_to_gem"));
@@ -52,7 +51,7 @@ namespace UwEditor.Core.Tests
             Assert.Equal("death_to_gem", warp.Key.Id);
             Assert.True(on.ZoneSphere.ContainsKey(warp.Value), "the gem's cavern is reached");
 
-            var off = Timeline.Solve(t, new AbilityOptions { DeathReturns = false }, "no dying");
+            var off = TestWorld.Solve(t, new AbilityOptions { DeathReturns = false }, "no dying");
             Assert.True(off.GoalReached, string.Join(", ", off.GoalMissing));
             Assert.Empty(off.FreeWarps);
             Assert.DoesNotContain(off.Events, e => e.Warp != null && e.Warp.Id == "death_to_gem");

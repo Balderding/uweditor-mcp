@@ -154,7 +154,7 @@ namespace UwEditor.Core.Tests
         public void The_games_own_start_is_unchanged()
         {
             var s = Session(); if (s == null) return;
-            var a = KeyShuffle.Run(s, null, new KeyShuffleOptions { Seed = 1 });
+            var a = TestWorld.Scatter("UW", new KeyShuffleOptions { Seed = 1 });
             Assert.True(a.Success, string.Join("; ", a.Failures));
             Assert.DoesNotContain("Places in reach", a.Log.ToString());
             var b = KeyShuffle.Run(s, null, new KeyShuffleOptions { Seed = 1, PlacesInReach = true });
@@ -193,9 +193,9 @@ namespace UwEditor.Core.Tests
             Assert.True(sv6.GoalReached);
             Assert.Empty(sv6.Traps);
             Assert.Contains(t6.Set.ZoneAt(2, 8, 34), sv6.ReturnTo);
-            var own = Timeline.Build(s, l => s.LoadLevel(l), new NavOptions(), new AbilityOptions(), null, null, variants: false);
+            var own = TestWorld.Build("UW", new NavOptions(), new AbilityOptions());
             Assert.Empty(own.Solve.ReturnTo);
-            Assert.Empty(Timeline.Solve(own, new AbilityOptions(), "held", KeyShuffle.MovingTokens(s, l => s.LoadLevel(l), own, new KeyShuffleOptions())).ReturnTo);
+            Assert.Empty(TestWorld.Locked(own, () => Timeline.Solve(own, new AbilityOptions(), "held", KeyShuffle.MovingTokens(s, l => s.LoadLevel(l), own, new KeyShuffleOptions()))).ReturnTo);
         }
 
         static TimelineResult WithSolve(TimelineResult t, TimelineSolve sv) { t.Solve = sv; return t; }

@@ -21,7 +21,6 @@ namespace UwEditor.Core.Tests
 
         static readonly object gate = new object();
         static GameSession session;
-        static readonly Dictionary<string, KeyShuffleResult> runs = new Dictionary<string, KeyShuffleResult>();
 
         static GameSession Session()
         {
@@ -35,20 +34,13 @@ namespace UwEditor.Core.Tests
             }
         }
 
+        /// <summary>One scatter a set and seed, shared with KeyShuffleTests (TestWorld): read only.</summary>
         static KeyShuffleResult Run(string name, int seed)
         {
-            lock (gate)
-            {
-                string key = name + "|" + seed;
-                KeyShuffleResult r;
-                if (runs.TryGetValue(key, out r)) return r;
-                var o = new KeyShuffleOptions { Seed = seed };
-                if (name == "picking on, killing NPCs, orb") { o.Logic.LockPicking = true; o.Logic.KillNpcs = true; o.Logic.RequireOrb = true; }
-                if (name == "creatures, magic off, single-use") { o.CreatureInventories = true; o.Logic.Magic = false; o.Logic.SingleUseItems = true; }
-                r = KeyShuffle.Run(Session(), null, o);
-                runs[key] = r;
-                return r;
-            }
+            var o = new KeyShuffleOptions { Seed = seed };
+            if (name == "picking on, killing NPCs, orb") { o.Logic.LockPicking = true; o.Logic.KillNpcs = true; o.Logic.RequireOrb = true; }
+            if (name == "creatures, magic off, single-use") { o.CreatureInventories = true; o.Logic.Magic = false; o.Logic.SingleUseItems = true; }
+            return TestWorld.Scatter("UW", o);
         }
 
         public static IEnumerable<object[]> Sets()
@@ -217,10 +209,10 @@ namespace UwEditor.Core.Tests
         public void Uw2_unshuffled_has_a_walkthrough_to_the_end()
         {
             string game = GameData.Game("UW2"); if (game == null) return;
-            var s = GameSession.Open(game);
-            var t = Timeline.Build(s, l => s.LoadLevel(l), new NavOptions(), new AbilityOptions(), null, null, false);
+            var s = TestWorld.Session("UW2");
+            var t = TestWorld.Build("UW2", new NavOptions(), new AbilityOptions());
             Assert.True(t.Solve.GoalReached);
-            var w = Walkthrough.Build(t, t.Solve, null, l => s.LoadLevel(l));
+            var w = TestWorld.Walk(t, t.Solve, null, l => s.LoadLevel(l));
             Assert.True(w.Reached);
             Assert.Empty(w.Doubts);
             // a way between every two steps: what the hand reaches from afar (the large blackrock gem's square) is not stood in
@@ -237,9 +229,9 @@ namespace UwEditor.Core.Tests
         public void The_unshuffled_game_has_a_walkthrough()
         {
             var s = Session(); if (s == null) return;
-            var t = Timeline.Build(s, l => s.LoadLevel(l), new NavOptions(), new AbilityOptions(), null, null, false);
+            var t = TestWorld.Build("UW", new NavOptions(), new AbilityOptions());
             Assert.True(t.Solve.GoalReached);
-            var w = Walkthrough.Build(t, t.Solve, null, l => s.LoadLevel(l));
+            var w = TestWorld.Walk(t, t.Solve, null, l => s.LoadLevel(l));
             Show(output, w);
             Assert.True(w.Reached);
             Assert.Empty(w.Doubts);
@@ -278,9 +270,9 @@ namespace UwEditor.Core.Tests
         public void Uw2_does_not_break_it()
         {
             string g = GameData.Game("UW2"); if (g == null) return;
-            var s = GameSession.Open(g);
-            var t = Timeline.Build(s, l => s.LoadLevel(l), new NavOptions(), new AbilityOptions(), null, null, false);
-            var w = Walkthrough.Build(t, t.Solve, null, l => s.LoadLevel(l));
+            var s = TestWorld.Session("UW2");
+            var t = TestWorld.Build("UW2", new NavOptions(), new AbilityOptions());
+            var w = TestWorld.Walk(t, t.Solve, null, l => s.LoadLevel(l));
             output.WriteLine("UW2: goal " + (t.Solve.GoalReached ? "reached" : "not reached") + ", " + w.Steps.Count + " steps; " + string.Join(" | ", w.Doubts.Distinct().Take(5)));
             Assert.NotNull(w.Lines());
             Assert.Equal(t.Solve.GoalReached, w.Reached);

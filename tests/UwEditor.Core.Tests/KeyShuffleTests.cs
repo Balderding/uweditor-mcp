@@ -22,7 +22,6 @@ namespace UwEditor.Core.Tests
 
         static readonly object gate = new object();
         static GameSession session;
-        static TimelineResult plain;
 
         static GameSession Session()
         {
@@ -36,16 +35,8 @@ namespace UwEditor.Core.Tests
             }
         }
 
-        static TimelineResult Plain()
-        {
-            lock (gate)
-            {
-                if (plain != null) return plain;
-                var s = Session();
-                plain = Timeline.Build(s, l => s.LoadLevel(l), new NavOptions(), new AbilityOptions(), null, null, false);
-                return plain;
-            }
-        }
+        /// <summary>The unshuffled default build, shared (TestWorld): read it, solve again only through TestWorld.Solve.</summary>
+        static TimelineResult Plain() { return TestWorld.Build("UW", new NavOptions(), new AbilityOptions()); }
 
         static TimelineResult Build(GameSession s, Func<int, LevelModel> level, AbilityOptions opt = null)
         {
@@ -143,7 +134,7 @@ namespace UwEditor.Core.Tests
             var f = t.Facts.Facts.Single(x => x.Id == "key_of_love");
             Assert.Equal("npc:judy & item:picture_tom", f.Requires);
             // no lava protection and no Telekinesis: magic off, the ring free, nothing single-use
-            var sv = Timeline.Solve(t, new AbilityOptions { Magic = false }, "no magic");
+            var sv = TestWorld.Solve(t, new AbilityOptions { Magic = false }, "no magic");
             int judy = sv.TokenSphere["npc:judy"], tom = sv.TokenSphere["item:picture_tom"];
             Assert.Equal(Math.Max(judy, tom), sv.TokenSphere["item:key_of_love"]);
         }
@@ -158,7 +149,7 @@ namespace UwEditor.Core.Tests
             Assert.DoesNotContain("flag:orb_destroyed", t.GoalFor(new AbilityOptions().ToSolver()));
             var on = new AbilityOptions { RequireOrb = true };
             Assert.Contains("flag:orb_destroyed", t.GoalFor(Timeline.SolverFor(t, on, null)));
-            var withOrb = Timeline.Solve(t, on, "orb");
+            var withOrb = TestWorld.Solve(t, on, "orb");
             Assert.True(withOrb.GoalReached);
             // no orb rock: the goal is reached only with the option off
             var edits = new LevelEdits(s);
@@ -259,21 +250,12 @@ namespace UwEditor.Core.Tests
 
         // ---------------------------------------------------------------- the shuffle
 
-        static readonly Dictionary<string, KeyShuffleResult> runs = new Dictionary<string, KeyShuffleResult>();
-
+        /// <summary>One scatter a set and seed, computed once for the assembly (TestWorld; WalkthroughTests runs the same ones); each call gets its own copy to apply and undo.</summary>
         static KeyShuffleResult Run(string name, Action<KeyShuffleOptions> set, int seed)
         {
-            lock (gate)
-            {
-                string key = name + "|" + seed;
-                KeyShuffleResult r;
-                if (runs.TryGetValue(key, out r)) return r;
-                var o = new KeyShuffleOptions { Seed = seed };
-                set?.Invoke(o);
-                r = KeyShuffle.Run(Session(), null, o);
-                runs[key] = r;
-                return r;
-            }
+            var o = new KeyShuffleOptions { Seed = seed };
+            set?.Invoke(o);
+            return TestWorld.ScatterCopy("UW", o);
         }
 
         public static IEnumerable<object[]> Sets()

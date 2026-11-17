@@ -102,6 +102,30 @@ namespace UwEditor.Core.Tests
         }
 
         /// <summary>
+        /// A given start builds the unshuffled world once for all its attempts (KeyShuffle.BaseFor):
+        /// the second attempt (seed 2, after the first is counted as failed) gives exactly what seed 2
+        /// gives as the first attempt, which builds afresh.
+        /// </summary>
+        [Fact]
+        public void A_given_start_kept_build_gives_the_next_attempt_as_a_fresh_build_does()
+        {
+            var s = Session(); if (s == null) return;
+            var at = KeyShuffleOptions.GivenStart(2, 10, 36);
+            var retried = KeyShuffle.Run(s, null, new KeyShuffleOptions { Seed = 1, Start = StartChoice.Given, StartAt = at, FailAttempts = 1 });
+            var fresh = KeyShuffle.Run(s, null, new KeyShuffleOptions { Seed = 2, Start = StartChoice.Given, StartAt = at });
+            Assert.True(retried.Success, retried.Refused ?? string.Join("; ", retried.Failures));
+            Assert.True(fresh.Success, fresh.Refused ?? string.Join("; ", fresh.Failures));
+            Assert.Equal(2, retried.Attempts);
+            Assert.Equal(2, retried.UsedSeed);
+            Assert.Equal(fresh.After.Keys.OrderBy(k => k), retried.After.Keys.OrderBy(k => k));
+            foreach (var kv in fresh.After) Assert.True(kv.Value.AsSpan().SequenceEqual(retried.After[kv.Key]), "level " + kv.Key + " differs");
+            Func<KeyShuffleResult, string> moves = r => string.Join("\n", r.Moves.Select(m => m.Item.Name + " L" + m.Item.Level + "#" + m.Item.Index + " -> L" + m.Place.Level + "#" + m.Place.Index + " sphere " + m.Sphere));
+            Assert.Equal(moves(fresh), moves(retried));
+            Func<KeyShuffleResult, string> walk = r => string.Join("\n", r.Walkthrough.Steps.Select(st => st.Number + ". " + st.Text));
+            Assert.Equal(walk(fresh), walk(retried));
+        }
+
+        /// <summary>
         /// The sweep: a square of every viable zone (any level), each shuffled with a few seeds and no
         /// retries; reports the share that fill and why the others fail. Off unless UW_START_SWEEP=1
         /// (UW1: about 40 minutes with 3 seeds). UW_START_SWEEP_GAME=UW2 takes UW2, where a run takes

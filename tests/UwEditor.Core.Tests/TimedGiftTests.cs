@@ -47,7 +47,7 @@ namespace UwEditor.Core.Tests
         {
             string game = GameData.Game("UW2"); if (game == null) return;
             var s = GameSession.Open(game);
-            var own = Timeline.Build(s, l => s.LoadLevel(l), new NavOptions(), new AbilityOptions(), null, null, variants: false);
+            var own = TestWorld.Build("UW2", new NavOptions(), new AbilityOptions());
             Assert.DoesNotContain(TimedGifts.Missed(own, own.Solve), m => m.Fact.Id == "dupre_sewer_key");
             var at = new StartPoint { Level = 1, X = 16.5, Y = 30.5, Description = "test start" };
             var t = Timeline.Build(s, l => s.LoadLevel(l), new NavOptions { StartOverride = at }, new AbilityOptions(), null, null, variants: false);

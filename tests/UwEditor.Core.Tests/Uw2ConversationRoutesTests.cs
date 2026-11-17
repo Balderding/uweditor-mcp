@@ -79,7 +79,7 @@ namespace UwEditor.Core.Tests
         {
             string game = GameData.Game("UW2"); if (game == null) return;
             var s = GameSession.Open(game);
-            var t = Timeline.Build(s, l => s.LoadLevel(l), null, null, null, null, variants: false);
+            var t = TestWorld.Build("UW2", null, null);
             var facts = t.Abilities.Facts;
             var sp = t.Solve.TokenSphere;
             Assert.True(t.Solve.GoalReached, string.Join(", ", t.Solve.GoalMissing));

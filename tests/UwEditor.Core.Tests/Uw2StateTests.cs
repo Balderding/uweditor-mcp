@@ -342,8 +342,8 @@ namespace UwEditor.Core.Tests
         public void The_solve_goes_through_the_gem()
         {
             string game = GameData.Game("UW2"); if (game == null) return;
-            var s = GameSession.Open(game);
-            var t = Timeline.Build(s, l => s.LoadLevel(l), new NavOptions(), new AbilityOptions(), null, null, variants: false);
+            var s = TestWorld.Session("UW2");
+            var t = TestWorld.Build("UW2", new NavOptions(), new AbilityOptions());
             var levels = new HashSet<int>(t.Solve.ZoneSphere.Keys.SelectMany(z => t.Set.LevelsOf(z)));
             // the Prison Tower by the first facet; Killorn Keep and the Ice Caverns once Miranda has heard of the tower
             foreach (int l in new[] { 5, 9, 14, 17, 25, 26 }) Assert.Contains(l, levels);
@@ -394,9 +394,9 @@ namespace UwEditor.Core.Tests
         public void The_Academys_falling_platforms_are_left_to_the_player()
         {
             string game = GameData.Game("UW2"); if (game == null) return;
-            var s = GameSession.Open(game);
+            var s = TestWorld.Session("UW2");
             // no spells from the runes: scrolls, wands and potions only
-            var t = Timeline.Build(s, l => s.LoadLevel(l), new NavOptions(), new AbilityOptions { Magic = false, SingleUseItems = true }, null, null, variants: false);
+            var t = TestWorld.Build("UW2", new NavOptions(), new AbilityOptions { Magic = false, SingleUseItems = true });
             // level 47: the two platforms whose triggers drop (34, 38), the square before the ledge of the way on
             foreach (var flag in new[] { "flag:terrain_l47_987", "flag:terrain_l47_1002" })
             {
@@ -424,14 +424,14 @@ namespace UwEditor.Core.Tests
         public void Mors_Gothas_book_waits_for_her_and_her_door_is_bashed()
         {
             string game = GameData.Game("UW2"); if (game == null) return;
-            var s = GameSession.Open(game);
+            var s = TestWorld.Session("UW2");
             var m = s.LoadLevel(17);
             // the book lies invisible on the square where a scheduled trigger creates her; another on the same square shows it (hack 39)
             Assert.True(m.Objects[818].Invisible);
             Assert.Equal(0x138, m.Objects[818].Item);
             Assert.Equal(818, m.Objects[834].Link);
             Assert.Equal(39, m.Objects[834].Quality);
-            var t = Timeline.Build(s, l => s.LoadLevel(l), new NavOptions(), new AbilityOptions { Magic = false, SingleUseItems = true }, null, null, variants: false);
+            var t = TestWorld.Build("UW2", new NavOptions(), new AbilityOptions { Magic = false, SingleUseItems = true });
             var fact = t.Abilities.Facts.Facts.Single(f => f.Id == "mors_gotha_book");
             Assert.Contains("flag:hack_L17_819", fact.Requires);
             Assert.Contains("flag:create_L17_861", fact.Requires);
@@ -451,7 +451,7 @@ namespace UwEditor.Core.Tests
         public void A_weapon_of_Entry_is_a_lasting_source_of_Open_and_the_search_finds_it_by_that_name()
         {
             string game = GameData.Game("UW2"); if (game == null) return;
-            var s = GameSession.Open(game);
+            var s = TestWorld.Session("UW2");
             // the Tomb's cudgel, level 57 #484: class 12 effect 13, special weapon 6, which opens the door it hits (combat/COMBAT.C player_attack)
             var o = s.LoadLevel(57).Objects[484];
             Assert.Equal(0x007, o.Item);
@@ -459,7 +459,7 @@ namespace UwEditor.Core.Tests
             var hits = LevelSearch.Run(s, new ObjectQuery { Text = "entry" });
             Assert.Contains(hits, h => h.Level == 57 && h.Index == 484 && h.Matched == "Entry");
             // only iron flesh among the scrolls and potions: the cudgel still counts, as a thing kept
-            var t = Timeline.Build(s, l => s.LoadLevel(l), new NavOptions(), new AbilityOptions { Magic = false, SingleUseItems = true, SingleUseOnly = new HashSet<string> { "iron_flesh" } }, null, null, variants: false);
+            var t = TestWorld.Build("UW2", new NavOptions(), new AbilityOptions { Magic = false, SingleUseItems = true, SingleUseOnly = new HashSet<string> { "iron_flesh" } });
             var src = t.Abilities.Sources.Single(x => x.Level == 57 && x.Index == 484);
             Assert.Equal("open", src.Ability);
             Assert.True(src.Permanent);
@@ -532,8 +532,8 @@ namespace UwEditor.Core.Tests
         public void No_spell_is_cast_from_runes_on_the_Academys_middle_levels()
         {
             string game = GameData.Game("UW2"); if (game == null) return;
-            var s = GameSession.Open(game);
-            var t = Timeline.Build(s, l => s.LoadLevel(l), new NavOptions(), new AbilityOptions(), null, null, variants: false);
+            var s = TestWorld.Session("UW2");
+            var t = TestWorld.Build("UW2", new NavOptions(), new AbilityOptions());
             // Bishop's cell is entered with fraznium on, and Altara's dagger waits for Bishop or Mystell
             var field = t.Facts.Facts.Single(f => f.Id == "bishop_force_field");
             Assert.Contains("item:fraznium_gauntlets", field.Requires);
@@ -576,8 +576,8 @@ namespace UwEditor.Core.Tests
         public void The_solve_reaches_the_end_of_the_game()
         {
             string game = GameData.Game("UW2"); if (game == null) return;
-            var s = GameSession.Open(game);
-            var t = Timeline.Build(s, l => s.LoadLevel(l), new NavOptions(), new AbilityOptions(), null, null, variants: false);
+            var s = TestWorld.Session("UW2");
+            var t = TestWorld.Build("UW2", new NavOptions(), new AbilityOptions());
             var got = t.Solve.TokenSphere;
             Assert.Empty(t.Abilities.Warnings.Where(w => w.StartsWith("Facts:")));
             // the djinn: basilisk oil into the mud of level 26, the pool's trigger, lava, Iron Flesh, the bottle broken in the Void

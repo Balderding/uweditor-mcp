@@ -21,7 +21,6 @@ namespace UwEditor.Core.Tests
 
         static readonly object gate = new object();
         static GameSession session;
-        static TimelineResult own;
 
         static GameSession Session()
         {
@@ -35,13 +34,8 @@ namespace UwEditor.Core.Tests
             }
         }
 
-        static TimelineResult Own(GameSession s)
-        {
-            lock (gate)
-            {
-                return own ?? (own = Timeline.Build(s, l => s.LoadLevel(l), new NavOptions(), new AbilityOptions(), null, null, false));
-            }
-        }
+        /// <summary>The unshuffled default build, shared (TestWorld): read it, solve again only through TestWorld's lock.</summary>
+        static TimelineResult Own(GameSession s) { return TestWorld.Build("UW2", new NavOptions(), new AbilityOptions()); }
 
         /// <summary>The placement of one object (by level and index), as the level scan made it.</summary>
         static Placement Of(TimelineResult t, int level, int index)
@@ -136,7 +130,7 @@ namespace UwEditor.Core.Tests
             var s = Session(); if (s == null) return;
             var t = Own(s);
             var fighter = new AbilityOptions { Magic = false, SingleUseItems = true, SingleUseOnly = new HashSet<string> { "iron_flesh" } };
-            var fs = Timeline.Solve(t, fighter, "fighter");
+            var fs = TestWorld.Solve(t, fighter, "fighter");
             Assert.True(fs.GoalReached, string.Join(", ", fs.GoalMissing));
             Assert.Equal(16, Requirement.PlotClock(fs.TokenSphere.Keys));
         }
