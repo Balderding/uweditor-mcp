@@ -285,7 +285,7 @@ from the lists.
 
 Turn the game into a fresh run every time, and keep it beatable.
 
-### Key item scatter (UW1 only)
+### Key item scatter (both games)
 
 <table>
 <tr>
@@ -305,13 +305,28 @@ Turn the game into a fresh run every time, and keep it beatable.
   any other kind you pick: weapons, coins, bedrolls, books, even containers with what they
   hold. You get a spoiler log, which can also go into the game's own map notes past level 9:
   hints for the artifacts and the items you cannot finish without, a page that warns the
-  solutions come next, then the solutions. Undo puts everything back.
+  solutions come next, then the solutions (the map notes are UW1's; UW2 gets the log). Undo
+  puts everything back.
+- **A walkthrough** in the spoiler log lists the steps of one way through the scattered game,
+  in an order that can be walked: where to go, what to take, which spell or key opens what.
+- **Start anywhere:** keep the game's own start, give a square, or let the seed pick one, on
+  the first levels or anywhere. The first step of the new game teleports the player there, and
+  starts that cannot lead to the end are refused. A start with nothing in reach gets what it
+  needs made for it.
+- **Ultima Underworld 2** is scattered across all nine worlds. The logic follows the castle's
+  plot in its order, the blackrock gem's facets as they open, what each NPC carries or gives,
+  locked chests, Gate Travel between the moonstones, and dying outside Britannia as a way
+  back to the gem. This is new: the logic is tested against the game's files, and a full game
+  has not yet been played through on a scattered UW2.
+- **Settings to share:** every randomizer window saves its settings, the seed included, to a
+  file or a line of text. Examples are in [docs/examples/settings](docs/examples/settings).
 - **Automatic zones** build the logic from the levels themselves: walkable regions, drops,
   climbs, gap jumps, doors, levers and teleports. It knows the player's abilities and where
   they come from (spells, items, the dragon skin boots), hidden walls a look opens, levers
   that change the world, doors closed behind the player, and the quest facts that lead to the
-  end of the game. Options cover magic, single-use items, lock picking and the Search skill.
-- **Zones** lets you paint the zoning by hand instead, with a live **zone graph** of the zones
+  end of the game. Options cover magic and where it works, single-use items, lock picking,
+  bashing doors and the Search skill.
+- **Zones** (UW1) lets you paint the zoning by hand instead, with a live **zone graph** of the zones
   and their links, and a check that it can be solved.
 
 ### Shuffles, swaps and challenges (both games)
@@ -420,8 +435,11 @@ way, but it works.
 ## Tests
 
 ```
-dotnet test
+dotnet test -c Release
 ```
+
+The Release configuration is much the faster for the randomizer's tests: the Core suite takes
+about a quarter of an hour in it.
 
 The test projects:
 
