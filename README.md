@@ -41,6 +41,7 @@ and edits the copy, leaving the GOG install as it is.
 - [The automap](#the-automap)
 - [The randomizer](#the-randomizer)
 - [Testing in the real game](#testing-in-the-real-game)
+- [An AI assistant at work (MCP)](#an-ai-assistant-at-work-mcp)
 - [Mods, checkpoints and safety](#mods-checkpoints-and-safety)
 - [Downloads](#downloads) · [Building and running](#building-and-running) · [Tests](#tests) · [Layout](#layout) · [License](#license)
 
@@ -383,6 +384,15 @@ makes one undo step per level.
   tester on each, and offers the next four when DOSBox closes.
 - **Export as a saved game** writes your edits as a `SAVEn` folder.
 
+## An AI assistant at work (MCP)
+
+**Level ▸ Let an AI assistant work here (MCP)…** lets an AI assistant (Claude, or any other
+[Model Context Protocol](https://modelcontextprotocol.io) client) edit the game open in the
+editor while you watch: tiles, rooms, objects, teleports, levers and doors, pressure plates,
+wandering monsters, with the editor's own checks. Each change shows in the views as it is made
+and goes in Undo. The client starts the editor as `UwEditorAvalonia --mcp`; see
+[src/UwEditor.Mcp/README.md](src/UwEditor.Mcp/README.md) for setting it up and the tools.
+
 ## Mods, checkpoints and safety
 
 ![Make a mod: only what changed, checked by SHA-256](docs/images/mods.png)
@@ -551,8 +561,11 @@ The core tests check, among other things:
 | `src/UwEditor.Look` | The look the editor and the mod manager share: the Light and Dark colour schemes and styles, the Compact layout (`Density`), the icons. |
 | `src/UwEditor.Render` | The OpenGL drawing (Silk.NET), GL 3.3 or GLES 3.0. No window toolkit. |
 | `src/UwEditor.App` | The Avalonia program: window, menus, panels, the GL view control, the find, conversation, global variables, player and graphics windows. |
+| `src/UwEditor.Mcp` | The editor's tools for AI assistants (Model Context Protocol), the pipe the editor serves them on, and the client's pass-through (`--mcp`). No UI. |
+| `src/UwEditor.Mcp.Server` | The same tools as a console MCP server over stdio, without the editor. |
 | `tests/UwEditor.Core.Tests` | xUnit tests on the real game files. |
 | `tests/UwEditor.App.Tests` | Headless interface tests of the Avalonia windows. |
+| `tests/UwEditor.Mcp.Tests` | Tests of the MCP tools, the pipe and the server program, on copies of the real game files. |
 | `tests/UwEditor.Screenshots` | Screenshot tests of the program with its OpenGL view (Linux). |
 | `tests/Shared` | Picture comparison and baselines, shared by the two interface test projects. |
 | `src/Underworld.Mods` | Mod packages, format 2 ([docs/mod-format.md](docs/mod-format.md)): deltas from the game's own files, shared by the editor and the mod manager. No UI. |

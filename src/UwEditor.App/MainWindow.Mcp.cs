@@ -8,7 +8,7 @@ namespace UwEditor.App
 
         void OnMcp(object sender, RoutedEventArgs e) { ShowMcp(); }
 
-        /// <summary>Level ▸ Let Claude work here (MCP): the editor's MCP tools on the game open here, while the window is open.</summary>
+        /// <summary>Level ▸ Let an AI assistant work here (MCP): the editor's MCP tools on the game open here, while the window is open.</summary>
         public McpWindow ShowMcp(string pipeName = null)
         {
             if (mcpWindow != null) { mcpWindow.Activate(); return mcpWindow; }

@@ -38,6 +38,8 @@ namespace UwEditor.App
         [STAThread]
         public static void Main(string[] args)
         {
+            // --mcp: no window; an MCP client's stdio passed through to the editor already open (Level > Let an AI assistant work here)
+            if (args.Length > 0 && args[0] == "--mcp") Environment.Exit(UwEditor.Mcp.PipeRelay.Main(args));
             // an error on another thread ends the program: log it and keep the unsaved work first
             AppDomain.CurrentDomain.UnhandledException += (s, e) =>
             {

@@ -10,9 +10,9 @@ using UwEditor.Mcp;
 namespace UwEditor.App
 {
     /// <summary>
-    /// Level ▸ Let Claude work here (MCP): serves the editor's MCP tools (src/UwEditor.Mcp) on a pipe of
+    /// Level ▸ Let an AI assistant work here (MCP): serves the editor's MCP tools (src/UwEditor.Mcp) on a pipe of
     /// this PC, working on the game open in this window, so the changes show as they are made and go
-    /// in Undo. Closing the window stops it. Claude Code reaches it through UwEditor.Mcp.Server --app.
+    /// in Undo. Closing the window stops it. An MCP client reaches it by starting UwEditorAvalonia --mcp (or UwEditor.Mcp.Server --app).
     /// </summary>
     public sealed class McpWindow : Window
     {
@@ -30,7 +30,7 @@ namespace UwEditor.App
         public McpWindow(MainWindow main, string pipeName = null)
         {
             this.main = main;
-            Title = "Let Claude work here (MCP)";
+            Title = "Let an AI assistant work here (MCP)";
             Width = 640; Height = 520; MinWidth = 420; MinHeight = 300;
             WindowStartupLocation = WindowStartupLocation.CenterOwner;
 
@@ -49,7 +49,7 @@ namespace UwEditor.App
             vm.PropertyChanged += follow;
             Closed += (o, a) => vm.PropertyChanged -= follow;
             host.Called += c => Dispatcher.UIThread.Post(() => Add(c));
-            host.ConnectionChanged += on => Dispatcher.UIThread.Post(() => { ShowState(); Add(on ? "(Claude connected)" : "(Claude left)"); });
+            host.ConnectionChanged += on => Dispatcher.UIThread.Post(() => { ShowState(); Add(on ? "(the assistant connected)" : "(the assistant left)"); });
 
             var head = new StackPanel { Spacing = 4, Margin = new Thickness(0, 0, 0, 10) };
             head.Children.Add(state);
@@ -57,9 +57,9 @@ namespace UwEditor.App
             head.Children.Add(new TextBlock
             {
                 FontSize = 12, Opacity = 0.75, TextWrapping = TextWrapping.Wrap,
-                Text = "Claude (or another MCP client) edits the game open in the editor: each change shows in the views as it is made and goes in Undo, so you can undo it. "
-                     + "The view stays where you put it. Nothing is written to the game's files until a save (Claude's save tool, or yours). "
-                     + "The client starts the server program with --app (UwEditor.Mcp.Server --app); it reaches this window through the pipe " + (pipeName ?? PipeHost.DefaultPipe) + ", on this PC only.",
+                Text = "An AI assistant (Claude, or any other MCP client) edits the game open in the editor: each change shows in the views as it is made and goes in Undo, so you can undo it. "
+                     + "The view stays where you put it. Nothing is written to the game's files until a save (The assistant's save tool, or yours). "
+                     + "The client starts the editor as UwEditorAvalonia --mcp (or the server program as UwEditor.Mcp.Server --app); it reaches this window through the pipe " + (pipeName ?? PipeHost.DefaultPipe) + ", on this PC only.",
             });
             DockPanel.SetDock(head, Dock.Top);
 
@@ -81,7 +81,7 @@ namespace UwEditor.App
             Closed += (o, e) => host.Dispose();
         }
 
-        /// <summary>Claude's save: the editor's own (Ctrl+S), so its checks, status line and markers follow.</summary>
+        /// <summary>The assistant's save: the editor's own (Ctrl+S), so its checks, status line and markers follow.</summary>
         string Save()
         {
             var levels = main.ViewModel.Edits == null ? new System.Collections.Generic.List<int>() : System.Linq.Enumerable.ToList(main.ViewModel.Edits.DirtyLevels);
@@ -92,7 +92,7 @@ namespace UwEditor.App
 
         void ShowState()
         {
-            state.Text = host.Problem != null ? host.Problem : host.Connected ? "Claude is connected." : "Waiting for Claude…";
+            state.Text = host.Problem != null ? host.Problem : host.Connected ? "The assistant is connected." : "Waiting for the assistant…";
             var s = main.ViewModel.Session;
             folder.Text = s == null ? "No game is open." : "Working on " + s.GameFolder;
         }

@@ -1915,6 +1915,34 @@ Each change is one Edit ▸ Undo step, and **Undo** beside the status line takes
 while it is still the next step to undo. The 3D view and the paint brush's slots follow, and
 Save levels writes the change with the level (only the level's texture map block changes).
 
+## An AI assistant at work (MCP)
+
+**Level ▸ Let an AI assistant work here (MCP)…** lets an AI assistant edit the game open in the
+editor while you watch. The assistant is any program that speaks the
+[Model Context Protocol](https://modelcontextprotocol.io) (Claude Code, Claude Desktop and others).
+Tell it to start the editor as a pass-through:
+
+    UwEditorAvalonia --mcp
+
+(in Claude Code: `claude mcp add uweditor -- <path to UwEditorAvalonia> --mcp`). The window that opens
+says whether an assistant is connected, which game it works on, and lists each thing it does.
+
+- It works on the game open in the editor, whichever that is at the time; it cannot open others.
+- Each change is an ordinary edit: it shows in the 3D view and the 2D map at once and is an Edit ▸
+  Undo step, so you can take it back. The view stays where you put it.
+- Nothing is written until a save: the assistant's save is the editor's own (Ctrl+S), with its checks.
+- It can read the level as text and as a picture of the 2D map, change tiles one by one or a
+  rectangle at a time, add, move and delete objects, and use the Trap recipes (teleports, a lever
+  that opens a door, pressure plates, wandering monsters). It cannot change empty or damaged level
+  slots, and it is refused what the editor itself refuses (an object on solid rock, a level the
+  game could not load).
+- **Stop**, or closing the window, stops serving: anything the assistant asks after that is refused.
+  Only one assistant at a time; the connection is a named pipe of this computer and this user
+  (`uweditor-mcp`), nothing goes over the network.
+
+`src/UwEditor.Mcp.Server` is the same set of tools without the editor, for an assistant working on a
+copy of the game on its own (see `src/UwEditor.Mcp/README.md`).
+
 ## Strings
 
 **Tools ▸ Strings…** (Ctrl+Shift+S) shows every block of STRINGS.PAK, with the conversations'

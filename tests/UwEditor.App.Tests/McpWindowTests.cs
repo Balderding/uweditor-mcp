@@ -9,7 +9,7 @@ using Xunit;
 
 namespace UwEditor.App.Tests
 {
-    /// <summary>Level ▸ Let Claude work here (MCP): a client on the pipe changes the game open in the window, on its UI thread.</summary>
+    /// <summary>Level ▸ Let an AI assistant work here (MCP): a client on the pipe changes the game open in the window, on its UI thread.</summary>
     public class McpWindowTests
     {
         [AvaloniaFact]
@@ -49,6 +49,27 @@ namespace UwEditor.App.Tests
                 Assert.Equal(3, w.ViewModel.Edits.For(1).TileField(4, 4, "Floor height"));
                 Ui.Pump();
                 Assert.Contains(mw.Calls, c => c.Contains("fill: Set 20 tiles"));
+                // the editor itself as the client's relay (UwEditorAvalonia --mcp), as an MCP client starts it;
+                // the first client has left, so the window serves the next
+                string dotnet = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH");
+                var psi = new ProcessStartInfo(string.IsNullOrEmpty(dotnet) ? "dotnet" : dotnet)
+                {
+                    RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true,
+                };
+                psi.ArgumentList.Add(Path.Combine(AppContext.BaseDirectory, "UwEditorAvalonia.dll"));
+                psi.ArgumentList.Add("--mcp"); psi.ArgumentList.Add("--pipe"); psi.ArgumentList.Add(pipe);
+                using (var relay = Process.Start(psi))
+                {
+                    relay.StandardInput.WriteLine("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"test\",\"version\":\"1\"}}}");
+                    var line = relay.StandardOutput.ReadLineAsync();
+                    clock.Restart();
+                    while (!line.IsCompleted && clock.ElapsedMilliseconds < 20000) { Ui.Pump(); System.Threading.Thread.Sleep(10); }
+                    Assert.True(line.IsCompleted && line.Result != null && line.Result.Contains("\"id\":1"), "the editor's --mcp did not reach the window");
+                    relay.StandardInput.Close();
+                    Assert.True(relay.WaitForExit(10000), "the relay kept running after its client closed stdin");
+                    Assert.Equal(0, relay.ExitCode);
+                }
+
                 mw.Close();
                 Ui.Pump();
             }
