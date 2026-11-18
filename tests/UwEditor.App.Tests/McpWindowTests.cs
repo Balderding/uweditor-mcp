@@ -64,7 +64,17 @@ namespace UwEditor.App.Tests
                     var line = relay.StandardOutput.ReadLineAsync();
                     clock.Restart();
                     while (!line.IsCompleted && clock.ElapsedMilliseconds < 20000) { Ui.Pump(); System.Threading.Thread.Sleep(10); }
-                    Assert.True(line.IsCompleted && line.Result != null && line.Result.Contains("\"id\":1"), "the editor's --mcp did not reach the window");
+                    Assert.True(line.IsCompleted && line.Result != null && line.Result.Contains("\"id\":1"), "the editor's --mcp did not answer");
+                    // a call: --mcp passes it to this window, which runs it on the UI thread
+                    relay.StandardInput.WriteLine("{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}");
+                    relay.StandardInput.WriteLine("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"tile_get\",\"arguments\":{\"level\":1,\"x\":4,\"y\":4}}}");
+                    line = relay.StandardOutput.ReadLineAsync();
+                    clock.Restart();
+                    while (!line.IsCompleted && clock.ElapsedMilliseconds < 20000) { Ui.Pump(); System.Threading.Thread.Sleep(10); }
+                    Assert.True(line.IsCompleted && line.Result != null, "the editor's --mcp did not reach the window");
+                    Assert.Contains("Floor height: 3", line.Result);       // the fill made through the pipe above
+                    Ui.Pump();
+                    Assert.Contains(mw.Calls, c => c.Contains("tile_get: Tile (4, 4)"));
                     relay.StandardInput.Close();
                     Assert.True(relay.WaitForExit(10000), "the relay kept running after its client closed stdin");
                     Assert.Equal(0, relay.ExitCode);
