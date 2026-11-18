@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The editor's MCP tools (a library): used by UwEditor.Mcp.Server (stdio) and by the app (Let an AI assistant work here). See README.md. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>UwEditor.Mcp</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="UwEditor.Mcp.Tests" />
+    <InternalsVisibleTo Include="UwEditor.Mcp.Server" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="ModelContextProtocol.Core" Version="2.3.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../UwEditor.Core/UwEditor.Core.csproj" />
+  </ItemGroup>
+</Project>
