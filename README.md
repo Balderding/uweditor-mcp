@@ -122,7 +122,7 @@ A refusal comes back as an error result starting `Refused:`, with the reason.
 
 - All 66 tests and the window test pass.
 - A full run of every tool, done the way an assistant would, builds and saves a room with 0 failures.
-- The editor's own tests still pass: 891 core and 258 interface tests.
+- The editor's own tests still pass: 891 core and 263 interface tests.
 - The single-file release build works as `--mcp`.
 
 All of this is on Windows with Ultima Underworld I. Linux, macOS and Ultima Underworld II are not
