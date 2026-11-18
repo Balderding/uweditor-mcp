@@ -14,7 +14,7 @@ namespace UwEditor.App
     /// this PC, working on the game open in this window, so the changes show as they are made and go
     /// in Undo. Closing the window stops it. An MCP client reaches it by starting UwEditorAvalonia --mcp (or UwEditor.Mcp.Server --app).
     /// </summary>
-    public sealed class McpWindow : Window
+    public sealed partial class McpWindow : Window
     {
         readonly MainWindow main;
         readonly PipeHost host;
@@ -42,6 +42,19 @@ namespace UwEditor.App
                 vm.RaiseEditState();
                 return r;
             }), Save);
+            // the data tables: the ones the editor's windows hold, so the change shows there and either side's save writes it
+            Func<GameTablesWindow> gameTables = () => System.Linq.Enumerable.FirstOrDefault(System.Linq.Enumerable.OfType<GameTablesWindow>(main.OwnedWindows));
+            ed.HostObjectTables = () => main.ObjectTablesOpen?.Tables;
+            ed.HostGameTables = () => { var w = gameTables(); return w == null ? null : new UwEditor.Core.Editing.DataTable[] { w.Terrain, w.Skills, w.Combinations, w.Shades, w.MinimumLight }; };
+            ed.HostStrings = () => vm.Session == null ? null : main.Strings();
+            ed.HostTablesEdited = () => gameTables()?.RefreshTextures();
+            ed.HostTablesSaved = files =>
+            {
+                if (vm.Level != null && vm.Edits != null) vm.RefreshLevel();     // COMOBJ.DAT says how objects are drawn
+                if (files.Contains("SHADES.DAT") || files.Contains("DL.DAT")) main.GameLightChanged();
+                gameTables()?.RefreshTextures();
+            };
+            AttachHooks(ed, vm);
             host = PipeHost.Create(ed);
             host.Called += c => Dispatcher.UIThread.Post(() => Add(c));
             host.ConnectionChanged += on => Dispatcher.UIThread.Post(() => { ShowState(); Add(on ? "(the assistant connected)" : "(the assistant left)"); });

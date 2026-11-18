@@ -20,12 +20,14 @@ namespace UwEditor.Mcp
         public string Save()
         {
             Require();
+            CheckTablesOnDisk();   // the data tables (McpEditor.Tables.cs): refused before anything is written
+            CheckContentOnDisk();  // conversations, pictures, sound... (McpEditor.Content.cs): the same
             if (hostSave != null)
             {
                 // the editor's own save (Ctrl+S) tells the user, not the assistant, why it did not save:
                 // the reason it will refuse for is checked here first, as LevelEdits.Save does
                 var dirty = Edits.DirtyLevels.ToList();
-                if (dirty.Count == 0) return "Nothing to save.";
+                if (dirty.Count == 0) return Saved(null, CtJoin(SaveTables(), SaveContent()));
                 foreach (int l in dirty)
                 {
                     var e = Edits.Existing(l);
@@ -34,11 +36,18 @@ namespace UwEditor.Mcp
                     string why = e.Check(out ok);
                     if (!ok) throw new McpEditorException("Level " + l + " was not saved: its object lists now fail the game's check (" + why + "). Undo the last changes there. Nothing was written.");
                 }
-                return hostSave();
+                string said = hostSave();
+                return Saved(said, CtJoin(SaveTables(), SaveContent()));
             }
             var levels = Edits.Save();
-            if (levels.Count == 0) return "Nothing to save.";
-            return (levels.Count == 1 ? "Saved level " : "Saved levels ") + string.Join(", ", levels) + ".";
+            return Saved(levels.Count == 0 ? null : (levels.Count == 1 ? "Saved level " : "Saved levels ") + string.Join(", ", levels) + ".", CtJoin(SaveTables(), SaveContent()));
+        }
+
+        /// <summary>What save wrote: the levels' answer and the tables', or that there was nothing.</summary>
+        static string Saved(string levels, string tables)
+        {
+            if (levels == null && tables == null) return "Nothing to save.";
+            return levels == null ? tables : tables == null ? levels : levels + " " + tables;
         }
     }
 }

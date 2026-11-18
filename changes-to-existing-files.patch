@@ -1,5 +1,5 @@
 diff --git a/Directory.Build.props b/Directory.Build.props
-index 04808f4..6b47110 100644
+index 04808f4..d2142c1 100644
 --- a/Directory.Build.props
 +++ b/Directory.Build.props
 @@ -8,6 +8,6 @@
@@ -7,11 +7,11 @@ index 04808f4..6b47110 100644
           (0.1.2, then 0.1.3...). The mod manager has its own, in ModManager/Directory.Build.props.
           A release's tag must be this version (v0.1.2-beta): .github/workflows/release.yml checks. -->
 -    <Version>0.1.55</Version>
-+    <Version>0.1.56</Version>
++    <Version>0.1.57</Version>
    </PropertyGroup>
  </Project>
 diff --git a/README.md b/README.md
-index a643607..5a3ba91 100644
+index a643607..2b0d0a5 100644
 --- a/README.md
 +++ b/README.md
 @@ -41,6 +41,7 @@ and edits the copy, leaving the GOG install as it is.
@@ -22,7 +22,7 @@ index a643607..5a3ba91 100644
  - [Mods, checkpoints and safety](#mods-checkpoints-and-safety)
  - [Downloads](#downloads) · [Building and running](#building-and-running) · [Tests](#tests) · [Layout](#layout) · [License](#license)
  
-@@ -383,6 +384,15 @@ makes one undo step per level.
+@@ -383,6 +384,20 @@ makes one undo step per level.
    tester on each, and offers the next four when DOSBox closes.
  - **Export as a saved game** writes your edits as a `SAVEn` folder.
  
@@ -30,15 +30,20 @@ index a643607..5a3ba91 100644
 +
 +**Level ▸ Let an AI assistant work here (MCP)…** lets an AI assistant (Claude, or any other
 +[Model Context Protocol](https://modelcontextprotocol.io) client) edit the game open in the
-+editor while you watch: tiles, rooms, objects, teleports, levers and doors, pressure plates,
-+wandering monsters, with the editor's own checks. Each change shows in the views as it is made
-+and goes in Undo. The client starts the editor as `UwEditorAvalonia --mcp`; see
++editor while you watch, with all of the editor at its hands (260 tools): levels, tiles and
++textures, every object and creature field, locks and keys, every trap recipe, triggers, find and
++replace, fixes and the world check, a 3D picture from any square, the game tables (creature
++stats, weapons, armour, terrain...), strings, saved games, the player and inventory, quest flags,
++checkpoints and backups, conversations (edit, compile, simulate), balance and barter, graphics,
++fonts, critters, cutscenes, sound, music, 3D models, mods, the randomizers and zones with the
++solver, and the Run and Test copies (it never launches a program). Each change shows in the views
++as it is made and goes in Undo. The client starts the editor as `UwEditorAvalonia --mcp`; see
 +[src/UwEditor.Mcp/README.md](src/UwEditor.Mcp/README.md) for setting it up and the tools.
 +
  ## Mods, checkpoints and safety
  
  ![Make a mod: only what changed, checked by SHA-256](docs/images/mods.png)
-@@ -551,8 +561,11 @@ The core tests check, among other things:
+@@ -551,8 +566,11 @@ The core tests check, among other things:
  | `src/UwEditor.Look` | The look the editor and the mod manager share: the Light and Dark colour schemes and styles, the Compact layout (`Density`), the icons. |
  | `src/UwEditor.Render` | The OpenGL drawing (Silk.NET), GL 3.3 or GLES 3.0. No window toolkit. |
  | `src/UwEditor.App` | The Avalonia program: window, menus, panels, the GL view control, the find, conversation, global variables, player and graphics windows. |
@@ -120,10 +125,10 @@ index 0560239..b8a335f 100644
  	EndGlobalSection
  EndGlobal
 diff --git a/docs/MANUAL.md b/docs/MANUAL.md
-index 72ba4be..11de428 100644
+index 72ba4be..c46680f 100644
 --- a/docs/MANUAL.md
 +++ b/docs/MANUAL.md
-@@ -1915,6 +1915,54 @@ Each change is one Edit ▸ Undo step, and **Undo** beside the status line takes
+@@ -1915,6 +1915,61 @@ Each change is one Edit ▸ Undo step, and **Undo** beside the status line takes
  while it is still the next step to undo. The 3D view and the paint brush's slots follow, and
  Save levels writes the change with the level (only the level's texture map block changes).
  
@@ -163,11 +168,18 @@ index 72ba4be..11de428 100644
 +  where you put it.
 +- Nothing is written until a save. The assistant's save is the editor's own (Ctrl+S), so it also
 +  writes your other unsaved work, and it refuses a level that fails the game's checks.
-+- It can read the level as text and as a picture of the 2D map, change tiles one by one or a
-+  rectangle at a time, add, move and delete objects, and use the Trap recipes (teleports, a lever
-+  that opens a door, pressure plates, wandering monsters). It cannot change empty or damaged level
-+  slots, and it is refused what the editor itself refuses (an object on solid rock, a level the
-+  game could not load).
++- It can do what the editor does, with the editor's own code: read a level as text, as the 2D map or
++  as a 3D picture from any square; change tiles, floors and the level's textures; add, change (every
++  field, a creature's too), copy, paste and delete objects, lock doors; all the Trap recipes; triggers
++  and trap targets; find and replace in all levels; the fixes, the item cleaner and the world check;
++  prefabs and Decorate; the game tables and strings; saved games, the player, the inventory, the
++  global variables, checkpoints and backups; conversations (read, edit, compile, run in the
++  simulator); the balance reports and the barter simulator; pictures, fonts, critters, cutscenes,
++  sounds, music and 3D models (export, and import where the editor does); mods; the randomizers,
++  zones and the solver; and the Run and Test copies, without starting any program. It is refused
++  what the editor itself refuses (an object on solid rock, a level the game could not load), and
++  anything that replaces files or a saved game needs its confirm. The full list of tools is in
++  src/UwEditor.Mcp/README.md.
 +- **Stop**, or closing the window, stops serving: anything the assistant asks after that is refused,
 +  until the window is opened again. Only one assistant at a time; the connection is a named pipe of
 +  this computer and this user (`uweditor-mcp`), nothing goes over the network.
