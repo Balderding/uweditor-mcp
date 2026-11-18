@@ -1951,11 +1951,18 @@ is connected, which game it works on, and lists each thing it does.
   where you put it.
 - Nothing is written until a save. The assistant's save is the editor's own (Ctrl+S), so it also
   writes your other unsaved work, and it refuses a level that fails the game's checks.
-- It can read the level as text and as a picture of the 2D map, change tiles one by one or a
-  rectangle at a time, add, move and delete objects, and use the Trap recipes (teleports, a lever
-  that opens a door, pressure plates, wandering monsters). It cannot change empty or damaged level
-  slots, and it is refused what the editor itself refuses (an object on solid rock, a level the
-  game could not load).
+- It can do what the editor does, with the editor's own code: read a level as text, as the 2D map or
+  as a 3D picture from any square; change tiles, floors and the level's textures; add, change (every
+  field, a creature's too), copy, paste and delete objects, lock doors; all the Trap recipes; triggers
+  and trap targets; find and replace in all levels; the fixes, the item cleaner and the world check;
+  prefabs and Decorate; the game tables and strings; saved games, the player, the inventory, the
+  global variables, checkpoints and backups; conversations (read, edit, compile, run in the
+  simulator); the balance reports and the barter simulator; pictures, fonts, critters, cutscenes,
+  sounds, music and 3D models (export, and import where the editor does); mods; the randomizers,
+  zones and the solver; and the Run and Test copies, without starting any program. It is refused
+  what the editor itself refuses (an object on solid rock, a level the game could not load), and
+  anything that replaces files or a saved game needs its confirm. The full list of tools is in
+  src/UwEditor.Mcp/README.md.
 - **Stop**, or closing the window, stops serving: anything the assistant asks after that is refused,
   until the window is opened again. Only one assistant at a time; the connection is a named pipe of
   this computer and this user (`uweditor-mcp`), nothing goes over the network.

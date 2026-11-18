@@ -12,7 +12,7 @@ namespace UwEditor.Mcp
     /// from a change made; anything unexpected is an error result naming what failed.
     /// </summary>
     [McpServerToolType]
-    public sealed class EditorTools
+    public sealed partial class EditorTools
     {
         readonly McpEditor ed;
 
@@ -208,7 +208,7 @@ namespace UwEditor.Mcp
         [McpServerTool(Name = "check"), Description("Runs the game's own checks on a level as it is now (its object lists).")]
         public CallToolResult Check([Description("Level number, from 1.")] int level) { return Answer(() => ed.Check(level)); }
 
-        [McpServerTool(Name = "save"), Description("Writes the changed levels to LEV.ARK (the old file kept as LEV.ARK.BKP); in the editor's window it is the editor's own save (Ctrl+S), which also writes its other unsaved work. Refuses, writing nothing, when a changed level fails the game's checks.")]
+        [McpServerTool(Name = "save"), Description("Writes the changed levels to LEV.ARK (the old file kept as LEV.ARK.BKP) and the changed game tables and strings (each old file kept as .BKP); in the editor's window it is the editor's own save (Ctrl+S), which also writes its other unsaved work. Refuses, writing nothing, when a changed level fails the game's checks.")]
         public CallToolResult Save() { return Answer(() => ed.Save()); }
     }
 }

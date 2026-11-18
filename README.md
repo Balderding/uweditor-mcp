@@ -388,9 +388,14 @@ makes one undo step per level.
 
 **Level ▸ Let an AI assistant work here (MCP)…** lets an AI assistant (Claude, or any other
 [Model Context Protocol](https://modelcontextprotocol.io) client) edit the game open in the
-editor while you watch: tiles, rooms, objects, teleports, levers and doors, pressure plates,
-wandering monsters, with the editor's own checks. Each change shows in the views as it is made
-and goes in Undo. The client starts the editor as `UwEditorAvalonia --mcp`; see
+editor while you watch, with all of the editor at its hands (260 tools): levels, tiles and
+textures, every object and creature field, locks and keys, every trap recipe, triggers, find and
+replace, fixes and the world check, a 3D picture from any square, the game tables (creature
+stats, weapons, armour, terrain...), strings, saved games, the player and inventory, quest flags,
+checkpoints and backups, conversations (edit, compile, simulate), balance and barter, graphics,
+fonts, critters, cutscenes, sound, music, 3D models, mods, the randomizers and zones with the
+solver, and the Run and Test copies (it never launches a program). Each change shows in the views
+as it is made and goes in Undo. The client starts the editor as `UwEditorAvalonia --mcp`; see
 [src/UwEditor.Mcp/README.md](src/UwEditor.Mcp/README.md) for setting it up and the tools.
 
 ## Mods, checkpoints and safety
