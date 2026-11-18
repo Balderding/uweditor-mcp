@@ -25,7 +25,7 @@ namespace UwEditor.Mcp
         /// <summary>The level as two 64x64 grids, north (y 63) at the top: tile types, then floor heights.</summary>
         public string LevelMap(int level)
         {
-            var m = Level(level).Model;
+            var m = ReadModel(level);
             var b = new StringBuilder();
             b.Append("Level ").Append(level).Append(" types (").Append(TypeChars[0]).Append(" solid, . open, 1-4 diagonal open SE SW NE NW, n s e w slope rising N S E W); top row y 63, left x 0\n");
             for (int y = 63; y >= 0; y--)
@@ -45,15 +45,14 @@ namespace UwEditor.Mcp
         /// <summary>One tile's fields, its type's name, its textures' numbers and its objects.</summary>
         public string TileGet(int level, int x, int y)
         {
-            var e = Level(level);
+            var m = ReadModel(level);
             CheckTile(x, y);
-            var m = e.Model;
             var t = m.Tiles[x, y];
             var b = new StringBuilder();
             b.Append("Tile (").Append(x).Append(", ").Append(y).Append(") of level ").Append(level).Append(": ").Append(TileInfo.TypeName(t.Type)).Append('\n');
             foreach (var f in TileFields)
             {
-                int v = e.TileField(x, y, f);
+                int v = Field(t, f);
                 b.Append(f).Append(": ").Append(v);
                 if (f == "Floor texture" && v < m.FloorMap.Length) b.Append(" (floor texture ").Append(m.FloorMap[v]).Append(')');
                 if (f == "Wall texture" && v < m.WallMap.Length) b.Append(" (wall texture ").Append(m.WallMap[v]).Append(')');
@@ -61,6 +60,20 @@ namespace UwEditor.Mcp
             }
             b.Append("Objects: ").Append(m.TileObjects(x, y).Count).Append('\n');
             return b.ToString();
+        }
+
+        static int Field(TileInfo t, string f)
+        {
+            switch (f)
+            {
+                case "Type": return (int)t.Type;
+                case "Floor height": return t.Height;
+                case "Light": return t.Light;
+                case "Floor texture": return t.FloorIndex;
+                case "No magic": return t.NoMagic ? 1 : 0;
+                case "Door": return t.DoorBit ? 1 : 0;
+                default: return t.WallIndex;
+            }
         }
 
         /// <summary>Sets one field of a tile. A floor height carries the objects on the tile with it.</summary>

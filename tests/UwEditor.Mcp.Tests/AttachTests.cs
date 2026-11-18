@@ -48,6 +48,8 @@ namespace UwEditor.Mcp.Tests
             var h = new Host(g);
             int saves = 0;
             var ed = McpEditor.Attached(() => h.Session, () => h.Edits, f => f(), () => { saves++; return "saved by the host"; });
+            Assert.Equal("Nothing to save.", ed.Save());              // (nothing changed: the host's save is not asked)
+            ed.Fill(1, 2, 2, 6, 5, "open", 3, null, null);
             Assert.Equal("saved by the host", ed.Save());
             Assert.Equal(1, saves);
         }
@@ -76,7 +78,7 @@ namespace UwEditor.Mcp.Tests
             var tools = new EditorTools(h.Editor());
             tools.LevelMap(1);
             tools.TileGet(1, 5, 5);
-            Assert.StartsWith("Refused", tools.Open(g));
+            Assert.StartsWith("Refused", EditorTools.Text(tools.Open(g)));
             Assert.Equal(3, h.Runs);
         }
     }

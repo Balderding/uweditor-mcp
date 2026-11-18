@@ -86,9 +86,42 @@ namespace UwEditor.Mcp
         LevelEditor Level(int level)
         {
             Require();
-            if (level < 1 || level > Session.Profile.LevelSlots)
-                throw new ArgumentOutOfRangeException("level", "Levels are 1-" + Session.Profile.LevelSlots + ".");
+            CheckLevelNumber(Session, level);
             return Edits.For(level);
+        }
+
+        static void CheckLevelNumber(GameSession s, int level)
+        {
+            if (level < 1 || level > s.Profile.LevelSlots)
+                throw new ArgumentOutOfRangeException(null, "Levels are 1-" + s.Profile.LevelSlots + ".");
+        }
+
+        /// <summary>A level to read: its editor's model when it has one, else as saved (no editor made for reading).</summary>
+        LevelModel ReadModel(int level)
+        {
+            Require();
+            CheckLevelNumber(Session, level);
+            return Edits.Model(level);
+        }
+
+        /// <summary>Takes back the last steps of a level's changes.</summary>
+        public string Undo(int level, int steps)
+        {
+            Require();
+            CheckLevelNumber(Session, level);
+            if (steps < 1 || steps > 50) throw new ArgumentOutOfRangeException(null, "Undo 1-50 steps.");
+            var e = Edits.Existing(level);
+            if (e == null || !e.CanUndo) throw new McpEditorException("Level " + level + " has nothing to undo.");
+            var labels = new System.Collections.Generic.List<string>();
+            for (int i = 0; i < steps && e.CanUndo; i++)
+            {
+                string label = e.UndoLabel;
+                string refused;
+                Edits.Undo(level, out refused);
+                if (refused != null) throw new McpEditorException(refused);
+                labels.Add(label);
+            }
+            return "Undid on level " + level + ": " + string.Join("; ", labels) + ".";
         }
 
         /// <summary>A level's editor for a change: refuses an empty or damaged slot (it has no level to change).</summary>

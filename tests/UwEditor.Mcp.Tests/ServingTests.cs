@@ -58,7 +58,7 @@ namespace UwEditor.Mcp.Tests
         {
             var ed = Opened(); if (ed == null) return;
             var tools = new EditorTools(ed) { Gate = () => "Refused: the editor stopped serving." };
-            Assert.Equal("Refused: the editor stopped serving.", tools.Fill(1, 2, 2, 6, 5, "open"));
+            Assert.Equal("Refused: the editor stopped serving.", EditorTools.Text(tools.Fill(1, 2, 2, 6, 5, "open")));
             Assert.False(ed.Edits.HasChanges);
         }
 
@@ -111,8 +111,20 @@ namespace UwEditor.Mcp.Tests
 
         const string Init = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"test\",\"version\":\"1\"}}}";
 
+        static string Answer(Process p, int id)
+        {
+            for (;;)
+            {
+                var t = p.StandardOutput.ReadLineAsync();
+                Assert.True(t.Wait(20000) && t.Result != null, "no answer " + id);
+                if (t.Result.Contains("\"id\":" + id + ",") || t.Result.Contains("\"id\":" + id + "}")) return t.Result;
+            }
+        }
+
+        const string Call = "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"level_map\",\"arguments\":{\"level\":1}}}";
+
         [Fact]
-        public void A_second_client_is_turned_away_and_the_relay_says_when_the_app_leaves()
+        public void A_second_client_is_told_another_is_connected_and_a_closed_window_is_an_error()
         {
             var ed = Hosted(out _); if (ed == null) return;
             string pipe = "uweditor-mcp-two-" + Guid.NewGuid().ToString("N").Substring(0, 6);
@@ -122,18 +134,23 @@ namespace UwEditor.Mcp.Tests
             try
             {
                 one.StandardInput.WriteLine(Init);
-                var t = one.StandardOutput.ReadLineAsync();
-                Assert.True(t.Wait(20000) && t.Result != null && t.Result.Contains("\"id\":1"));
-                two = Relay(pipe);                                  // only once the first holds the pipe
-                var err2 = two.StandardError.ReadToEndAsync();
-                Assert.True(two.WaitForExit(10000), "the second client was not turned away");
-                Assert.Equal(1, two.ExitCode);
+                Answer(one, 1);
+                one.StandardInput.WriteLine(Call);
+                Assert.Contains("top row y 63", Answer(one, 2));            // the first holds the pipe now
+                two = Relay(pipe);
+                two.StandardInput.WriteLine(Init);
+                Answer(two, 1);
+                two.StandardInput.WriteLine(Call);
+                string r2 = Answer(two, 2);
+                Assert.Contains("\"isError\":true", r2);
+                Assert.Contains("Another assistant is connected", r2);
 
-                var err1 = one.StandardError.ReadToEndAsync();
                 h.Dispose();
-                Assert.True(one.WaitForExit(10000), "the relay kept running after the app stopped serving");
-                Assert.Equal(1, one.ExitCode);
-                Assert.Contains("stopped serving", err1.Result);
+                System.Threading.Thread.Sleep(300);
+                one.StandardInput.WriteLine(Call.Replace("\"id\":2", "\"id\":3"));
+                string r1 = Answer(one, 3);
+                Assert.Contains("\"isError\":true", r1);
+                Assert.False(one.HasExited);                               // the relay stays for the window to come back
             }
             finally
             {

@@ -55,7 +55,7 @@ namespace UwEditor.Mcp.Tests
             byte[] before = File.ReadAllBytes(lev);
             Assert.Throws<System.InvalidOperationException>(() => ed.Save());
             Assert.Equal(before, File.ReadAllBytes(lev));
-            Assert.StartsWith("Refused: Level 1 was not saved", new EditorTools(ed).Save());
+            Assert.StartsWith("Refused: Level 1 was not saved", EditorTools.Text(new EditorTools(ed).Save()));
         }
 
         [Fact]

@@ -77,7 +77,7 @@ namespace UwEditor.Mcp.Tests
         [Fact]
         public void Tools_before_open_answer_in_words()
         {
-            Assert.Equal("Refused: Open a game folder first.", new EditorTools(new McpEditor(null)).LevelMap(1));
+            Assert.Equal("Refused: Open a game folder first.", EditorTools.Text(new EditorTools(new McpEditor(null)).LevelMap(1)));
         }
 
         [Fact]

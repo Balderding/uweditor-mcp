@@ -67,13 +67,23 @@ namespace UwEditor.Mcp.Tests
         }
 
         [Fact]
-        public void Relay_without_the_app_stops_with_a_reason()
+        public void Without_the_window_a_call_is_an_error_saying_what_to_open()
         {
             using var p = Relay("uweditor-mcp-none-" + Guid.NewGuid().ToString("N").Substring(0, 6));
-            var err = p.StandardError.ReadToEndAsync();
-            Assert.True(p.WaitForExit(8000), "the relay kept running without the app");
-            Assert.Equal(1, p.ExitCode);
-            Assert.Contains("not running", err.Result);
+            try
+            {
+                p.ErrorDataReceived += (o, e) => { };
+                p.BeginErrorReadLine();
+                p.StandardInput.WriteLine("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"test\",\"version\":\"1\"}}}");
+                Assert.Contains("\"id\":1", Line(p));
+                p.StandardInput.WriteLine("{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}");
+                p.StandardInput.WriteLine("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"level_map\",\"arguments\":{\"level\":1}}}");
+                string r = Line(p);
+                Assert.Contains("\"isError\":true", r);
+                Assert.Contains("Let an AI assistant work here", r);
+                Assert.False(p.HasExited);
+            }
+            finally { try { if (!p.HasExited) p.Kill(true); } catch (InvalidOperationException) { } }
         }
 
         [Fact]

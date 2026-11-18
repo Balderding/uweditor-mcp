@@ -8,28 +8,30 @@ save (`.BKP` / `.ORIG`).
 There are two ways to use it:
 
 - **In the editor, watching (Level ▸ Let an AI assistant work here (MCP)…).** The tools work on the game
-  open in the editor: each change shows in the views as it is made and goes in Undo; the view stays
-  where you put it. The window lists each call; closing it (or Stop) stops serving. The client starts
-  the editor itself as a pass-through, `UwEditorAvalonia --mcp`, which reaches the open window through a
-  named pipe (`uweditor-mcp`, this computer and this user only). Without the window open it says so on
-  stderr and stops (exit code 1). `open` is refused here: open games in the editor.
+  open in the editor: each change shows in the views as it is made and is an Undo step of its level;
+  the view stays where you put it. The window lists each call; closing it (or Stop) stops serving.
+  The client starts the editor as `UwEditorAvalonia --mcp`: an MCP server on stdio, with no window,
+  that lists the tools itself and passes each call to the open window through a named pipe
+  (`uweditor-mcp`, this computer and this user only). The client may be started before the window is
+  opened, and the window may be closed and opened again: a call with no window answers, as an error,
+  what to open. `open` is not offered there (games are opened in the editor).
 - **On its own, without a window (`src/UwEditor.Mcp.Server`).** A console program over stdio that opens
   a game folder itself. `--only FOLDER` makes it refuse every other folder: use it to keep the server
-  on a copy of the game.
+  on a copy of the game. (`--app` makes it the same go-between as the editor's `--mcp`.)
 
 ## Setting up a client
 
-A client is given a command to start. For example, in a Claude Code `.mcp.json` (or `claude mcp add`):
+The editor's manual (Help ▸ Manual, "An AI assistant at work") has the steps for Claude Code and Claude
+Desktop on Windows, Linux and macOS. In short, the command is the editor's path with `--mcp`:
 
-    { "mcpServers": { "uweditor": { "command": "<path>/UwEditorAvalonia", "args": ["--mcp"] } } }
+    claude mcp add uweditor -- "C:\Games\UwEditor\UwEditorAvalonia.exe" --mcp
 
-or, for the program on its own:
+    { "mcpServers": { "uweditor": { "command": "C:/Games/UwEditor/UwEditorAvalonia.exe", "args": ["--mcp"] } } }
+
+The program on its own, built from source:
 
     dotnet build src/UwEditor.Mcp.Server -c Release
-    { "mcpServers": { "uweditor": { "command": "dotnet",
-        "args": ["<path>/UwEditor.Mcp.Server.dll", "--only", "<a copy of the game>"] } } }
-
-(`UwEditor.Mcp.Server --app` is the same pass-through as the editor's `--mcp`.)
+    claude mcp add uweditor-files -- dotnet "<repo>/src/UwEditor.Mcp.Server/bin/Release/net10.0/UwEditor.Mcp.Server.dll" --only "<a copy of the game>"
 
 ## Tools
 
@@ -41,7 +43,7 @@ or, for the program on its own:
 | `tile_set` | one field of a tile (a floor height carries the tile's objects with it) |
 | `fill` | a rectangle of tiles at once, one undo step; one bad value changes nothing |
 | `item_find` | items by number or part of their name |
-| `object_list` | the objects on a tile or the whole level, with their contents |
+| `object_list` | the objects on a tile, or the whole level (about the first 300 lines), with their contents |
 | `object_add` / `object_move` / `object_delete` | objects, with the editor's defaults for each item |
 | `recipe_teleport` | the Trap recipes' teleport (with a way back if asked) |
 | `recipe_lever_door` | a new lever on a wall that opens a door |
@@ -49,13 +51,15 @@ or, for the program on its own:
 | `recipe_spawner` | wandering monsters |
 | `picture` | the 2D map as a PNG, the whole level or a rectangle |
 | `check` | the game's own checks on a level as it is now |
+| `undo` | takes back a level's last changes |
 | `save` | writes the changed levels (in the editor: as Ctrl+S); refuses a level that fails the checks |
 
 Map characters: `#` solid, `.` open, `1`-`4` diagonal open SE SW NE NW, `n s e w` slope rising N S E W.
 Heights `0`-`f`. Levels are numbered from 1, tiles 0-63 (x west to east, y south to north). Empty or
 damaged level slots are refused for changes.
 
-A refusal (a bad value, no game open, a folder not allowed) is answered as text starting `Refused:`.
+A refusal (a bad value, no game open, a folder not allowed) is an error result (`isError`) whose text
+starts `Refused:`; anything unexpected is an error result starting `Failed:` with the reason.
 
 ## Tests
 

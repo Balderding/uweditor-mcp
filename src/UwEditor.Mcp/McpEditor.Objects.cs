@@ -62,10 +62,13 @@ namespace UwEditor.Mcp
             foreach (int c in o.Children) Line(b, m, m.Objects[c], depth + 1);
         }
 
-        /// <summary>The objects on one tile, or on every tile of the level, with what they hold indented.</summary>
+        /// <summary>A whole level's list stops at about this many lines (a client's answers have a size limit).</summary>
+        public const int MaxListed = 300;
+
+        /// <summary>The objects on one tile, or on every tile of the level (the first MaxListed), with what they hold indented.</summary>
         public string ObjectList(int level, int? x, int? y)
         {
-            var m = Level(level).Model;
+            var m = ReadModel(level);
             var b = new StringBuilder();
             IEnumerable<ObjectInfo> on;
             if (x.HasValue || y.HasValue)
@@ -75,7 +78,17 @@ namespace UwEditor.Mcp
                 on = m.TileObjects(x.Value, y.Value);
             }
             else on = m.Objects.Where(o => o != null && !o.Free && o.OnTile).OrderBy(o => o.TileY).ThenBy(o => o.TileX);
-            foreach (var o in on) Line(b, m, o, 0);
+            var all = on.ToList();
+            int shown = 0, lines = 0;
+            foreach (var o in all)
+            {
+                if (x == null && lines >= MaxListed) break;
+                int before = b.Length;
+                Line(b, m, o, 0);
+                for (int i = before; i < b.Length; i++) if (b[i] == '\n') lines++;
+                shown++;
+            }
+            if (shown < all.Count) b.Append("... ").Append(all.Count - shown).Append(" more objects lying on tiles: give x and y for one tile.\n");
             return b.Length == 0 ? "No objects." : b.ToString();
         }
 

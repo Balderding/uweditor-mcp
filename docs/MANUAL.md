@@ -1919,29 +1919,49 @@ Save levels writes the change with the level (only the level's texture map block
 
 **Level ▸ Let an AI assistant work here (MCP)…** lets an AI assistant edit the game open in the
 editor while you watch. The assistant is any program that speaks the
-[Model Context Protocol](https://modelcontextprotocol.io) (Claude Code, Claude Desktop and others).
-Tell it to start the editor as a pass-through:
+[Model Context Protocol](https://modelcontextprotocol.io): Claude Code, Claude Desktop and others.
 
-    UwEditorAvalonia --mcp
+**Setting it up (once).** The assistant starts the editor a second time as a small go-between,
+`UwEditorAvalonia --mcp`, which shows no window and passes its requests to the editor you have
+open. Tell the assistant that command, with the full path of the editor:
 
-(in Claude Code: `claude mcp add uweditor -- <path to UwEditorAvalonia> --mcp`). The window that opens
-says whether an assistant is connected, which game it works on, and lists each thing it does.
+- Claude Code, Windows (in a terminal; the quotes matter when the path has spaces):
+
+      claude mcp add uweditor -- "C:\Games\UwEditor\UwEditorAvalonia.exe" --mcp
+
+- Claude Code, Linux or macOS: `claude mcp add uweditor -- /path/to/UwEditorAvalonia --mcp`
+- Claude Desktop: Settings ▸ Developer ▸ Edit Config, then in `claude_desktop_config.json`
+  (on Windows write each `\` in the path as `\\`, or use `/`):
+
+      { "mcpServers": { "uweditor": {
+          "command": "C:/Games/UwEditor/UwEditorAvalonia.exe", "args": ["--mcp"] } } }
+
+  and restart Claude Desktop.
+- Any other client: the command is the editor's path, the one argument is `--mcp`, and it speaks
+  MCP over stdio.
+
+**Using it.** Open a game in the editor and choose **Level ▸ Let an AI assistant work here (MCP)…**,
+then ask the assistant to change the level. The order does not matter: an assistant started before
+the window is open is told to open it, and finds it when it is. The window says whether an assistant
+is connected, which game it works on, and lists each thing it does.
 
 - It works on the game open in the editor, whichever that is at the time; it cannot open others.
 - Each change is an ordinary edit: it shows in the 3D view and the 2D map at once and is an Edit ▸
-  Undo step, so you can take it back. The view stays where you put it.
-- Nothing is written until a save: the assistant's save is the editor's own (Ctrl+S), with its checks.
+  Undo step of that level, so you can take it back (or ask the assistant to undo). The view stays
+  where you put it.
+- Nothing is written until a save. The assistant's save is the editor's own (Ctrl+S), so it also
+  writes your other unsaved work, and it refuses a level that fails the game's checks.
 - It can read the level as text and as a picture of the 2D map, change tiles one by one or a
   rectangle at a time, add, move and delete objects, and use the Trap recipes (teleports, a lever
   that opens a door, pressure plates, wandering monsters). It cannot change empty or damaged level
   slots, and it is refused what the editor itself refuses (an object on solid rock, a level the
   game could not load).
-- **Stop**, or closing the window, stops serving: anything the assistant asks after that is refused.
-  Only one assistant at a time; the connection is a named pipe of this computer and this user
-  (`uweditor-mcp`), nothing goes over the network.
+- **Stop**, or closing the window, stops serving: anything the assistant asks after that is refused,
+  until the window is opened again. Only one assistant at a time; the connection is a named pipe of
+  this computer and this user (`uweditor-mcp`), nothing goes over the network.
 
-`src/UwEditor.Mcp.Server` is the same set of tools without the editor, for an assistant working on a
-copy of the game on its own (see `src/UwEditor.Mcp/README.md`).
+The same tools also come as a program on their own, without the editor (`src/UwEditor.Mcp.Server` in
+the source), for an assistant working on a copy of the game by itself.
 
 ## Strings
 

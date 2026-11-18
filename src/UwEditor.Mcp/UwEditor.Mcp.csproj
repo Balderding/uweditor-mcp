@@ -9,7 +9,7 @@
     <InternalsVisibleTo Include="UwEditor.Mcp.Server" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="ModelContextProtocol" Version="2.3.0" />
+    <PackageReference Include="ModelContextProtocol.Core" Version="2.3.0" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../UwEditor.Core/UwEditor.Core.csproj" />

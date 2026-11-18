@@ -9,7 +9,7 @@ namespace UwEditor.Mcp
     {
         public byte[] PicturePng(int level, int? x1, int? y1, int? x2, int? y2, int cell = 8)
         {
-            var m = Level(level).Model;
+            var m = ReadModel(level);
             if (cell < 4 || cell > 32) throw new ArgumentOutOfRangeException(null, "A tile is 4-32 pixels.");
             bool any = x1.HasValue || y1.HasValue || x2.HasValue || y2.HasValue;
             if (any && !(x1.HasValue && y1.HasValue && x2.HasValue && y2.HasValue))

@@ -42,14 +42,15 @@ namespace UwEditor.App
                 vm.RaiseEditState();
                 return r;
             }), Save);
-            host = PipeHost.Start(ed, pipeName ?? PipeHost.DefaultPipe);
+            host = PipeHost.Create(ed);
+            host.Called += c => Dispatcher.UIThread.Post(() => Add(c));
+            host.ConnectionChanged += on => Dispatcher.UIThread.Post(() => { ShowState(); Add(on ? "(the assistant connected)" : "(the assistant left)"); });
             host.Failed += why => Dispatcher.UIThread.Post(ShowState);
             // the folder line follows the game open in the editor
             System.ComponentModel.PropertyChangedEventHandler follow = (o, a) => { if (a.PropertyName == nameof(MainViewModel.Session) || string.IsNullOrEmpty(a.PropertyName)) ShowState(); };
             vm.PropertyChanged += follow;
             Closed += (o, a) => vm.PropertyChanged -= follow;
-            host.Called += c => Dispatcher.UIThread.Post(() => Add(c));
-            host.ConnectionChanged += on => Dispatcher.UIThread.Post(() => { ShowState(); Add(on ? "(the assistant connected)" : "(the assistant left)"); });
+            host.Begin(pipeName ?? PipeHost.DefaultPipe);
 
             var head = new StackPanel { Spacing = 4, Margin = new Thickness(0, 0, 0, 10) };
             head.Children.Add(state);
@@ -58,8 +59,8 @@ namespace UwEditor.App
             {
                 FontSize = 12, Opacity = 0.75, TextWrapping = TextWrapping.Wrap,
                 Text = "An AI assistant (Claude, or any other MCP client) edits the game open in the editor: each change shows in the views as it is made and goes in Undo, so you can undo it. "
-                     + "The view stays where you put it. Nothing is written to the game's files until a save (The assistant's save tool, or yours). "
-                     + "The client starts the editor as UwEditorAvalonia --mcp (or the server program as UwEditor.Mcp.Server --app); it reaches this window through the pipe " + (pipeName ?? PipeHost.DefaultPipe) + ", on this PC only.",
+                     + "The view stays where you put it. Nothing is written to the game's files until a save (the assistant's save tool, or yours). "
+                     + "The assistant is set up once to start the editor as UwEditorAvalonia --mcp (Help > Manual, An AI assistant at work); it may be started before or after this window, and reaches it through the pipe " + (pipeName ?? PipeHost.DefaultPipe) + ", on this PC only.",
             });
             DockPanel.SetDock(head, Dock.Top);
 
@@ -84,10 +85,11 @@ namespace UwEditor.App
         /// <summary>The assistant's save: the editor's own (Ctrl+S), so its checks, status line and markers follow.</summary>
         string Save()
         {
-            var levels = main.ViewModel.Edits == null ? new System.Collections.Generic.List<int>() : System.Linq.Enumerable.ToList(main.ViewModel.Edits.DirtyLevels);
-            if (levels.Count == 0 && !main.ViewModel.CanSave) return "Nothing to save.";
-            if (!main.SaveAll()) return "Refused: the editor did not save (its status line says why).";
-            return levels.Count == 0 ? "Saved (no levels changed)." : (levels.Count == 1 ? "Saved level " : "Saved levels ") + string.Join(", ", levels) + ", as Ctrl+S does.";
+            // McpEditor has checked the levels first (the refusal the assistant should hear); what is left
+            // to fail is the writing itself, which the editor reports to the user
+            var levels = System.Linq.Enumerable.ToList(main.ViewModel.Edits.DirtyLevels);
+            if (!main.SaveAll()) throw new InvalidOperationException("The editor did not save: " + (string.IsNullOrEmpty(main.ViewModel.EditStatus) ? "it showed the reason to the user." : main.ViewModel.EditStatus));
+            return (levels.Count == 1 ? "Saved level " : "Saved levels ") + string.Join(", ", levels) + ", as Ctrl+S does (with the editor's other unsaved work).";
         }
 
         void ShowState()
